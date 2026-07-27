@@ -141,4 +141,69 @@ class TrashDetectionRulesTest {
         val observations = listOf(obs("tire", 0.6f), obs("car", 0.7f))
         assertEquals("Tire", TrashDetectionRules.trashLabelFrom(observations))
     }
+
+    // ── Saliency-crop fallback promotion ────────────────────────────
+
+    @Test
+    fun cropPromotionUsesCropObservations() {
+        val crop = listOf(obs("water_bottle", 0.55f))
+        val frame = listOf(obs("street", 0.7f), obs("asphalt", 0.5f))
+        assertEquals("Bottle", TrashDetectionRules.cropPromotionLabelFrom(crop, frame))
+    }
+
+    @Test
+    fun cropPromotionSuppressesTireWhenOnlyTheFrameShowsTheVehicle() {
+        // The crop is tight on the tire — the car it is mounted on is only
+        // visible at frame level. Context must merge across both lists.
+        val crop = listOf(obs("tire", 0.6f))
+        val frame = listOf(obs("car", 0.7f), obs("driveway", 0.5f))
+        assertNull(TrashDetectionRules.cropPromotionLabelFrom(crop, frame))
+    }
+
+    @Test
+    fun cropPromotionAllowsDetachedTire() {
+        val crop = listOf(obs("tire", 0.6f))
+        val frame = listOf(obs("grass", 0.7f))
+        assertEquals("Tire", TrashDetectionRules.cropPromotionLabelFrom(crop, frame))
+    }
+
+    @Test
+    fun cropPromotionHonoursConfidenceFloor() {
+        assertNull(TrashDetectionRules.cropPromotionLabelFrom(listOf(obs("bottle", 0.2f)), emptyList()))
+    }
+
+    @Test
+    fun cropPromotionIgnoresFrameOnlyTrashLabels() {
+        // Promotion must come from what is inside the crop; frame labels are
+        // suppression context only, never a label source.
+        val crop = listOf(obs("grass", 0.8f))
+        val frame = listOf(obs("bottle", 0.6f))
+        assertNull(TrashDetectionRules.cropPromotionLabelFrom(crop, frame))
+    }
+
+    // ── Field-proven litter vocabulary (TestFlight 157/158 rounds) ──
+
+    @Test
+    fun fieldProvenLitterTokensReachTheLiveReticlePath() {
+        val expectations = mapOf(
+            "napkin" to "Napkin", "tissue" to "Tissue", "foil" to "Foil",
+            "styrofoam" to "Styrofoam", "straw" to "Straw", "lid" to "Lid",
+            "jug" to "Jug", "paper" to "Paper", "box" to "Box",
+            "glass" to "Glass",
+        )
+        for ((id, expected) in expectations) {
+            assertEquals(
+                expected,
+                TrashDetectionRules.trashLabelFrom(listOf(obs(id, 0.4f))),
+                "token: $id",
+            )
+        }
+    }
+
+    @Test
+    fun compoundFixtureIdentifiersDoNotMatchNewTokens() {
+        // "mailbox" must not token-match "box"; tokensOf splits on '_'/' '/','
+        // only, so the whole word "mailbox" stays unmatched.
+        assertNull(TrashDetectionRules.trashLabelFrom(listOf(obs("mailbox", 0.8f))))
+    }
 }

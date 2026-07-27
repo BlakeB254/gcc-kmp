@@ -35,6 +35,12 @@ object TrashDetectionRules {
         "vehicle", "car", "house", "fence", "yard", "highway", "lawn",
         "garden", "trail", "bush", "truck", "bicycle", "traffic", "bridge",
         "alley", "playground", "landscape", "horizon",
+        // Bare-ground labels (build-164): an env scan spends most of its time
+        // aimed DOWN, where frames classify as soil/dirt/gravel and none of
+        // the skyline words above — the gate then votes NONE, starves its
+        // outdoor-cue streak, and silently kills detection mid-scan
+        // (PR #219 follow-up #1, "aim-down starvation").
+        "soil", "dirt", "gravel", "sand", "mud", "concrete",
     )
     val TRASH_TOKENS = mapOf(
         "garbage" to "Trash", "trash" to "Trash", "waste" to "Trash",
@@ -42,6 +48,14 @@ object TrashDetectionRules {
         "bottle" to "Bottle", "can" to "Can", "cup" to "Cup", "bag" to "Bag",
         "plastic" to "Plastic", "wrapper" to "Wrapper", "carton" to "Carton",
         "tire" to "Tire", "mattress" to "Mattress",
+        // Field rounds on TestFlight 157/158 (see GroundExclusionRules):
+        // the original tokens covered clean, isolated containers but missed
+        // most real-world litter. Same specific-item vocabulary the
+        // ground-candidate path already trusts; every match still rides the
+        // TRASH_CONFIDENCE floor and the user-confirm card.
+        "paper" to "Paper", "box" to "Box", "napkin" to "Napkin",
+        "tissue" to "Tissue", "foil" to "Foil", "styrofoam" to "Styrofoam",
+        "straw" to "Straw", "lid" to "Lid", "jug" to "Jug", "glass" to "Glass",
     )
 
     /**
@@ -82,6 +96,26 @@ object TrashDetectionRules {
     fun autoPromotionLabelFrom(observations: List<ClassificationObservation>): String? {
         val label = trashLabelFrom(observations) ?: return null
         if (label in PARENT_ATTACHED_LABELS && hasVehicleContext(observations)) return null
+        return label
+    }
+
+    /**
+     * Auto-promotion label for a SALIENCY-CROP classification pass — the
+     * fallback the live reticle path runs when the whole-frame classifier
+     * names no trash (a wide outdoor frame rarely ranks a small ground item
+     * at [TRASH_CONFIDENCE]; a crop concentrated on the salient object does).
+     *
+     * The label may only come from [cropObservations] — what is actually
+     * inside the crop. [frameObservations] contribute suppression context
+     * alone: a crop tight on a tire won't contain the car it is mounted on,
+     * so [hasVehicleContext] is evaluated over the union of both lists.
+     */
+    fun cropPromotionLabelFrom(
+        cropObservations: List<ClassificationObservation>,
+        frameObservations: List<ClassificationObservation>,
+    ): String? {
+        val label = trashLabelFrom(cropObservations) ?: return null
+        if (label in PARENT_ATTACHED_LABELS && hasVehicleContext(cropObservations + frameObservations)) return null
         return label
     }
 

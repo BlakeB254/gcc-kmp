@@ -58,6 +58,8 @@ import com.gcc.app.platform.countFeatures
 import com.gcc.app.platform.clusterVisibleLitter
 import com.gcc.app.platform.minimapLitterItems
 import com.gcc.app.platform.bestOf
+import com.gcc.app.platform.SurfaceContextBus
+import com.gcc.app.platform.DetectionThermalBus
 import com.gcc.app.platform.fanHitQuality
 import com.gcc.app.platform.wireQualityForSegment
 import com.gcc.app.platform.purgeAndRetractCoverage
@@ -372,6 +374,7 @@ private fun CameraPhase(
     // Thermal degrade-then-warn (spec §1): true while the capture recorder
     // is encoding at the reduced video tier — drives the "phone hot" chip.
     val captureVideoDegraded by (arOverlay?.captureVideoDegraded ?: remember { MutableStateFlow(false) }).collectAsState()
+    val detectionThermalPaused by DetectionThermalBus.paused.collectAsState()
     val trashCandidate by (arOverlay?.trashCandidate ?: remember { MutableStateFlow<TrashCandidate?>(null) }).collectAsState()
     // Multi-item reticle layer (Task 17) — additive display alongside
     // trashCandidate's single lock-on; never drives approach/confirm.
@@ -618,9 +621,14 @@ private fun CameraPhase(
         arOverlay?.setCeilingListener { detected ->
             gate.onCeilingPlane(detected, Clock.System.now().toEpochMilliseconds())
         }
+        SurfaceContextBus.reset() // fresh session — no surface carry-over
         arOverlay?.setCoverageHitListener { hits ->
             if (!gate.captureAllowed.value) return@setCoverageHitListener
-            tracker.updateWithRaycastHits(hits, deepAllowed = deepScanAllowed.value)
+            tracker.updateWithRaycastHits(
+                hits,
+                deepAllowed = deepScanAllowed.value,
+                surface = SurfaceContextBus.current.value,
+            )
             val hitBest = fanHitQuality(hits)
             if (hitBest != null) {
                 bestFanQualitySinceLastEvent.value = bestOf(bestFanQualitySinceLastEvent.value, hitBest)
@@ -951,6 +959,7 @@ private fun CameraPhase(
                         deviceTier = deviceCapabilities.deviceClass.coverageTier(),
                         capturedAt = Clock.System.now().toString(),
                         quality = wireQualityForSegment(bestFanQualitySinceLastEvent.value),
+                        surface = SurfaceContextBus.current.value?.wire,
                     )
                 )
                 bestFanQualitySinceLastEvent.value = null
@@ -1440,17 +1449,34 @@ private fun CameraPhase(
             // honestly, but never gate the scan on it. Top-start row 3
             // (140dp): below the stats chip's row 2, mirroring the 🐞
             // badge's row on the top-end side, so no chrome overlaps.
-            if (captureVideoDegraded) {
-                StatusChip(
-                    text = "Phone hot — 3D capture reduced",
-                    dotColor = GccClaimed,
-                    backgroundColor = GccClaimed.copy(alpha = 0.15f),
-                    emoji = "🌡",
+            if (captureVideoDegraded || detectionThermalPaused) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .statusBarsPadding()
                         .padding(top = 140.dp, start = 16.dp),
-                )
+                ) {
+                    if (captureVideoDegraded) {
+                        StatusChip(
+                            text = "Phone hot — 3D capture reduced",
+                            dotColor = GccClaimed,
+                            backgroundColor = GccClaimed.copy(alpha = 0.15f),
+                            emoji = "🌡",
+                        )
+                    }
+                    // Honest cue for the thermal Vision shed (pre-164 this
+                    // was silent: long summer scans just stopped identifying
+                    // anything and read as a broken scanner in the field).
+                    if (detectionThermalPaused) {
+                        StatusChip(
+                            text = "Detection paused — phone cooling",
+                            dotColor = GccClaimed,
+                            backgroundColor = GccClaimed.copy(alpha = 0.15f),
+                            emoji = "🌡",
+                        )
+                    }
+                }
             }
             // Voluntary feedback only -- fuses AR tracking + GPS accuracy +
             // live detection confidence into one glanceable tier. Never gates
@@ -1577,6 +1603,8 @@ private fun CameraPhase(
                         coveragePercent = coveragePercentValue,
                         closePercent = closePercentValue,
                         steadinessFraction = trackingTickCounts.steadinessFraction(),
+                        surfaceBreakdown = tracker.surfaceCellCounts()
+                            .mapKeys { (surface, _) -> surface.wire },
                     )
                     if (arOverlay != null && captureStarted) {
                         completingScan = true

@@ -53,6 +53,7 @@ import com.gcc.app.ui.theme.GccAvailable
 import com.gcc.app.ui.theme.GccClaimed
 import com.gcc.app.ui.theme.GccError
 import com.gcc.app.ui.theme.GccGreen
+import androidx.compose.ui.text.style.TextAlign
 import com.gcc.app.ui.theme.TextMuted
 import com.gcc.app.platform.EnvScanSessionDraft
 import com.gcc.shared.model.ObservedSpotItem
@@ -146,6 +147,27 @@ fun ScanSessionSummaryCard(
             // combined "items tagged" count.
             SessionStat(value = "$litterCount", label = "Litter identified")
             SessionStat(value = "$featureCount", label = "Features mapped")
+        }
+
+        // Ground-surface breakdown of the tagged coverage cells (build 164:
+        // per-cell surface context) — "grass 62% · pavement 31% · dirt 7%".
+        // Only rendered when enough cells were tagged to say something.
+        val surfaces = session?.surfaceBreakdown.orEmpty()
+        val taggedTotal = surfaces.values.sum()
+        if (taggedTotal >= 5) {
+            Spacer(modifier = Modifier.height(8.dp))
+            val breakdown = surfaces.entries
+                .sortedByDescending { it.value }
+                .joinToString(" · ") { (name, count) ->
+                    "$name ${(count * 100 / taggedTotal)}%"
+                }
+            Text(
+                "Ground: $breakdown",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center,
+            )
         }
 
         // A-F scan score (ScanScore — the completion-time sibling of the live

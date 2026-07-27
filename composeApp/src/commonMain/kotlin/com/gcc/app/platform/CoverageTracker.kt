@@ -412,6 +412,7 @@ class CoverageTracker {
         hits: List<RaycastCoverageHit>,
         deepAllowed: Boolean = true,
         nowMs: Long = nowEpochMs(),
+        surface: SurfaceType? = null,
     ) {
         if (totalCells == 0 || hits.isEmpty()) return
         val map = _creditedCells.value.toMutableMap()
@@ -420,8 +421,36 @@ class CoverageTracker {
             val quality = coverageQualityForDistanceGated(hit.distanceMeters, deepAllowed) ?: continue
             val cell = cellForLatLng(hit.lat, hit.lng) ?: continue
             if (creditCell(map, cell, quality, nowMs)) changed = true
+            // Surface tags ride the same fan but only at GRAZED+ proximity:
+            // a SEEN-tier ray (a storefront 40m out) says nothing reliable
+            // about the ground surface at the landing cell. First tag wins —
+            // the first close look at a cell is the least-oblique one, and a
+            // stable tag beats one that flickers with later re-crossings.
+            if (surface != null && quality >= CoverageQuality.GRAZED) {
+                _cellSurfaces.getOrPut(cell) { surface }
+            }
         }
         if (changed) publish(map)
+    }
+
+    // Cell -> ground surface under it, tagged as cells are credited (env-scan
+    // build-164: minimap texture, summary breakdown, upload context). Kept
+    // outside the CellCredit chain deliberately: purgeSince reverts CREDIT
+    // (the INDOOR-flip contract), but a surface observation stays true — an
+    // indoor flip means the credit shouldn't count, not that the ground
+    // wasn't grass.
+    private val _cellSurfaces = LinkedHashMap<Pair<Int, Int>, SurfaceType>()
+
+    /** Read-only view of the per-cell surface tags (cell -> surface). */
+    val cellSurfaces: Map<Pair<Int, Int>, SurfaceType> get() = _cellSurfaces
+
+    /** Credited-cell surface breakdown for the summary/upload: surface -> cell count. */
+    fun surfaceCellCounts(): Map<SurfaceType, Int> {
+        val credited = _creditedCells.value.keys
+        return _cellSurfaces.entries
+            .filter { it.key in credited }
+            .groupingBy { it.value }
+            .eachCount()
     }
 
     /**

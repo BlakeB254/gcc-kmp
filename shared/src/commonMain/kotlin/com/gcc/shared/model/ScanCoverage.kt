@@ -14,6 +14,11 @@ data class ScanCoverageEventRequest(
     val deviceTier: String, // "basic" | "scanner" | "pro_scanner"
     val capturedAt: String,
     val quality: String = "grazed", // "seen" | "grazed" | "close"
+    // Ground surface under the camera when this event was captured —
+    // "grass" | "pavement" | "street" | "dirt" (SurfaceType.wire), null on
+    // old clients or when no surface classified yet. Additive: the server
+    // stores it as reconstruction/backdrop context and ignores unknown values.
+    val surface: String? = null,
 )
 
 @Serializable

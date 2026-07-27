@@ -47,20 +47,77 @@ class GroundExclusionRulesTest {
             "mailbox" to "mailbox",
             "bollard" to "bollard",
             "planter_box" to "planter",
-            "potted_plant" to "plant",
-            "bush" to "bush",
-            "oak_tree" to "tree",
-            "grass" to "grass",
             "curb" to "curb",
             "step" to "step",
             "parked_car" to "car",
-            "tire" to "tire",
-            "wheel" to "wheel",
             "animal" to "animal",
         )
         for ((identifier, expected) in cases) {
             assertEquals(expected, GroundExclusionRules.exclusionLabelFrom(listOf(obs(identifier, 0.9f))), identifier)
         }
+    }
+
+    // ── Backdrop split (build 164 rebuild): natural ground cover no longer
+    // excludes — it goes soft via backdropLabelFrom, so litter whose crop
+    // classifies as only its surroundings survives to dwell/tap/prompt ──
+
+    @Test
+    fun vegetationAndGroundCoverAreBackdropNotFixture() {
+        val cases = listOf(
+            "potted_plant" to "plant", "bush" to "bush", "oak_tree" to "tree",
+            "grass" to "grass", "fallen_leaves" to "leaves", "soil" to "soil",
+            "rock" to "rock", "gravel" to "gravel", "mulch" to "mulch",
+        )
+        for ((identifier, expected) in cases) {
+            assertNull(GroundExclusionRules.exclusionLabelFrom(listOf(obs(identifier, 0.9f))), identifier)
+            assertEquals(expected, GroundExclusionRules.backdropLabelFrom(listOf(obs(identifier, 0.9f))), identifier)
+        }
+    }
+
+    @Test
+    fun classifyReportsBackdropWhenOnlyGroundCoverMatches() {
+        val decision = GroundExclusionRules.classify(listOf(obs("grass", 0.9f), obs("plant", 0.5f)))
+        assertNull(decision.exclusionLabel)
+        assertNull(decision.trashType)
+        assertEquals("grass", decision.backdropLabel)
+    }
+
+    @Test
+    fun trashTokenSuppressesBackdropToo() {
+        val decision = GroundExclusionRules.classify(listOf(obs("grass", 0.9f), obs("wrapper", 0.1f)))
+        assertNull(decision.exclusionLabel)
+        assertNull(decision.backdropLabel)
+        assertNull(decision.trashType) // 0.1 < typing floor — alive, untyped
+    }
+
+    @Test
+    fun fixtureWinsOverBackdropWhenBothMatch() {
+        val decision = GroundExclusionRules.classify(listOf(obs("bench", 0.8f), obs("grass", 0.9f)))
+        assertEquals("bench", decision.exclusionLabel)
+        assertNull(decision.backdropLabel)
+    }
+
+    @Test
+    fun weakBackdropGuessDoesNotGoSoft() {
+        assertNull(GroundExclusionRules.backdropLabelFrom(listOf(obs("grass", 0.44f))))
+    }
+
+    // ── Tire/wheel are vehicle-context-gated (2026-07-25 field video: two
+    // dumped tires in a vacant lot, zero identifications — a tire is only a
+    // fixture part when a vehicle is actually in the labels) ──
+
+    @Test
+    fun loneTireIsNotExcluded() {
+        val decision = GroundExclusionRules.classify(listOf(obs("tire", 0.9f), obs("grass", 0.6f)))
+        assertNull(decision.exclusionLabel)
+    }
+
+    @Test
+    fun tireWithVehicleContextStillExcludes() {
+        assertEquals(
+            "tire",
+            GroundExclusionRules.exclusionLabelFrom(listOf(obs("tire", 0.9f), obs("car", 0.4f))),
+        )
     }
 
     @Test

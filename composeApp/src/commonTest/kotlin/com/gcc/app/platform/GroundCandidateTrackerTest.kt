@@ -450,10 +450,12 @@ class GroundCandidateTrackerTest {
         assertEquals(listOf(1L), tracker.awaitingIntent())
         assertTrue(tracker.activeScanning().any { it.first == 1L })
 
-        // Stage 2: the user ignored the prompt — reaped after the timeout.
+        // Stage 2: the user ignored the prompt — parked after the timeout
+        // (id returned once so the caller clears the reticle/prompt; the
+        // candidate itself stays tap-adoptable, see GroundCandidateRebuildTest).
         now += (INTENT_PROMPT_TIMEOUT_SECONDS * 1000).toLong() + 1
         assertEquals(listOf(1L), tracker.dismissedUnknown())
-        // Emit-once, terminal, gone from every other query.
+        // Emit-once, gone from every visible query.
         assertTrue(tracker.dismissedUnknown().isEmpty())
         assertTrue(tracker.awaitingIntent().isEmpty())
         assertTrue(tracker.activeScanning().none { it.first == 1L })
@@ -461,7 +463,7 @@ class GroundCandidateTrackerTest {
     }
 
     @Test
-    fun dismissedUnknownIdNeverResurrects() {
+    fun parkedIdStaysQuietOnReObservation() {
         var now = 0L
         val tracker = GroundCandidateTracker(nowMs = { now })
         tracker.ingest(listOf(packet(1L, x = 0f, y = 0f, z = 0f, distanceM = 5f)))

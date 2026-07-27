@@ -137,6 +137,8 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     // Matches the existing "confirmed = green" litter color language (the
     // grid line tint / confirmed marker color elsewhere in this file).
     private static let reticleCompleteTint = UIColor(red: 0.20, green: 0.85, blue: 0.45, alpha: 0.95)
+    /// AWAITING_INTENT amber — the "is this litter?" question state.
+    private static let reticleIntentTint = UIColor(red: 1.0, green: 0.72, blue: 0.20, alpha: 0.95)
     // Cool blue, same system-chrome family as the frontier beacon — outside
     // the litter color language (green = confirmed, orange = expected,
     // red = warning) on purpose.
@@ -151,6 +153,15 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     private lazy var floorGridTexture: TextureResource? = Self.makeGridTexture(
         line: UIColor(red: 0.20, green: 0.85, blue: 0.45, alpha: 0.9), lineWidth: 3
     )
+    /// Per-texel opacity mask for the grid material — white lines on black,
+    /// same geometry as `floorGridTexture`. REQUIRED: RealityKit's
+    /// `.transparent(opacity:)` with a scalar does NOT derive per-texel alpha
+    /// from the base-color texture, so the tile's transparent gaps rendered
+    /// as premultiplied BLACK at the tint's alpha — the "large grey cover
+    /// over the lot" field bug (2026-07-25 video, 3:23). With this mask the
+    /// gaps are opacity 0 (invisible) and only the lines draw.
+    private lazy var floorGridOpacityTexture: TextureResource? = Self.makeGridOpacityMask(lineWidth: 3)
+    private lazy var beaconOpacityTexture: TextureResource? = Self.makeBeaconOpacityMask()
 
     override init() {
         arView = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
@@ -573,7 +584,7 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     /// Acquires a pooled entity on first call for a given id (pool of 3,
     /// LRU-evicting the oldest active reticle past that); repeat calls for
     /// an id already showing just move/refill it.
-    func setScanReticle(id: Int64, x: Float, y: Float, z: Float, progress: Float) {
+    func setScanReticle(id: Int64, x: Float, y: Float, z: Float, progress: Float, extentM: Float, state: Int64) {
         DispatchQueue.main.async { [self] in
             // Phase gate: a COMPLETING scan is done. The Kotlin tick keeps
             // streaming setScanReticle while completeScanReticle's 1.5s
@@ -585,6 +596,18 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
             }
             let (reticle, didBind) = acquireReticle(for: id)
             reticle.anchor.position = SIMD3(x, y + Self.reticleGroundOffset, z)
+            // Size the marker to the ITEM: the LiDAR packet's measured
+            // footprint drives the ring diameter, so the highlight sits
+            // precisely over a bottle (small ring) or a dumped bag (wide
+            // ring) instead of one fixed 28cm circle over everything.
+            // Scaling the ANCHOR keeps the ring's own transform animations
+            // (grow-in, pulse) untouched.
+            if extentM > 0 {
+                let targetDiameter = min(max(extentM * 1.5, 0.22), 1.2)
+                reticle.anchor.scale = SIMD3(repeating: targetDiameter / Self.reticleRingDiameter)
+            } else if didBind {
+                reticle.anchor.scale = SIMD3(repeating: 1)
+            }
             if didBind {
                 // FULL unconditional reset on every (re)bind, independent
                 // of isEnabled — the slot may be mid-dissolve (shrink tween
@@ -595,9 +618,26 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
                 reticle.fillBar.stopAllAnimations()
                 reticle.ring.transform = Transform(scale: SIMD3(repeating: 1))
                 reticle.ring.model?.materials = [reticle.ringDefaultMaterial]
+                reticle.state = 0
                 reticle.ring.isEnabled = true
                 reticle.fillBar.isEnabled = true
                 animateIn(reticle.ring)
+            }
+            // State styling: 1 = AWAITING_INTENT — the ring is the visual
+            // anchor of the "is this litter?" prompt, so it must read as a
+            // QUESTION (amber, gentle breathing pulse), not an in-progress
+            // scan. Transitions are edge-triggered so the pulse animation
+            // isn't restarted every 750ms tick.
+            if state != reticle.state {
+                reticle.state = state
+                reticle.ring.stopAllAnimations()
+                reticle.ring.transform = Transform(scale: SIMD3(repeating: 1))
+                if state == 1 {
+                    reticle.ring.model?.materials = [reticle.ringIntentMaterial]
+                    addPulse(to: reticle.ring, scale: 1.08, duration: 0.8)
+                } else {
+                    reticle.ring.model?.materials = [reticle.ringDefaultMaterial]
+                }
             }
             applyReticleFill(reticle, progress: progress)
         }
@@ -687,8 +727,13 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         let fillBar: ModelEntity
         let ringDefaultMaterial: PhysicallyBasedMaterial
         let ringCompleteMaterial: PhysicallyBasedMaterial
+        /// Amber "is this litter?" styling — see `setScanReticle`'s state 1.
+        let ringIntentMaterial: PhysicallyBasedMaterial
         var candidateId: Int64?
         var phase: Phase = .active
+        /// Last applied state code (0 scanning / 1 awaiting-intent) —
+        /// state styling is edge-triggered on changes only.
+        var state: Int64 = 0
         /// Bumped every time this slot's occupant changes — bind (new id),
         /// release (clear/dissolve), or forced eviction. Deferred callbacks
         /// (the completeScanReticle hold + pulse-settle, the dissolve's
@@ -703,13 +748,15 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
             ring: ModelEntity,
             fillBar: ModelEntity,
             ringDefaultMaterial: PhysicallyBasedMaterial,
-            ringCompleteMaterial: PhysicallyBasedMaterial
+            ringCompleteMaterial: PhysicallyBasedMaterial,
+            ringIntentMaterial: PhysicallyBasedMaterial
         ) {
             self.anchor = anchor
             self.ring = ring
             self.fillBar = fillBar
             self.ringDefaultMaterial = ringDefaultMaterial
             self.ringCompleteMaterial = ringCompleteMaterial
+            self.ringIntentMaterial = ringIntentMaterial
         }
     }
 
@@ -741,6 +788,12 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
             completeMaterial.metallic = 0.0
             completeMaterial.blending = .transparent(opacity: .init(floatLiteral: 1.0))
 
+            var intentMaterial = PhysicallyBasedMaterial()
+            intentMaterial.baseColor = .init(tint: Self.reticleIntentTint)
+            intentMaterial.roughness = 1.0
+            intentMaterial.metallic = 0.0
+            intentMaterial.blending = .transparent(opacity: .init(floatLiteral: 1.0))
+
             var fillMaterial = PhysicallyBasedMaterial()
             fillMaterial.baseColor = .init(tint: Self.reticleFillTint)
             fillMaterial.roughness = 1.0
@@ -765,7 +818,8 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
                 ring: ring,
                 fillBar: fillBar,
                 ringDefaultMaterial: ringMaterial,
-                ringCompleteMaterial: completeMaterial
+                ringCompleteMaterial: completeMaterial,
+                ringIntentMaterial: intentMaterial
             ))
         }
     }
@@ -922,13 +976,23 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         if let beaconModel { return beaconModel }
         var material = PhysicallyBasedMaterial()
         if let beaconTexture {
-            material.baseColor = .init(tint: Self.beaconTint, texture: .init(beaconTexture))
+            material.baseColor = .init(tint: Self.beaconTint.withAlphaComponent(1), texture: .init(beaconTexture))
         } else {
-            material.baseColor = .init(tint: Self.beaconTint)
+            material.baseColor = .init(tint: Self.beaconTint.withAlphaComponent(1))
         }
         material.roughness = 1.0
         material.metallic = 0.0
-        material.blending = .transparent(opacity: .init(floatLiteral: 1.0))
+        // Same per-texel opacity fix as the grid material: the scalar form
+        // rendered the ring texture's clear plane as a dark square.
+        var beaconAlpha: CGFloat = 1
+        Self.beaconTint.getRed(nil, green: nil, blue: nil, alpha: &beaconAlpha)
+        if beaconTexture != nil, let mask = beaconOpacityTexture {
+            material.blending = .transparent(
+                opacity: .init(scale: Float(beaconAlpha), texture: .init(mask))
+            )
+        } else {
+            material.blending = .transparent(opacity: .init(floatLiteral: Float(beaconAlpha)))
+        }
         let model = ModelEntity(
             mesh: .generatePlane(width: 0.9, depth: 0.9, cornerRadius: 0.45),
             materials: [material]
@@ -1148,7 +1212,18 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         let isFloor: Bool
         switch plane.classification {
         case .floor: isFloor = true
-        case .none: isFloor = true
+        case .none:
+            // Unclassified horizontal planes count as ground — outdoors ARKit
+            // almost never says `.floor` — but only within a height band of
+            // the established floor. Without the band, car roofs, truck beds
+            // and planter tops folded into the never-shrinking grid union
+            // (one contributor to the oversized ground quad behind the
+            // 2026-07-25 grey-cover report).
+            let y = plane.transform.columns.3.y + plane.center.y
+            frameLock.lock()
+            let knownFloor = floorWorldY
+            frameLock.unlock()
+            isFloor = knownFloor == nil || abs(y - knownFloor!) <= 0.35
         default: isFloor = false
         }
         // Floor height feeds walls/posts in EVERY mode — track it
@@ -1300,12 +1375,19 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     // grid squares a constant gridTileMeters as planes grow.
     private func gridMaterial(_ texture: TextureResource?, tint: UIColor, uvScale: Float) -> PhysicallyBasedMaterial {
         var material = PhysicallyBasedMaterial()
+        // Tint alpha moves to the opacity SCALE below — baseColor tint alpha
+        // does nothing useful under `.transparent(opacity:)` and the old
+        // scalar-opacity form rendered the texture's transparent gaps as
+        // premultiplied black (the grey-cover field bug).
+        var tintAlpha: CGFloat = 1
+        tint.getRed(nil, green: nil, blue: nil, alpha: &tintAlpha)
+        let opaqueTint = tint.withAlphaComponent(1)
         if let texture {
-            material.baseColor = .init(tint: tint, texture: .init(texture))
-            material.emissiveColor = .init(color: tint, texture: .init(texture))
+            material.baseColor = .init(tint: opaqueTint, texture: .init(texture))
+            material.emissiveColor = .init(color: opaqueTint, texture: .init(texture))
         } else {
-            material.baseColor = .init(tint: tint)
-            material.emissiveColor = .init(color: tint)
+            material.baseColor = .init(tint: opaqueTint)
+            material.emissiveColor = .init(color: opaqueTint)
         }
         // Neon restored on Blake's word (TestFlight 145: the non-emissive grid
         // read as a shadow on the ground — invisible in daylight). The old
@@ -1315,7 +1397,13 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         material.emissiveIntensity = 2.0
         material.roughness = 1.0
         material.metallic = 0.0
-        material.blending = .transparent(opacity: .init(floatLiteral: 1.0))
+        if texture != nil, let mask = floorGridOpacityTexture {
+            material.blending = .transparent(
+                opacity: .init(scale: Float(tintAlpha), texture: .init(mask))
+            )
+        } else {
+            material.blending = .transparent(opacity: .init(floatLiteral: Float(tintAlpha)))
+        }
         if uvScale != 1 {
             material.textureCoordinateTransform.scale = SIMD2(repeating: uvScale)
         }
@@ -1381,6 +1469,75 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         }
         guard let cg = image.cgImage else { return nil }
         return try? TextureResource.generate(from: cg, options: .init(semantic: .color))
+    }
+
+    /// Opacity companion to `makeGridTexture`: identical line geometry drawn
+    /// WHITE at each line's alpha on a BLACK background. Sampled as a single
+    /// channel by `.transparent(opacity:)` — black gaps = fully invisible,
+    /// line brightness = line opacity. `.raw` semantic so the values aren't
+    /// run through the sRGB curve (0.5 must sample as 0.5).
+    private static func makeGridOpacityMask(lineWidth: CGFloat, diagonals: Bool = false) -> TextureResource? {
+        let side: CGFloat = 129
+        let third = side / 3
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: side, height: side))
+        let image = renderer.image { ctx in
+            UIColor.black.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: side, height: side))
+            let minorPath = UIBezierPath()
+            for i in 1...2 {
+                let pos = third * CGFloat(i)
+                minorPath.move(to: CGPoint(x: 0, y: pos))
+                minorPath.addLine(to: CGPoint(x: side, y: pos))
+                minorPath.move(to: CGPoint(x: pos, y: 0))
+                minorPath.addLine(to: CGPoint(x: pos, y: side))
+            }
+            if diagonals {
+                for row in 0...2 {
+                    for col in 0...2 {
+                        let x0 = third * CGFloat(col)
+                        let y0 = third * CGFloat(row)
+                        minorPath.move(to: CGPoint(x: x0, y: y0))
+                        minorPath.addLine(to: CGPoint(x: x0 + third, y: y0 + third))
+                        minorPath.move(to: CGPoint(x: x0 + third, y: y0))
+                        minorPath.addLine(to: CGPoint(x: x0, y: y0 + third))
+                    }
+                }
+            }
+            minorPath.lineWidth = lineWidth
+            UIColor(white: 0.5, alpha: 1).setStroke()
+            minorPath.stroke()
+            let majorPath = UIBezierPath()
+            majorPath.move(to: CGPoint(x: 0, y: 0.5))
+            majorPath.addLine(to: CGPoint(x: side, y: 0.5))
+            majorPath.move(to: CGPoint(x: 0.5, y: 0))
+            majorPath.addLine(to: CGPoint(x: 0.5, y: side))
+            majorPath.lineWidth = lineWidth * 1.5
+            UIColor(white: 0.9, alpha: 1).setStroke()
+            majorPath.stroke()
+        }
+        guard let cg = image.cgImage else { return nil }
+        return try? TextureResource.generate(from: cg, options: .init(semantic: .raw))
+    }
+
+    /// Opacity companion to `makeBeaconRingTexture` — same fix as the grid
+    /// mask (the beacon shared the scalar-opacity bug, rendering its clear
+    /// plane as a dark square).
+    private static func makeBeaconOpacityMask() -> TextureResource? {
+        let side: CGFloat = 256
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: side, height: side))
+        let image = renderer.image { ctx in
+            UIColor.black.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: side, height: side))
+            let ring = UIBezierPath(ovalIn: CGRect(x: 28, y: 28, width: side - 56, height: side - 56))
+            ring.lineWidth = 26
+            UIColor.white.setStroke()
+            ring.stroke()
+            let core = UIBezierPath(ovalIn: CGRect(x: side / 2 - 26, y: side / 2 - 26, width: 52, height: 52))
+            UIColor(white: 0.35, alpha: 1).setFill()
+            core.fill()
+        }
+        guard let cg = image.cgImage else { return nil }
+        return try? TextureResource.generate(from: cg, options: .init(semantic: .raw))
     }
 
     /// Frontier-beacon ring: a white annulus + soft center dot on a clear

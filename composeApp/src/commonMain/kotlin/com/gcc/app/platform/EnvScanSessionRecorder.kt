@@ -143,6 +143,7 @@ class EnvScanSessionRecorder(
         coveragePercent: Double = 0.0,
         closePercent: Double = 0.0,
         steadinessFraction: Double = 1.0,
+        surfaceBreakdown: Map<String, Int> = emptyMap(),
     ): EnvScanSessionDraft =
         EnvScanSessionDraft(
             sessionId = sessionId,
@@ -154,6 +155,7 @@ class EnvScanSessionRecorder(
             coveragePercent = coveragePercent,
             closePercent = closePercent,
             steadinessFraction = steadinessFraction,
+            surfaceBreakdown = surfaceBreakdown,
         )
 
     /**
@@ -254,4 +256,6 @@ data class EnvScanSessionDraft(
     val coveragePercent: Double = 0.0,
     val closePercent: Double = 0.0,
     val steadinessFraction: Double = 1.0,
+    /** Surface wire name -> credited-cell count at completion (see [SurfaceType]). */
+    val surfaceBreakdown: Map<String, Int> = emptyMap(),
 )

@@ -104,6 +104,18 @@ actual class ArEnvScanOverlay actual constructor() {
          *  is reliable well past 4m; the streak requirement stays. */
         private const val NEAR_DISTANCE_METERS = TAP_IDENTIFY_MAX_METERS
         private const val NEAR_STREAK_TICKS = 2
+        /** Saliency-crop fallback (build 164): when the whole-frame classifier
+         *  names no trash, classify up to this many salient-region crops per
+         *  tick before giving up — a wide outdoor frame rarely ranks a small
+         *  ground item at TRASH_CONFIDENCE; a crop concentrated on it does. */
+        private const val CROP_CLASSIFY_MAX_PER_TICK = 2
+        /** Crop half-extents scale relative to the salient box (some ground
+         *  context helps the classifier), and their clamps — floor keeps a
+         *  tiny box from starving the classifier of pixels, ceiling keeps the
+         *  crop meaningfully tighter than the whole frame. */
+        private const val CROP_CONTEXT_SCALE = 1.3
+        private const val CROP_MIN_HALF_EXTENT = 0.10
+        private const val CROP_MAX_HALF_EXTENT = 0.25
         /** Don't re-offer a candidate within this range of a dismissed/confirmed one. */
         private const val SUPPRESS_RADIUS_METERS = 2.0
         /** Tap-to-focus (Task 5): how long a [focusAt] tap biases detection. */
@@ -911,9 +923,11 @@ actual class ArEnvScanOverlay actual constructor() {
                 .valueForKey("thermalState") as? Long ?: 0L
         } catch (_: Throwable) { 0L }
         if (thermal >= 2L) {
+            DetectionThermalBus.setPaused(true)
             dispatch_async(dispatch_get_main_queue()) { CameraDetectionBus.update(emptyList()) }
             return true
         }
+        DetectionThermalBus.setPaused(false)
 
         val commonObs: List<ClassificationObservation>
         // SceneKit-only: the combined classify+saliency pass computed together
@@ -947,6 +961,11 @@ actual class ArEnvScanOverlay actual constructor() {
             commonObs = observations.map { ClassificationObservation(it.identifier, it.confidence) }
             saliencyRequest = saliency
         }
+
+        // Surface context rides the same whole-frame labels — no extra Vision
+        // cost. Consumers: the coverage-fan listener (per-cell ground tags)
+        // and the session summary's surface breakdown.
+        SurfaceContextBus.vote(commonObs)
 
         if (voteDue) {
             val vote = TrashDetectionRules.sceneVoteFrom(commonObs)
@@ -1027,9 +1046,22 @@ actual class ArEnvScanOverlay actual constructor() {
             )
             // classify() suppresses a fixture exclusion when a trash token
             // also matched — the crop always contains ground context, so
-            // "bottle on grass" must classify as bottle, not grass.
-            val (exclusionLabel, trashType) = GroundExclusionRules.classify(labels)
-            groundCandidateTracker.recordClassification(candidate.id, exclusionLabel, trashType)
+            // "bottle on grass" must classify as bottle, not grass. Backdrop
+            // labels (grass/plant/soil) go SOFT, not terminal: the candidate
+            // stays alive, attention-gated (build-164 rebuild).
+            val decision = GroundExclusionRules.classify(labels)
+            val exclusionLabel = decision.exclusionLabel
+            val trashType = decision.trashType
+            groundCandidateTracker.recordClassification(
+                candidate.id, exclusionLabel, trashType, decision.backdropLabel,
+            )
+            if (decision.backdropLabel != null) {
+                ScanSessionTelemetry.active?.detection(
+                    label = decision.backdropLabel, confidence = null,
+                    distanceM = candidate.distanceM.toDouble(),
+                    source = "geometry", outcome = "backdrop:${decision.backdropLabel}",
+                )
+            }
             if (exclusionLabel != null) {
                 // Silent, terminal — no caption either way. A PROPOSED id
                 // never had a reticle; a dwell/tap-promoted (already-SCANNING)
@@ -1043,11 +1075,12 @@ actual class ArEnvScanOverlay actual constructor() {
                     label = exclusionLabel, confidence = null, distanceM = candidate.distanceM.toDouble(),
                     source = "geometry", outcome = "excluded:$exclusionLabel",
                 )
-            } else if (!alreadyScanning) {
+            } else if (!alreadyScanning && decision.backdropLabel == null) {
                 // Only a genuine PROPOSED -> SCANNING transition is a fresh
                 // acceptance; a dwell/tap-promoted candidate already emitted
                 // "accepted" (source=dwell/tap) when IT transitioned — this
-                // call just types it.
+                // call just types it. Backdrop-soft candidates already
+                // reported outcome=backdrop above.
                 ScanSessionTelemetry.active?.detection(
                     label = trashType ?: UNKNOWN_LITTER_LABEL, confidence = null,
                     distanceM = candidate.distanceM.toDouble(),
@@ -1108,9 +1141,14 @@ actual class ArEnvScanOverlay actual constructor() {
         // setScanReticle contract) — activeScanning() only reports ids still
         // SCANNING as of this call, so a just-completed/just-timed-out id
         // never reaches the loop below.
+        val awaitingIds = groundCandidateTracker.awaitingIntent().toHashSet()
         groundCandidateTracker.activeScanning().forEach { (id, progress) ->
             val packet = groundCandidatePackets[id] ?: return@forEach
-            native.setScanReticle(id, packet.x, packet.y, packet.z, progress)
+            native.setScanReticle(
+                id, packet.x, packet.y, packet.z, progress,
+                extentM = maxOf(packet.widthM, packet.depthM),
+                state = if (id in awaitingIds) 1L else 0L,
+            )
         }
         groundCandidateTracker.timedOut().forEach { id ->
             native.clearScanReticle(id)
@@ -1246,6 +1284,38 @@ actual class ArEnvScanOverlay actual constructor() {
         }
     }
 
+    /**
+     * Classification observations for a crop centred on a salient box — the
+     * saliency-crop fallback's Vision pass. Native surfaces classify in
+     * Swift ([ArNativeSurface.classifyRegionLabels], same "identifier|conf"
+     * packet format as classifySceneLabels); the SceneKit path reuses the
+     * tap engine's region-of-interest classify. The box arrives in Vision's
+     * bottom-left-origin space; both callees want top-left image space
+     * (same conversion [selectSalientObject] documents). ARKit/Vision-bound
+     * — no test harness in this repo; the promotion RULE it feeds is the
+     * tested part ([TrashDetectionRules.cropPromotionLabelFrom]).
+     */
+    private fun classifyCropObservations(
+        frame: ARFrame?,
+        native: ArNativeSurface?,
+        box: VNRectangleObservation,
+    ): List<ClassificationObservation> {
+        var cx = 0.5
+        var cyTopLeft = 0.5
+        var halfW = CROP_MIN_HALF_EXTENT
+        var halfH = CROP_MIN_HALF_EXTENT
+        box.boundingBox.useContents {
+            cx = origin.x + size.width / 2.0
+            cyTopLeft = 1.0 - (origin.y + size.height / 2.0)
+            halfW = (size.width / 2.0 * CROP_CONTEXT_SCALE)
+                .coerceIn(CROP_MIN_HALF_EXTENT, CROP_MAX_HALF_EXTENT)
+            halfH = (size.height / 2.0 * CROP_CONTEXT_SCALE)
+                .coerceIn(CROP_MIN_HALF_EXTENT, CROP_MAX_HALF_EXTENT)
+        }
+        native?.let { return parseSceneLabels(it.classifyRegionLabels(cx, cyTopLeft, halfW, halfH)) }
+        return tapEngine.classifyRegion(frame, cx, cyTopLeft, maxOf(halfW, halfH) * 2.0)
+    }
+
     private fun analyzeTrash(
         frame: ARFrame?,
         native: ArNativeSurface?,
@@ -1265,8 +1335,47 @@ actual class ArEnvScanOverlay actual constructor() {
 
         // Global constraint 10/11: automatic promotion requires parent-context
         // suppression. A user tap bypasses this entirely (see focusAt).
-        val trashLabel = TrashDetectionRules.autoPromotionLabelFrom(classifications)
-        if (trashLabel == null) {
+        var promotedLabel = TrashDetectionRules.autoPromotionLabelFrom(classifications)
+        // Whichever observation list actually produced the label — whole
+        // frame, or (fallback below) the winning saliency crop's. Typing and
+        // confidence must read from the same list the label came from.
+        var labelObservations = classifications
+
+        // Saliency runs BEFORE the label gate now (build 164): the crop
+        // fallback needs the boxes precisely on the ticks the whole-frame
+        // pass names nothing. While a tap-to-focus (focusAt) is active,
+        // [selectSalientObject] biases toward the candidate nearest the
+        // tapped point instead of Vision's top-ranked one.
+        val effectiveSaliency = saliencyOnDemand(native, saliencyRequest)
+        val candidates = effectiveSaliency?.results
+            ?.filterIsInstance<VNSaliencyImageObservation>()
+            ?.firstOrNull()
+            ?.salientObjects
+            ?.filterIsInstance<VNRectangleObservation>()
+            ?: emptyList()
+
+        // Saliency-crop fallback: a wide outdoor frame rarely ranks a small
+        // ground item at TRASH_CONFIDENCE, so when the whole-frame pass
+        // misses, classify a crop concentrated on each salient object — the
+        // same trick the tap path (classifyTapped) and the ground-candidate
+        // path (classifyRegionLabels) already rely on. Every downstream gate
+        // (near-streak, raycast, suppression radius, confirm card) is
+        // unchanged; this only restores the sighting the classifier lost to
+        // frame-wide dilution.
+        var cropSalient: VNRectangleObservation? = null
+        if (promotedLabel == null) {
+            for (box in candidates.take(CROP_CLASSIFY_MAX_PER_TICK)) {
+                val cropObs = classifyCropObservations(frame, native, box)
+                val label = TrashDetectionRules.cropPromotionLabelFrom(cropObs, classifications)
+                if (label != null) {
+                    promotedLabel = label
+                    labelObservations = cropObs
+                    cropSalient = box
+                    break
+                }
+            }
+        }
+        val trashLabel = promotedLabel ?: run {
             nearStreak = 0
             dispatch_async(dispatch_get_main_queue()) { CameraDetectionBus.update(emptyList()) }
             _multiItemReticles.value = emptyList()
@@ -1279,36 +1388,26 @@ actual class ArEnvScanOverlay actual constructor() {
         }
         // The raw identifier that produced the label carries the fine-grained
         // tokens ("glass_bottle" vs "bottle") the canonical typing needs.
-        val rawIdentifier = classifications.firstOrNull { obs ->
+        val rawIdentifier = labelObservations.firstOrNull { obs ->
             obs.confidence >= 0.35f &&
                 TrashDetectionRules.tokensOf(obs.identifier).any { it in TrashDetectionRules.TRASH_TOKENS }
         }?.identifier ?: trashLabel
-        val confidence = classifications.firstOrNull { it.identifier == rawIdentifier }?.confidence ?: 0.5f
+        val confidence = labelObservations.firstOrNull { it.identifier == rawIdentifier }?.confidence ?: 0.5f
 
-        // Salient region -> reticle position + angular size. SceneKit already
-        // computed this alongside classification; native path runs it now,
-        // on demand, only because a trash label was actually found. While a
-        // tap-to-focus (focusAt) is active, [selectSalientObject] biases
-        // toward the candidate nearest the tapped point instead of Vision's
-        // top-ranked one.
+        // Salient region -> reticle position + angular size. A crop-promoted
+        // label pins the reticle to the box that produced it.
         var visionX = 0.5
         var visionY = 0.5
         var radius = 0.12f
         var bboxWidthFrac = 0.2
         val nowMs = Clock.System.now().toEpochMilliseconds()
         val focusActive = nowMs <= focusUntilMs
-        val effectiveSaliency = saliencyOnDemand(native, saliencyRequest)
-        val candidates = effectiveSaliency?.results
-            ?.filterIsInstance<VNSaliencyImageObservation>()
-            ?.firstOrNull()
-            ?.salientObjects
-            ?.filterIsInstance<VNRectangleObservation>()
-            ?: emptyList()
         // Task 17: multi-item reticle layer — reuses [candidates] above
         // (zero extra saliency cost); classifyRegion only spends extra Vision
         // requests when there's actually more than one box to disambiguate.
         updateMultiItemReticles(frame, candidates)
-        val salient = selectSalientObject(candidates, if (focusActive) focusImagePoint else null)
+        val salient = cropSalient
+            ?: selectSalientObject(candidates, if (focusActive) focusImagePoint else null)
         salient?.boundingBox?.useContents {
             visionX = origin.x + size.width / 2.0
             visionY = origin.y + size.height / 2.0
@@ -1600,9 +1699,21 @@ actual class ArEnvScanOverlay actual constructor() {
             val classification = try {
                 (anchor as platform.darwin.NSObject).valueForKey("classification") as? Long ?: 0L
             } catch (_: Throwable) { 0L }
-            val isFloor = classification == 2L || classification == 0L
-            if (!isFloor) continue
             val center = vectorFloats(anchor.center)
+            // Unclassified (0) planes count as ground only within a height
+            // band of the established floor — car roofs/truck beds must not
+            // inflate the never-shrinking union (mirrors GccArNative.swift's
+            // upsertPlane band; same grey-cover follow-up).
+            val isFloor = when (classification) {
+                2L -> true
+                0L -> {
+                    val knownFloor = floorY
+                    val anchorY = matrixFloats(anchor.transform)[13] + center[1]
+                    knownFloor == null || abs(anchorY - knownFloor) <= 0.35f
+                }
+                else -> false
+            }
+            if (!isFloor) continue
             val extent = vectorFloats(anchor.extent)
             if (extent[0] < 0.4f || extent[2] < 0.4f) continue // ignore slivers
 

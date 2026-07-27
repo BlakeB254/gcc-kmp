@@ -206,6 +206,15 @@ data class EnvScanManifest(
      * off-iOS, or when the native health JSON failed to decode.
      */
     val captureHealth: CaptureHealth? = null,
+    /**
+     * Ground-surface breakdown of the credited coverage cells at completion —
+     * wire surface name ("grass" | "pavement" | "street" | "dirt") to cell
+     * count. Reconstruction/backdrop context for the DGX pipeline and the
+     * Stage-2 detector's training data ("identify litter against its
+     * backdrop"). Null for sessions recorded before surface tagging existed
+     * or when no cell was close enough to tag.
+     */
+    val surfaceBreakdown: Map<String, Int>? = null,
 ) {
     companion object {
         /** ARKit `gravityAndHeading`: +X = east, +Y = up (gravity-aligned),

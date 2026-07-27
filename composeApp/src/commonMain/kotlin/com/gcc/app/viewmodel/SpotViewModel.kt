@@ -883,6 +883,7 @@ class SpotViewModel(
                     rejectedItems = rejectedSnapshot.ifEmpty { null },
                     diagnosticsLog = DiagnosticsLog.tailForManifest(),
                     multiItemPhotoKeys = multiItemPhotoKeys,
+                    surfaceBreakdown = draft.surfaceBreakdown.ifEmpty { null },
                 )
                 // Flight recorder (scan-session-replay PRD Phase 1): the
                 // session's event stream ALWAYS ships on completion — the
@@ -1076,8 +1077,22 @@ class SpotViewModel(
                 // Collect capture attestation from the first photo
                 val captureAttestation = state.capturedPhotos.firstNotNullOfOrNull { it.attestation }
 
-                // Include on-device AI analysis
-                val onDeviceAiResult = state.aiAnalysis
+                // Include on-device AI analysis — but confirmed observations
+                // outrank scene guesses. The analyzer is a whole-frame scene
+                // classifier with substring matching: any foliage in frame
+                // used to stamp the report "Organic / Leaves" even when the
+                // session confirmed actual litter items (2026-07-25 field
+                // walk: a session containing a dumping pile filed as "Minor
+                // dumping: Organic / Leaves, severity 1"). When the session
+                // holds real items, they ARE the analysis.
+                val confirmedItemTypes = state.observedItems
+                    .filter { it.domain == "litter" }
+                    .map { it.itemType }
+                    .distinct()
+                val onDeviceAiResult = state.aiAnalysis?.let { analysis ->
+                    if (confirmedItemTypes.isEmpty()) analysis
+                    else analysis.copy(trashTypes = confirmedItemTypes)
+                }
 
                 // Pillar 8 task 1: scan submissions can additionally carry every
                 // GRAZED+ cell the scan swept, so the server can supersede stale

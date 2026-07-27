@@ -25,8 +25,11 @@ private const val ANGLE_BUCKET_MAX_METERS = 6.0
 /** Width (degrees) of one approach-bearing sector; 6 sectors cover the full circle. */
 private const val ANGLE_BUCKET_DEGREES = 360.0 / 6
 
-/** Max distance (meters) for [GroundCandidateTracker.adoptTap] to adopt a candidate as user intent. */
-private const val TAP_ADOPT_MAX_METERS = 1.0
+/** Max distance (meters) for [GroundCandidateTracker.adoptTap] to adopt a
+ *  candidate as user intent. Widened 1.0 → 1.5 for the build-164 rebuild:
+ *  outdoor tap raycasts land with real scatter at 3–4 m, and the 2026-07-25
+ *  field walk showed taps directly on visible litter adopting nothing. */
+private const val TAP_ADOPT_MAX_METERS = 1.5
 
 /** Seconds of silence (no re-observation) before a SCANNING candidate times out. */
 private const val TIMEOUT_SECONDS = 20.0
@@ -35,10 +38,20 @@ private const val TIMEOUT_SECONDS = 20.0
 private const val MAX_CLASSIFICATION_REQUESTS_PER_TICK = 2
 
 /** Seconds an appearance-unknown, fully-scanned candidate waits in
- *  AWAITING_INTENT (the "is this litter?" prompt) before being unknown-
- *  dismissed. Long enough to read the prompt and answer, short enough that
- *  an ignored prompt never trails the user down the block. */
-const val INTENT_PROMPT_TIMEOUT_SECONDS = 10.0
+ *  AWAITING_INTENT (the "is this litter?" prompt) before it PARKS. 10 s
+ *  proved too short in the field (2026-07-25 walk: prompts silently vanished
+ *  while the user was still framing the item) — and since the timeout now
+ *  parks instead of terminally dismissing, a longer window carries no
+ *  trail-the-user cost: the prompt UI clears, the candidate stays
+ *  tap-adoptable. */
+const val INTENT_PROMPT_TIMEOUT_SECONDS = 25.0
+
+/** Close (<2m) re-observation frames a backdrop-natural candidate needs
+ *  before it surfaces at all (reticle or intent prompt). Vegetation/ground-
+ *  cover crops match most of any lot — without this attention gate every
+ *  weed would draw a reticle. Deliberately equal to
+ *  [STEADY_CLOSE_FRAMES_FOR_FULL_ANGLE]: "user is plainly examining it". */
+private const val BACKDROP_SURFACE_CLOSE_FRAMES = 10
 
 /** Tolerance for the "progress >= 1.0" completion gate, to absorb float-sum rounding (0.4f+0.4f+0.2f is not always bit-exact 1.0f). */
 private const val PROGRESS_COMPLETE_EPSILON = 0.0005f
@@ -53,7 +66,17 @@ private const val STEADY_CLOSE_FRAMES_FOR_FULL_ANGLE = 10f
  *  because full progress needed an orbit the user had no reason to walk). */
 private const val TAP_ADOPTED_COMPLETE_PROGRESS = 0.6f
 
-private enum class CandidateState { PROPOSED, SCANNING, AWAITING_INTENT, EXCLUDED, COMPLETED, TIMED_OUT, DISMISSED_UNKNOWN }
+private enum class CandidateState {
+    PROPOSED, SCANNING, AWAITING_INTENT, EXCLUDED, COMPLETED, TIMED_OUT, DISMISSED_UNKNOWN,
+
+    /** An unanswered "is this litter?" prompt timed out. NOT terminal: the
+     *  candidate is invisible (no reticle, no prompt) but keeps accepting
+     *  geometry refreshes and remains [GroundCandidateTracker.adoptTap]-able
+     *  — walking back and tapping the item resurrects it. Replaces the
+     *  pre-164 silent DISMISSED_UNKNOWN reap, which made an ignored prompt
+     *  permanently untappable ground. */
+    PARKED,
+}
 
 private class TrackedCandidate(
     var packet: GroundCandidatePacket,
@@ -79,6 +102,14 @@ private class TrackedCandidate(
     /** When this candidate entered AWAITING_INTENT — drives the
      *  [INTENT_PROMPT_TIMEOUT_SECONDS] reaper in [GroundCandidateTracker.dismissedUnknown]. */
     var awaitingIntentSinceMs: Long = 0L,
+    /** True when classification matched only natural ground cover / vegetation
+     *  ([GroundExclusionRules.backdropLabelFrom]). The candidate stays alive
+     *  but attention-gated: no reticle and no intent prompt until the user
+     *  plainly examines it ([BACKDROP_SURFACE_CLOSE_FRAMES] close frames) or
+     *  taps it. This is the build-164 inversion of the old terminal
+     *  EXCLUDED-on-"grass" path that silently killed litter whose crop
+     *  classified as nothing but its surroundings. */
+    var backdropNatural: Boolean = false,
 )
 
 /** A candidate whose scan progress reached 1.0 -- ready to file as a real litter item. */
@@ -109,12 +140,15 @@ data class CompletedCandidate(
  * [nowMs] (or, for [recordDwell], an explicit per-call timestamp), so this
  * runs identically in commonTest, on iOS, and on Android.
  *
- * State transitions, once terminal, are permanent: EXCLUDED, COMPLETED,
- * TIMED_OUT and DISMISSED_UNKNOWN candidates are never revisited by [ingest],
- * [recordClassification], [recordDwell] or [adoptTap] -- every one of those
- * guards on the candidate's current state before touching it. This is what
- * guarantees an EXCLUDED candidate can never later appear in [activeScanning]
- * or [completedCandidates].
+ * State transitions, once terminal, are permanent: EXCLUDED, COMPLETED and
+ * DISMISSED_UNKNOWN candidates are never revisited by [recordClassification],
+ * [recordDwell] or [adoptTap] -- every one of those guards on the candidate's
+ * current state before touching it. This is what guarantees an EXCLUDED
+ * candidate can never later appear in [activeScanning] or
+ * [completedCandidates]. Two deliberate NON-terminal exceptions (build-164
+ * rebuild): TIMED_OUT restarts as a fresh PROPOSED on re-observation (ids are
+ * spatial hashes — a stable item keeps its id across visits), and PARKED
+ * (an ignored intent prompt) stays quiet but tap-adoptable.
  *
  * Constraint: [ingest] packets carry no camera position, so "observation"
  * and "close frame" (distanceM < 2m, the packet's own field) are counted
@@ -146,9 +180,29 @@ class GroundCandidateTracker(val nowMs: () -> Long) {
                 )
                 continue
             }
-            if (existing.state != CandidateState.PROPOSED && existing.state != CandidateState.SCANNING) {
+            if (existing.state == CandidateState.TIMED_OUT) {
+                // Candidate ids are half-metre spatial hashes, so a stable
+                // item KEEPS its id across visits. Pre-164, TIMED_OUT was
+                // terminal — walk past trash, come back a minute later, and
+                // that spot was permanently dead. A fresh observation of a
+                // timed-out id restarts it as a brand-new proposal (all
+                // evidence reset — the old counters are stale by definition).
+                candidates[packet.id] = TrackedCandidate(
+                    packet = packet,
+                    state = CandidateState.PROPOSED,
+                    lastSeenMs = now,
+                    observations = 1,
+                )
+                continue
+            }
+            if (existing.state != CandidateState.PROPOSED &&
+                existing.state != CandidateState.SCANNING &&
+                existing.state != CandidateState.PARKED
+            ) {
                 continue // terminal -- ignore, never resurrect.
             }
+            // PARKED refreshes geometry/recency only — it must stay accurate
+            // for a later adoptTap — but stays PARKED (no state change here).
             existing.packet = packet
             existing.lastSeenMs = now
             existing.observations += 1
@@ -194,7 +248,12 @@ class GroundCandidateTracker(val nowMs: () -> Long) {
      *  unconditionally so [candidatesAwaitingClassification] stops offering
      *  the id up, whichever branch runs. Unknown or already-terminal ids are
      *  ignored (and leave classified untouched). */
-    fun recordClassification(id: Long, exclusionLabel: String?, trashType: String?) {
+    fun recordClassification(
+        id: Long,
+        exclusionLabel: String?,
+        trashType: String?,
+        backdropLabel: String? = null,
+    ) {
         val candidate = candidates[id] ?: return
         if (candidate.state != CandidateState.PROPOSED && candidate.state != CandidateState.SCANNING) return
         candidate.classified = true
@@ -203,8 +262,23 @@ class GroundCandidateTracker(val nowMs: () -> Long) {
         } else {
             candidate.state = CandidateState.SCANNING
             if (candidate.itemType == null && trashType != null) candidate.itemType = trashType
+            // Backdrop-natural is one-way sticky within a session of
+            // classifications: a later no-match pass (labels drift tick to
+            // tick) must not promote a weed to full visibility. A trash type
+            // clears it — the crop affirmatively named an item.
+            if (backdropLabel != null && candidate.itemType == null) candidate.backdropNatural = true
+            if (candidate.itemType != null) candidate.backdropNatural = false
         }
     }
+
+    /** True while [id] is attention-gated: backdrop-natural, untapped, and
+     *  not yet examined up close ([BACKDROP_SURFACE_CLOSE_FRAMES]). Quiet
+     *  candidates get no reticle and no intent prompt — but keep accruing
+     *  evidence and stay tap-adoptable. */
+    private fun isBackdropQuiet(candidate: TrackedCandidate): Boolean =
+        candidate.backdropNatural &&
+            !candidate.adoptedByTap &&
+            candidate.closeFrames < BACKDROP_SURFACE_CLOSE_FRAMES
 
     /**
      * One frame of gaze input. Two independent things happen here, both
@@ -282,7 +356,8 @@ class GroundCandidateTracker(val nowMs: () -> Long) {
         for ((id, candidate) in candidates) {
             if (candidate.state != CandidateState.PROPOSED &&
                 candidate.state != CandidateState.SCANNING &&
-                candidate.state != CandidateState.AWAITING_INTENT
+                candidate.state != CandidateState.AWAITING_INTENT &&
+                candidate.state != CandidateState.PARKED
             ) continue
             val p = candidate.packet
             val distance = distance3D(p.x, p.y, p.z, worldX, worldY, worldZ)
@@ -369,12 +444,20 @@ class GroundCandidateTracker(val nowMs: () -> Long) {
                 CandidateState.SCANNING -> {
                     if (!candidate.classified || candidate.itemType != null || candidate.adoptedByTap) continue
                     if (progressOf(candidate) < 1.0f - PROGRESS_COMPLETE_EPSILON) continue
+                    // A backdrop-natural candidate must additionally have
+                    // been examined up close before it may ASK — otherwise
+                    // an orbit past a weed patch would prompt on every tuft.
+                    if (isBackdropQuiet(candidate)) continue
                     candidate.state = CandidateState.AWAITING_INTENT
                     candidate.awaitingIntentSinceMs = now
                 }
                 CandidateState.AWAITING_INTENT -> {
                     if (now - candidate.awaitingIntentSinceMs < INTENT_PROMPT_TIMEOUT_SECONDS * 1000) continue
-                    candidate.state = CandidateState.DISMISSED_UNKNOWN
+                    // Unanswered ≠ answered "no": PARK instead of terminal
+                    // dismissal. The id is still returned so the caller
+                    // clears the reticle/prompt — but a later world tap on
+                    // the same spot resurrects the candidate via [adoptTap].
+                    candidate.state = CandidateState.PARKED
                     result.add(candidate.packet.id)
                 }
                 else -> continue
@@ -436,6 +519,7 @@ class GroundCandidateTracker(val nowMs: () -> Long) {
     fun activeScanning(): List<Pair<Long, Float>> =
         candidates.values
             .filter { it.state == CandidateState.SCANNING || it.state == CandidateState.AWAITING_INTENT }
+            .filterNot(::isBackdropQuiet)
             .map { it.packet.id to progressOf(it) }
 
     private fun progressOf(candidate: TrackedCandidate): Float {

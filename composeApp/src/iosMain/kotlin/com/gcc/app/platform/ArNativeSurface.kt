@@ -254,7 +254,25 @@ interface ArNativeSurface {
      * re-show it as a fresh reticle. Same rule for timed-out ids after
      * [clearScanReticle].
      */
-    fun setScanReticle(id: Long, x: Float, y: Float, z: Float, progress: Float) {}
+    /**
+     * @param extentM the candidate's measured ground footprint (max of
+     *   width/depth from the LiDAR packet) — the renderer sizes the ring to
+     *   sit precisely over the item instead of a fixed-diameter marker.
+     *   0 = unknown (renderer keeps its default size).
+     * @param state 0 = SCANNING (default ring + progress fill),
+     *   1 = AWAITING_INTENT (amber, gently pulsing — the "is this litter?"
+     *   prompt's visual anchor reads as a question, not an in-progress scan).
+     *   Completion styling stays [completeScanReticle]'s green treatment.
+     */
+    fun setScanReticle(
+        id: Long,
+        x: Float,
+        y: Float,
+        z: Float,
+        progress: Float,
+        extentM: Float,
+        state: Long,
+    ) {}
 
     /**
      * Scan-complete treatment for [id]'s reticle: swap to the complete tint
