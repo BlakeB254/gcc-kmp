@@ -752,37 +752,57 @@ actual class ArEnvScanOverlay actual constructor() {
         tapEngine.dismiss()
     }
 
+    /** Last-write-wins single slot for the "is this litter?" answer:
+     *  (candidateId, confirmed). Written on the MAIN thread by the prompt
+     *  buttons, consumed at the top of [driveGroundCandidates] on the tick
+     *  thread — the tracker and [groundCandidatePackets] are tick-thread
+     *  structures and must never be mutated from main (audit finding, build
+     *  165: the old direct calls raced ingest()/dismissedUnknown() on the
+     *  exact tap the prompt exists for). Same handoff contract as
+     *  [TapToConfirmEngine]'s pendingFocusTap. */
+    private var pendingIntentAnswer: Pair<Long, Boolean>? = null
+
     actual fun confirmGroundIntentPrompt() {
         val prompt = _groundIntentPrompt.value ?: return
-        // Tracker flips it back to SCANNING with intent set — the next
-        // driveGroundCandidates tick completes it (full progress + intent)
-        // through the normal completion path: evidence photo, geo-ref
-        // resolution, user_confirmed provenance via CompletedCandidate.userIntent.
-        if (groundCandidateTracker.confirmIntent(prompt.id)) {
-            ScanSessionTelemetry.active?.detection(
-                label = UNKNOWN_LITTER_LABEL, confidence = null,
-                distanceM = groundCandidatePackets[prompt.id]?.distanceM?.toDouble(),
-                source = "intent-prompt", outcome = "confirmed",
-            )
-        }
-        _groundIntentPrompt.value = null
+        // Queue for the tick thread; the tracker flips it back to SCANNING
+        // with intent set there, and the same tick completes it (full
+        // progress + intent) through the normal completion path: evidence
+        // photo, geo-ref resolution, user_confirmed provenance.
+        pendingIntentAnswer = prompt.id to true
+        _groundIntentPrompt.value = null // instant UI dismiss (StateFlow is thread-safe)
     }
 
     actual fun rejectGroundIntentPrompt() {
         val prompt = _groundIntentPrompt.value ?: return
-        if (groundCandidateTracker.rejectIntent(prompt.id)) {
+        pendingIntentAnswer = prompt.id to false
+        _groundIntentPrompt.value = null
+    }
+
+    /** Tick-thread consumption of [pendingIntentAnswer] — all tracker and
+     *  packet mutation happens here, where every other mutation runs. */
+    private fun processPendingIntentAnswer(native: ArNativeSurface) {
+        val (id, confirmed) = pendingIntentAnswer ?: return
+        pendingIntentAnswer = null
+        if (confirmed) {
+            if (groundCandidateTracker.confirmIntent(id)) {
+                ScanSessionTelemetry.active?.detection(
+                    label = UNKNOWN_LITTER_LABEL, confidence = null,
+                    distanceM = groundCandidatePackets[id]?.distanceM?.toDouble(),
+                    source = "intent-prompt", outcome = "confirmed",
+                )
+            }
+        } else if (groundCandidateTracker.rejectIntent(id)) {
             // Terminal immediately — the sweep will NOT re-emit this id, so
             // clear the reticle and photo state here (same contract as the
             // dismissedUnknown sweep).
-            nativeSurface?.clearScanReticle(prompt.id)
-            evictCandidatePhoto(prompt.id)
-            val packet = groundCandidatePackets.remove(prompt.id)
+            native.clearScanReticle(id)
+            evictCandidatePhoto(id)
+            val packet = groundCandidatePackets.remove(id)
             ScanSessionTelemetry.active?.detection(
                 label = null, confidence = null, distanceM = packet?.distanceM?.toDouble(),
                 source = "intent-prompt", outcome = "dismissed:not-litter",
             )
         }
-        _groundIntentPrompt.value = null
     }
 
     /** Best-effort evidence frame for a tap confirmation — same silent
@@ -1026,6 +1046,12 @@ actual class ArEnvScanOverlay actual constructor() {
      * contract.
      */
     private fun driveGroundCandidates(native: ArNativeSurface, nowMs: Long) {
+        // Step 0: consume any queued "is this litter?" answer FIRST — the
+        // user's decision must land before this tick's sweeps (a confirm
+        // returns the candidate to SCANNING so completedCandidates below
+        // files it this same tick).
+        processPendingIntentAnswer(native)
+
         // Step 1: ingest this tick's LiDAR anomaly packets. groundCandidatePackets
         // mirrors the latest geometry for every id fed to the tracker — see its
         // field kdoc for why: activeScanning() only returns (id, progress).
@@ -1136,20 +1162,13 @@ actual class ArEnvScanOverlay actual constructor() {
             }
         }
 
-        // Step 5: render. Ids that COMPLETE or TIME OUT this call must stop
-        // streaming to setScanReticle in this SAME tick (ArNativeSurface's
-        // setScanReticle contract) — activeScanning() only reports ids still
-        // SCANNING as of this call, so a just-completed/just-timed-out id
-        // never reaches the loop below.
-        val awaitingIds = groundCandidateTracker.awaitingIntent().toHashSet()
-        groundCandidateTracker.activeScanning().forEach { (id, progress) ->
-            val packet = groundCandidatePackets[id] ?: return@forEach
-            native.setScanReticle(
-                id, packet.x, packet.y, packet.z, progress,
-                extentM = maxOf(packet.widthM, packet.depthM),
-                state = if (id in awaitingIds) 1L else 0L,
-            )
-        }
+        // Step 5: reap, THEN render. Ids that COMPLETE or TIME OUT this call
+        // must stop streaming to setScanReticle in this SAME tick
+        // (ArNativeSurface's setScanReticle contract). Reaping before
+        // rendering also means a candidate that transitions to
+        // AWAITING_INTENT in this tick's dismissedUnknown() stage-1 pass
+        // renders its amber question state THIS tick instead of one tick
+        // late (audit finding, build 165).
         groundCandidateTracker.timedOut().forEach { id ->
             native.clearScanReticle(id)
             evictCandidatePhoto(id)
@@ -1163,7 +1182,7 @@ actual class ArEnvScanOverlay actual constructor() {
         // candidates whose classification named nothing and that the user
         // never tapped first PARK as awaiting-intent (the tracker's stage 1)
         // — surfaced below as the "is this litter?" prompt — and are only
-        // dismissed here once the prompt times out unanswered. Same
+        // parked here once the prompt times out unanswered. Same
         // reticle-clear contract as timeout either way.
         groundCandidateTracker.dismissedUnknown().forEach { id ->
             native.clearScanReticle(id)
@@ -1172,6 +1191,15 @@ actual class ArEnvScanOverlay actual constructor() {
             ScanSessionTelemetry.active?.detection(
                 label = null, confidence = null, distanceM = packet?.distanceM?.toDouble(),
                 source = "geometry", outcome = "dismissed:unknown",
+            )
+        }
+        val awaitingIds = groundCandidateTracker.awaitingIntent().toHashSet()
+        groundCandidateTracker.activeScanning().forEach { (id, progress) ->
+            val packet = groundCandidatePackets[id] ?: return@forEach
+            native.setScanReticle(
+                id, packet.x, packet.y, packet.z, progress,
+                extentM = maxOf(packet.widthM, packet.depthM),
+                state = if (id in awaitingIds) 1L else 0L,
             )
         }
         // Intent-prompt reconciliation: keep exactly one prompt mounted while
@@ -1707,9 +1735,13 @@ actual class ArEnvScanOverlay actual constructor() {
             val isFloor = when (classification) {
                 2L -> true
                 0L -> {
+                    // ONE-SIDED: reject only planes ABOVE the floor — a
+                    // symmetric band deadlocks bootstrap when the first
+                    // accepted plane was itself elevated (see the Swift
+                    // mirror's comment in GccArNative.upsertPlane).
                     val knownFloor = floorY
                     val anchorY = matrixFloats(anchor.transform)[13] + center[1]
-                    knownFloor == null || abs(anchorY - knownFloor) <= 0.35f
+                    knownFloor == null || anchorY - knownFloor <= 0.35f
                 }
                 else -> false
             }

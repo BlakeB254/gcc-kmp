@@ -178,6 +178,36 @@ class GroundCandidateRebuildTest {
         assertNull(tracker.adoptTap(1.6f, 0f, 0f))
     }
 
+    // ── Long-session map bounding ──
+
+    @Test
+    fun terminalGhostsAreSweptButUserDecisionsAndFilingsSurvive() {
+        var now = 0L
+        val tracker = GroundCandidateTracker(nowMs = { now })
+        // One explicit "not litter" answer — must never be swept (a sweep
+        // would let the item re-prompt).
+        tracker.ingest(listOf(packet(9_999L)))
+        tracker.recordClassification(9_999L, null, null)
+        tracker.observeClose(9_999L, times = 10)
+        tracker.dismissedUnknown() // -> AWAITING_INTENT
+        assertTrue(tracker.rejectIntent(9_999L))
+
+        // Flood the tracker with candidates that all time out.
+        for (id in 1L..500L) tracker.ingest(listOf(packet(id, x = id.toFloat())))
+        now += 21_000
+        tracker.timedOut()
+
+        // Keep ingesting fresh ids past the cap — the sweep must bound the
+        // map by evicting timed-out ghosts...
+        for (id in 1_000L..1_100L) tracker.ingest(listOf(packet(id, x = id.toFloat())))
+
+        // ...which makes an old timed-out id behave exactly like a brand-new
+        // proposal on re-observation (same as resurrection), while the
+        // explicit rejection stays terminal.
+        tracker.ingest(listOf(packet(9_999L)))
+        assertTrue(tracker.candidatesAwaitingClassification().none { it.id == 9_999L })
+    }
+
     // ── TIMED_OUT resurrection ──
 
     @Test

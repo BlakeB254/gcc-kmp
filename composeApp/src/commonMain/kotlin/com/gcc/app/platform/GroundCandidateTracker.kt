@@ -53,6 +53,20 @@ const val INTENT_PROMPT_TIMEOUT_SECONDS = 25.0
  *  [STEADY_CLOSE_FRAMES_FOR_FULL_ANGLE]: "user is plainly examining it". */
 private const val BACKDROP_SURFACE_CLOSE_FRAMES = 10
 
+/** Tracked-candidate count that triggers a terminal-ghost sweep in
+ *  [GroundCandidateTracker.ingest] — over a multi-hour walk every
+ *  half-metre spatial hash ever proposed otherwise accumulates forever and
+ *  every per-tick pass iterates all of them (audit finding, build 165). */
+private const val MAX_TRACKED_CANDIDATES = 384
+
+/** Post-sweep target. Eviction order: TIMED_OUT (resurrectable-by-design —
+ *  removal just means a fresh proposal on re-observation), then EXCLUDED
+ *  (re-vet costs one classify slot), then PARKED (re-proposes fresh; the
+ *  prompt may re-ask, acceptable at this scale). COMPLETED and
+ *  DISMISSED_UNKNOWN are NEVER swept: their terminality is what prevents a
+ *  re-observed item from double-filing or re-prompting an explicit "no". */
+private const val TRIM_TARGET_CANDIDATES = 256
+
 /** Tolerance for the "progress >= 1.0" completion gate, to absorb float-sum rounding (0.4f+0.4f+0.2f is not always bit-exact 1.0f). */
 private const val PROGRESS_COMPLETE_EPSILON = 0.0005f
 
@@ -207,6 +221,20 @@ class GroundCandidateTracker(val nowMs: () -> Long) {
             existing.lastSeenMs = now
             existing.observations += 1
             if (packet.distanceM < CLOSE_FRAME_MAX_METERS) existing.closeFrames += 1
+        }
+        trimIfNeeded()
+    }
+
+    /** Bound the map over long sessions — see [MAX_TRACKED_CANDIDATES] /
+     *  [TRIM_TARGET_CANDIDATES] for the policy and what is never swept. */
+    private fun trimIfNeeded() {
+        if (candidates.size <= MAX_TRACKED_CANDIDATES) return
+        for (sweepState in arrayOf(CandidateState.TIMED_OUT, CandidateState.EXCLUDED, CandidateState.PARKED)) {
+            val iterator = candidates.entries.iterator()
+            while (iterator.hasNext() && candidates.size > TRIM_TARGET_CANDIDATES) {
+                if (iterator.next().value.state == sweepState) iterator.remove()
+            }
+            if (candidates.size <= TRIM_TARGET_CANDIDATES) return
         }
     }
 

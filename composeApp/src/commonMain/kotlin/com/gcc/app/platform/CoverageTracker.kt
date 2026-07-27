@@ -574,6 +574,10 @@ class CoverageTracker {
         _seenCells.value = emptySet()
         _coveragePercent.value = 0.0
         _closePercent.value = 0.0
+        // Surface tags are first-tag-wins — a stale tag surviving reset()
+        // would permanently block the real surface for any (row, col) the
+        // next session's grid happens to reuse (audit finding, build 165).
+        _cellSurfaces.clear()
     }
 
     // ── Helpers ──────────────────────────────────────────────────────

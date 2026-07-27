@@ -844,7 +844,18 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         // and re-shows the identical slot for the new id via the caller's
         // bind-reset + `animateIn`, so an animated dissolve on the outgoing
         // entity would race the incoming grow-in on the SAME ModelEntity.
-        let oldestId = reticleLru[0]
+        //
+        // Skip COMPLETING slots when picking the victim: a completing ring
+        // stops being LRU-touched (setScanReticle early-returns), so it
+        // sinks to the eviction front exactly while its 1.5s green
+        // "identified" hold is playing — evicting it yanks the celebration
+        // mid-animation (audit finding, build 165). The hold is bounded, so
+        // preferring the next-oldest ACTIVE slot is always safe; the
+        // all-completing fallback keeps the pool live regardless.
+        let oldestId = reticleLru.first(where: { candidateId in
+            guard let i = reticleIndexByCandidate[candidateId] else { return false }
+            return reticlePool[i].phase != .completing
+        }) ?? reticleLru[0]
         let idx = reticleIndexByCandidate[oldestId]!
         let evicted = reticlePool[idx]
         evicted.ring.stopAllAnimations()
@@ -1223,7 +1234,13 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
             frameLock.lock()
             let knownFloor = floorWorldY
             frameLock.unlock()
-            isFloor = knownFloor == nil || abs(y - knownFloor!) <= 0.35
+            // ONE-SIDED band: reject only planes ABOVE the floor (car roofs,
+            // truck beds). Planes BELOW must stay accepted — if the first
+            // plane ARKit gave us was itself elevated (porch, hood), the real
+            // ground arriving later sits far below it, and a symmetric band
+            // would reject the actual ground forever (floorWorldY can only
+            // drop via accepted planes — bootstrap deadlock).
+            isFloor = knownFloor == nil || y - knownFloor! <= 0.35
         default: isFloor = false
         }
         // Floor height feeds walls/posts in EVERY mode — track it

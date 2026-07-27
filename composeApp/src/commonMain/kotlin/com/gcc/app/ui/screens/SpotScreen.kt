@@ -622,6 +622,11 @@ private fun CameraPhase(
             gate.onCeilingPlane(detected, Clock.System.now().toEpochMilliseconds())
         }
         SurfaceContextBus.reset() // fresh session — no surface carry-over
+        // Same carry-over guard for the thermal chip: the tick loop only
+        // clears the flag from INSIDE a running tick, so quitting a scan
+        // while hot left a stale "phone cooling" chip greeting the next
+        // session (audit finding, build 165).
+        DetectionThermalBus.setPaused(false)
         arOverlay?.setCoverageHitListener { hits ->
             if (!gate.captureAllowed.value) return@setCoverageHitListener
             tracker.updateWithRaycastHits(

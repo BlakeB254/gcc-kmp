@@ -1085,8 +1085,13 @@ class SpotViewModel(
                 // walk: a session containing a dumping pile filed as "Minor
                 // dumping: Organic / Leaves, severity 1"). When the session
                 // holds real items, they ARE the analysis.
-                val confirmedItemTypes = state.observedItems
-                    .filter { it.domain == "litter" }
+                // Same visibility policy the summary uses (clusterVisibleLitter):
+                // user-confirmed items, or auto-detections in a genuine
+                // cluster. A lone unconfirmed auto-tag must not leak its type
+                // into the report — ai.trashTypes feeds the public bounty
+                // description, so the report must never advertise something
+                // the user never saw (audit finding, build 165).
+                val confirmedItemTypes = clusterVisibleLitter(state.observedItems)
                     .map { it.itemType }
                     .distinct()
                 val onDeviceAiResult = state.aiAnalysis?.let { analysis ->
