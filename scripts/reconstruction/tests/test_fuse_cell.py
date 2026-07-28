@@ -424,3 +424,68 @@ def test_all_legacy_sessions_take_legacy_path_and_stay_world_ineligible():
     assert result.world_eligible is False
     assert result.session_registrations == {}
     assert "s1" in result.accepted_session_ids
+
+
+# --- Manifest/index reconciliation (2026-07-28 bm4m21 regression) -------------
+
+def test_fuse_cell_recovers_chunks_the_manifest_omitted(monkeypatch):
+    """The bm4m21 shape: the phone wrote its manifest mid-session so it lists
+    ONE key (a lone pose sidecar), while every capture artifact reached R2 and
+    was indexed. Manifest-driven fusion saw no depth and produced nothing;
+    reconciling against capture_chunks must recover the whole session."""
+    import fuse_cell as fuse_cell_module
+    from fuse_cell import fuse_cell
+
+    fake_r2 = _identity_frame_fixture()
+    truncated = r2_store.ManifestObject(
+        key="raw/1:2/deviceA/sess-a-manifest.json",
+        manifest={
+            "sessionId": "sess-a",
+            "deviceId": "deviceA",
+            "path": [{"lat": 41.85, "lng": -87.65, "atMs": 1000}],
+            # only the sidecar made it into the manifest
+            "captureChunks": ["raw/1:2/sess-a/capture/chunk-000.jsonl"],
+        },
+    )
+    monkeypatch.setattr(r2_store, "list_manifests_for_cell", lambda cell: [truncated])
+    monkeypatch.setattr(r2_store, "download_bytes", lambda key: fake_r2[key])
+    monkeypatch.setattr(r2_store, "next_run_version_for_cell", lambda cell: 1)
+    monkeypatch.setattr(r2_store, "upload_bytes", lambda key, data, content_type: None)
+    # the index saw everything
+    monkeypatch.setattr(
+        fuse_cell_module.chunk_index, "chunk_keys_for_cell",
+        lambda cell, dsn=None: {"sess-a": sorted(fake_r2.keys())},
+    )
+
+    result = fuse_cell("1:2", api_base_url=None, train_splat=False)
+
+    assert result.accepted_session_ids == ["sess-a"]
+    assert truncated.manifest["captureChunks"] == sorted(fake_r2.keys())
+
+
+def test_fuse_cell_without_index_keeps_manifest_only_behaviour(monkeypatch):
+    """Fail-soft: an unreachable index must leave fusion exactly as it was,
+    not break it. Same truncated manifest, empty index -> nothing usable."""
+    import fuse_cell as fuse_cell_module
+    from fuse_cell import fuse_cell
+
+    fake_r2 = _identity_frame_fixture()
+    truncated = r2_store.ManifestObject(
+        key="raw/1:2/deviceA/sess-a-manifest.json",
+        manifest={
+            "sessionId": "sess-a",
+            "deviceId": "deviceA",
+            "path": [{"lat": 41.85, "lng": -87.65, "atMs": 1000}],
+            "captureChunks": ["raw/1:2/sess-a/capture/chunk-000.jsonl"],
+        },
+    )
+    monkeypatch.setattr(r2_store, "list_manifests_for_cell", lambda cell: [truncated])
+    monkeypatch.setattr(r2_store, "download_bytes", lambda key: fake_r2[key])
+    monkeypatch.setattr(
+        fuse_cell_module.chunk_index, "chunk_keys_for_cell", lambda cell, dsn=None: {}
+    )
+
+    result = fuse_cell("1:2", api_base_url=None, train_splat=False)
+
+    assert result.accepted_session_ids == []
+    assert truncated.manifest["captureChunks"] == ["raw/1:2/sess-a/capture/chunk-000.jsonl"]

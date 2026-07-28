@@ -19,6 +19,7 @@ import numpy as np
 import open3d as o3d
 import requests
 
+import chunk_index
 import chunk_io
 import frame_io
 import geo_registration
@@ -498,6 +499,17 @@ def fuse_cell(
     skips the HTTP provenance write entirely -- the worker records
     provenance directly in Postgres from FusionResult.assets instead."""
     manifests = r2_store.list_manifests_for_cell(cell_id)
+    # The phone writes its manifest when the session stops, but chunk uploads
+    # keep landing for tens of seconds after — so `captureChunks` routinely
+    # under-reports what actually reached R2, and a manifest written
+    # mid-session can list almost nothing. capture_chunks is built from an R2
+    # listing and knows better. Reconcile HERE, before anything reads
+    # captureChunks: these same dicts are what the trainers receive below.
+    recovered = chunk_index.reconcile_manifest_chunks(
+        [m.manifest for m in manifests], chunk_index.chunk_keys_for_cell(cell_id)
+    )
+    if recovered:
+        print(f"cell {cell_id}: recovered {recovered} capture chunk key(s) absent from manifests")
     manifests_by_session_id = {m.manifest.get("sessionId", m.key): m.manifest for m in manifests}
     sessions = [s for m in manifests if (s := _session_fusion_input_from_manifest(m)) is not None]
     print(f"cell {cell_id}: {len(manifests)} manifests, {len(sessions)} with usable depth-backed frames")
