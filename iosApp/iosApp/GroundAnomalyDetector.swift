@@ -11,6 +11,13 @@ import simd
 /// see `ArNativeSurface.drainGroundCandidates` / `GroundCandidatePacket.kt`
 /// for the Kotlin side of the contract.
 ///
+/// Height is measured against a LOCAL ground estimate (windowed minimum of
+/// the depth grid itself, pass 2 in `analyze`), NOT against the plane-tracked
+/// `floorY` — that global reference broke detection on sloped/stepped
+/// terrain and under ARKit Y drift (build-167 root cause; three field rounds
+/// of "zero identifications"). `floorY` now only sanity-bands the local
+/// estimate.
+///
 /// Coordinate conventions (ARKit):
 ///  - `capturedImage` and the depth map share the sensor's native landscape
 ///    orientation, top-left pixel origin, v increasing downward.
@@ -35,12 +42,27 @@ final class GroundAnomalyDetector {
     private static let minDepthM: Float = 0.5
     private static let maxDepthM: Float = 6.0
     private static let minHeightM: Float = 0.03
-    private static let maxHeightM: Float = 0.4
+    /// 0.4 → 0.9 (build 167): dumped garbage bags and standing tires are
+    /// 0.5–0.8m tall — the 2026-07-25 field walk's dumping pile failed this
+    /// gate outright. Fixture/backdrop classification and the user-confirm
+    /// flow guard the top end; the geometric cap only needs to exclude
+    /// people/cars, which the footprint cap already does.
+    private static let maxHeightM: Float = 0.9
     private static let minFootprintM: Float = 0.05
     private static let maxFootprintM: Float = 1.0
     private static let maxGridWidth = 64
     private static let maxGridHeight = 48
     private static let maxCandidates = 8
+    /// Half-width (cells) of the windowed-minimum LOCAL ground estimate —
+    /// see `analyze`. 17×17 cells ≈ 1.1m on the ground at 3m viewing
+    /// distance: wider than the max candidate footprint, so a real object
+    /// can't fully occupy its own window and suppress itself.
+    private static let groundWindowRadius = 8
+    /// Local ground estimates further than this from the plane-tracked floor
+    /// are junk (a rooftop seen over a fence, a truck bed) — generous enough
+    /// to survive multi-minute ARKit Y drift, which the old global gate
+    /// wasn't (build 167 root cause).
+    private static let groundSanityBandM: Float = 2.0
 
     /// Runs the full geometric pipeline over one frame: downsample depth →
     /// unproject + gate → 4-connected components → per-component packet.
@@ -95,6 +117,9 @@ final class GroundAnomalyDetector {
         var worldPoints = [SIMD3<Float>?](repeating: nil, count: gridW * gridH)
         var kept = [Bool](repeating: false, count: gridW * gridH)
 
+        // Pass 1: unproject every depth-valid cell. No height gating yet —
+        // the ground reference is derived from these points in pass 2.
+        var cellY = [Float](repeating: .infinity, count: gridW * gridH)
         for gy in 0..<gridH {
             let v = min(depthHeight - 1, (gy * depthHeight) / gridH)
             let rowPointer = base.advanced(by: v * bytesPerRow).assumingMemoryBound(to: Float32.self)
@@ -107,17 +132,56 @@ final class GroundAnomalyDetector {
                 let y = (Float(v) - depthCy) / depthFy * depth
                 let cameraSpacePoint = SIMD4<Float>(x, -y, -depth, 1)
                 let worldPoint4 = cameraTransform * cameraSpacePoint
-                let worldPoint = SIMD3<Float>(worldPoint4.x, worldPoint4.y, worldPoint4.z)
-
-                guard worldPoint.x >= floorBounds.minX, worldPoint.x <= floorBounds.maxX,
-                      worldPoint.z >= floorBounds.minZ, worldPoint.z <= floorBounds.maxZ else { continue }
-                let height = worldPoint.y - floorY
-                guard height >= Self.minHeightM, height <= Self.maxHeightM else { continue }
-
                 let idx = gy * gridW + gx
-                worldPoints[idx] = worldPoint
-                kept[idx] = true
+                worldPoints[idx] = SIMD3<Float>(worldPoint4.x, worldPoint4.y, worldPoint4.z)
+                cellY[idx] = worldPoint4.y
             }
+        }
+
+        // Pass 2: LOCAL ground estimate — a separable windowed MINIMUM of
+        // cell heights. The pre-167 code measured height against the
+        // session-global minimum plane Y, which broke on any real walk:
+        // local terrain more than 0.4m above the session's lowest point
+        // (curb/street transitions, sloped lots) and plain multi-minute
+        // ARKit Y drift both pushed ALL litter out of the height band —
+        // the root cause of "zero identifications" across three field
+        // rounds. The windowed minimum tracks the ground the item actually
+        // sits on, wherever the session wanders.
+        let radius = Self.groundWindowRadius
+        var rowMin = [Float](repeating: .infinity, count: gridW * gridH)
+        for gy in 0..<gridH {
+            let rowBase = gy * gridW
+            for gx in 0..<gridW {
+                var m = Float.infinity
+                for dx in max(0, gx - radius)...min(gridW - 1, gx + radius) {
+                    m = min(m, cellY[rowBase + dx])
+                }
+                rowMin[rowBase + gx] = m
+            }
+        }
+        var groundY = [Float](repeating: .infinity, count: gridW * gridH)
+        for gy in 0..<gridH {
+            for gx in 0..<gridW {
+                var m = Float.infinity
+                for dy in max(0, gy - radius)...min(gridH - 1, gy + radius) {
+                    m = min(m, rowMin[dy * gridW + gx])
+                }
+                groundY[gy * gridW + gx] = m
+            }
+        }
+
+        // Pass 3: gates against the LOCAL ground. floorY only sanity-bands
+        // the ground estimate (rooftop over a fence ≠ ground); it no longer
+        // participates in the height measurement itself.
+        for idx in 0..<(gridW * gridH) {
+            guard let worldPoint = worldPoints[idx] else { continue }
+            guard worldPoint.x >= floorBounds.minX, worldPoint.x <= floorBounds.maxX,
+                  worldPoint.z >= floorBounds.minZ, worldPoint.z <= floorBounds.maxZ else { continue }
+            let ground = groundY[idx]
+            guard ground.isFinite, abs(ground - floorY) <= Self.groundSanityBandM else { continue }
+            let height = worldPoint.y - ground
+            guard height >= Self.minHeightM, height <= Self.maxHeightM else { continue }
+            kept[idx] = true
         }
 
         let components = Self.connectedComponents(kept: kept, gridW: gridW, gridH: gridH, worldPoints: worldPoints)
@@ -127,6 +191,12 @@ final class GroundAnomalyDetector {
         )
         let inverseCameraTransform = cameraTransform.inverse
 
+        // Ground-plane spacing of adjacent grid cells at 1m depth — used to
+        // inflate component spans, since a span measured between CELL
+        // CENTERS underestimates the true object extent by up to one cell
+        // per axis (a single-cell component has span 0).
+        let cellPitchAtUnitDepth = (Float(depthWidth) / Float(gridW)) / depthFx
+
         var candidates: [(distance: Float, packet: String)] = []
         for points in components {
             guard let candidate = Self.makeCandidate(
@@ -134,7 +204,8 @@ final class GroundAnomalyDetector {
                 cameraPosition: cameraPosition,
                 inverseCameraTransform: inverseCameraTransform,
                 fx: fx, fy: fy, cx: cx, cy: cy,
-                imageWidth: imageWidth, imageHeight: imageHeight
+                imageWidth: imageWidth, imageHeight: imageHeight,
+                cellPitchAtUnitDepth: cellPitchAtUnitDepth
             ) else { continue }
             candidates.append(candidate)
         }
@@ -193,9 +264,13 @@ final class GroundAnomalyDetector {
         cameraPosition: SIMD3<Float>,
         inverseCameraTransform: simd_float4x4,
         fx: Float, fy: Float, cx: Float, cy: Float,
-        imageWidth: Float, imageHeight: Float
+        imageWidth: Float, imageHeight: Float,
+        cellPitchAtUnitDepth: Float
     ) -> (distance: Float, packet: String)? {
-        guard !points.isEmpty else { return nil }
+        // ≥2 cells: a single isolated depth-noise cell must not become a
+        // candidate now that the footprint gate below no longer rejects
+        // small components outright.
+        guard points.count >= 2 else { return nil }
         var minP = points[0]
         var maxP = points[0]
         for p in points {
@@ -203,16 +278,25 @@ final class GroundAnomalyDetector {
             maxP = max(maxP, p)
         }
 
-        let footprintW = maxP.x - minP.x
-        let footprintD = maxP.z - minP.z
-        guard footprintW >= minFootprintM, footprintW <= maxFootprintM,
-              footprintD >= minFootprintM, footprintD <= maxFootprintM else { return nil }
-
-        let widthM = maxP.x - minP.x
-        let heightM = maxP.y - minP.y
-        let depthM = maxP.z - minP.z
         let centroid = (minP + maxP) * 0.5
         let distance = simd_distance(centroid, cameraPosition)
+
+        // Spans measured between downsampled CELL CENTERS underestimate the
+        // object by up to one cell pitch per axis — a 2-cell component has
+        // span 0 in one axis, and the pre-167 gate (raw span >= 0.05 in BOTH
+        // axes) therefore rejected ALL small litter (a cup at 2m is 1-2
+        // cells) unconditionally. Gate the minimum on the pitch-inflated
+        // span; keep the maximum on the raw span so inflation never rejects
+        // a legitimately large pile.
+        let cellPitch = cellPitchAtUnitDepth * distance
+        let footprintW = (maxP.x - minP.x) + cellPitch
+        let footprintD = (maxP.z - minP.z) + cellPitch
+        guard footprintW >= minFootprintM, footprintD >= minFootprintM,
+              (maxP.x - minP.x) <= maxFootprintM, (maxP.z - minP.z) <= maxFootprintM else { return nil }
+
+        let widthM = footprintW
+        let heightM = maxP.y - minP.y
+        let depthM = footprintD
 
         // Project the 8 world-AABB corners into normalized capturedImage
         // coordinates (full-res intrinsics — see file-level doc) for the

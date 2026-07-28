@@ -93,6 +93,9 @@ actual class ArEnvScanOverlay actual constructor() {
     companion object {
         private const val TICK_MS = 1_000L
         private const val FAST_TICK_MS = 750L
+
+        /** Ground-sensor heartbeat cadence: 40 ticks ≈ 30s at the fast tick. */
+        private const val GROUND_SENSOR_DIAG_EVERY_TICKS = 40
         private const val ERROR_BACKOFF_MS = 3_000L
         private const val SCENE_VOTE_EVERY_TICKS = 2
         private const val DISABLED_VOTE_EVERY_TICKS = 2
@@ -762,6 +765,11 @@ actual class ArEnvScanOverlay actual constructor() {
      *  [TapToConfirmEngine]'s pendingFocusTap. */
     private var pendingIntentAnswer: Pair<Long, Boolean>? = null
 
+    // Ground-sensor heartbeat counters (tick thread only) — see Step 1 of
+    // driveGroundCandidates.
+    private var groundPacketWindowCount = 0
+    private var groundPacketWindowTicks = 0
+
     actual fun confirmGroundIntentPrompt() {
         val prompt = _groundIntentPrompt.value ?: return
         // Queue for the tick thread; the tracker flips it back to SCANNING
@@ -1058,6 +1066,23 @@ actual class ArEnvScanOverlay actual constructor() {
         val packets = native.drainGroundCandidates().mapNotNull(::parseGroundCandidatePacket)
         for (packet in packets) groundCandidatePackets[packet.id] = packet
         groundCandidateTracker.ingest(packets)
+
+        // Sensor heartbeat (build 167): the 07-25/07-28 field rounds died
+        // UPSTREAM of the decision layer with zero visibility — this line in
+        // the 🐞 overlay / manifest diagnosticsLog answers "is the LiDAR
+        // sensor producing candidates at all?" without needing R2 access.
+        groundPacketWindowCount += packets.size
+        groundPacketWindowTicks += 1
+        if (groundPacketWindowTicks >= GROUND_SENSOR_DIAG_EVERY_TICKS) {
+            DiagnosticsLog.info(
+                "env-ar",
+                "ground-sensor: $groundPacketWindowCount packet(s) over $groundPacketWindowTicks ticks; " +
+                    "tracking ${groundCandidatePackets.size} ids, " +
+                    "active ${groundCandidateTracker.activeScanning().size}",
+            )
+            groundPacketWindowCount = 0
+            groundPacketWindowTicks = 0
+        }
 
         // Step 2: classify up to 2 unclassified candidates this tick (PROPOSED,
         // or a dwell/tap-promoted SCANNING candidate still awaiting vetting).
