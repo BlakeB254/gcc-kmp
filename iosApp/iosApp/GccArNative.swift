@@ -406,7 +406,7 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     /// ~19.5:9 screen crops ~19% of the image per side), mislocating taps by
     /// up to a meter at range — "it selected an area I didn't tap"
     /// (build 170 root cause). Empty when no frame yet.
-    func viewToImagePoint(x: Double, y: Double) -> [Double] {
+    func viewToImagePoint(x: Double, y: Double) -> [KotlinDouble] {
         frameLock.lock()
         let frame = lastFrame
         frameLock.unlock()
@@ -417,12 +417,12 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         // coords for the given orientation; invert it for view -> image.
         let transform = frame.displayTransform(for: .portrait, viewportSize: viewSize).inverted()
         let imagePoint = CGPoint(x: x, y: y).applying(transform)
-        return [Double(imagePoint.x), Double(imagePoint.y)]
+        return [KotlinDouble(double: Double(imagePoint.x)), KotlinDouble(double: Double(imagePoint.y))]
     }
 
     /// Inverse of `viewToImagePoint` — for drawing screen-space markers over
     /// image-space boxes (tap-sweep dots). Empty when no frame yet.
-    func imageToViewPoint(x: Double, y: Double) -> [Double] {
+    func imageToViewPoint(x: Double, y: Double) -> [KotlinDouble] {
         frameLock.lock()
         let frame = lastFrame
         frameLock.unlock()
@@ -431,7 +431,7 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         guard viewSize.width > 0, viewSize.height > 0 else { return [] }
         let transform = frame.displayTransform(for: .portrait, viewportSize: viewSize)
         let viewPoint = CGPoint(x: x, y: y).applying(transform)
-        return [Double(viewPoint.x), Double(viewPoint.y)]
+        return [KotlinDouble(double: Double(viewPoint.x)), KotlinDouble(double: Double(viewPoint.y))]
     }
 
     func classifyRegionLabels(cx: Double, cy: Double, halfW: Double, halfH: Double) -> [String] {
