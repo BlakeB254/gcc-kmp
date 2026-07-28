@@ -25,6 +25,11 @@ data class TapCandidateState(
     val distanceMeters: Float? = null,
     val label: String? = null,
     val confidence: Float? = null,
+    /** Image-space crop the evaluation classified (normalized center + half
+     *  side, top-left origin) — the Stage-2 training box for a confirmed tap. */
+    val imageCx: Double? = null,
+    val imageCy: Double? = null,
+    val imageHalf: Double? = null,
 )
 
 sealed interface TapEvent {
@@ -37,7 +42,14 @@ sealed interface TapEvent {
      *  [RaycastMissed]: "hold steady and tap again" is a lie here — no
      *  amount of steadiness helps until the GPS pairing lands. */
     object NoGeoRef : TapEvent
-    data class Classified(val label: String?, val confidence: Float?) : TapEvent
+    data class Classified(
+        val label: String?,
+        val confidence: Float?,
+        /** The crop that was evaluated — see [TapCandidateState.imageCx]. */
+        val imageCx: Double? = null,
+        val imageCy: Double? = null,
+        val imageHalf: Double? = null,
+    ) : TapEvent
     object Confirmed : TapEvent
     object Rejected : TapEvent
     object Dismissed : TapEvent
@@ -73,13 +85,29 @@ fun TapCandidateState.reduce(event: TapEvent): TapCandidateState = when (event) 
         if (phase != TapPhase.LOCATING) this else copy(phase = TapPhase.NO_RAYCAST)
     TapEvent.NoGeoRef ->
         if (phase != TapPhase.LOCATING) this else copy(phase = TapPhase.GPS_SYNCING)
-    is TapEvent.Classified ->
-        if (phase != TapPhase.CHECKING) this
-        else copy(
+    is TapEvent.Classified -> when (phase) {
+        TapPhase.CHECKING -> copy(
             phase = TapPhase.AWAITING_CONFIRMATION,
             label = event.label ?: UNKNOWN_LITTER_LABEL,
             confidence = event.confidence,
+            imageCx = event.imageCx,
+            imageCy = event.imageCy,
+            imageHalf = event.imageHalf,
         )
+        // Forced evaluation (Blake 2026-07-28): a tap that couldn't PLACE
+        // (no surface / no geo-ref) still EVALUATES — the classification
+        // lands here so the pill can report what the camera saw. Label stays
+        // nullable (no UNKNOWN fallback): there is no confirmation flow in
+        // these states, only feedback.
+        TapPhase.NO_RAYCAST, TapPhase.GPS_SYNCING -> copy(
+            label = event.label,
+            confidence = event.confidence,
+            imageCx = event.imageCx,
+            imageCy = event.imageCy,
+            imageHalf = event.imageHalf,
+        )
+        else -> this
+    }
     TapEvent.Confirmed, TapEvent.Rejected, TapEvent.Dismissed -> TapCandidateState()
 }
 
@@ -101,8 +129,18 @@ fun tapPillCopy(state: TapCandidateState): TapPillCopy? = when (state.phase) {
     TapPhase.IDLE -> null
     TapPhase.LOCATING -> TapPillCopy("Locating…", null, null)
     TapPhase.CHECKING -> TapPillCopy("Checking…", null, null)
-    TapPhase.NO_RAYCAST -> TapPillCopy("Hold steady and tap the item again", null, null)
-    TapPhase.GPS_SYNCING -> TapPillCopy("GPS is syncing — try again in a few seconds", null, null)
+    TapPhase.NO_RAYCAST ->
+        if (state.label != null && state.label != UNKNOWN_LITTER_LABEL) {
+            TapPillCopy("Looks like: ${state.label} — aim at the ground and tap to place it", null, null)
+        } else {
+            TapPillCopy("Hold steady and tap the item again", null, null)
+        }
+    TapPhase.GPS_SYNCING ->
+        if (state.label != null && state.label != UNKNOWN_LITTER_LABEL) {
+            TapPillCopy("Looks like: ${state.label} — GPS is syncing, hold on a moment", null, null)
+        } else {
+            TapPillCopy("GPS is syncing — try again in a few seconds", null, null)
+        }
     TapPhase.AWAITING_CONFIRMATION -> TapPillCopy(
         title = if (state.isIdentified) {
             "${state.label} — is this litter?"

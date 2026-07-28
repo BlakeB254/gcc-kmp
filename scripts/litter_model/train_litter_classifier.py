@@ -38,7 +38,7 @@ def main() -> None:
 
     from ultralytics import YOLO
 
-    classes = [d for d in DATASET.iterdir() if d.is_dir()]
+    classes = [d for d in DATASET.iterdir() if d.is_dir() and d.name not in ("train", "val")]
     n_images = sum(len(list(d.glob("*.jpg"))) for d in classes)
     if len(classes) < 2 or n_images < 20:
         raise SystemExit(
@@ -46,13 +46,30 @@ def main() -> None:
             "— keep scanning; build_litter_dataset.py grows it automatically"
         )
 
+    # Ultralytics classify wants train/ + val/ subdirs; the dataset builders
+    # (build_litter_dataset.py, fetch_taco.py) keep FLAT class dirs so
+    # incremental ingestion stays trivial. Materialize a deterministic
+    # symlink split per run: filename-hash split, so an image never migrates
+    # between train and val across runs (no leakage into the resumed model's
+    # val set as the dataset grows).
+    import zlib
+    split_root = DATASET.parent / f"{DATASET.name}-split"
+    if split_root.exists():
+        shutil.rmtree(split_root)
+    for class_dir in classes:
+        for img in class_dir.glob("*.jpg"):
+            part = "val" if (zlib.crc32(img.name.encode()) % 100) < 15 else "train"
+            dest_dir = split_root / part / class_dir.name
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            (dest_dir / img.name).symlink_to(img)
+
     MODELS.mkdir(parents=True, exist_ok=True)
     prev_best = MODELS / "best.pt"
     base = str(prev_best) if prev_best.exists() else "yolov8n-cls.pt"
     print(f"training from: {base} ({n_images} images, {len(classes)} classes)")
 
     model = YOLO(base)
-    results = model.train(data=str(DATASET), epochs=args.epochs, imgsz=args.imgsz,
+    results = model.train(data=str(split_root), epochs=args.epochs, imgsz=args.imgsz,
                           project=str(MODELS / "runs"), name="litter", exist_ok=True)
     run_best = pathlib.Path(results.save_dir) / "weights" / "best.pt"
     if run_best.exists():

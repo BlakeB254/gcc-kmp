@@ -71,9 +71,29 @@ def main() -> None:
                 frame = media.frame_at_epoch_ms(epoch)
                 if frame is None:
                     continue
+                image = Image.fromarray(frame)
+                # Build-168 flywheel: items now carry the normalized
+                # image-space box they were observed in (imageCx/imageCy/
+                # imageHalfW/imageHalfH) — crop it (with the same 25% context
+                # pad fetch_taco.py uses) instead of saving the diluted whole
+                # frame. Legacy items without a box keep the whole frame.
+                cx, cy = item.get("imageCx"), item.get("imageCy")
+                hw, hh = item.get("imageHalfW"), item.get("imageHalfH")
+                if cx is not None and cy is not None and hw and hh:
+                    width, height = image.size
+                    pad = 1.25
+                    left = max(0, int((cx - hw * pad) * width))
+                    top = max(0, int((cy - hh * pad) * height))
+                    right = min(width, int((cx + hw * pad) * width))
+                    bottom = min(height, int((cy + hh * pad) * height))
+                    if right - left >= 32 and bottom - top >= 32:
+                        image = image.crop((left, top, right, bottom))
+                # User-assigned labels (labelSource user_chip/user_text) are
+                # gold — mark them so training can weight or filter on them.
+                gold = "-gold" if (item.get("labelSource") or "").startswith("user_") else ""
                 label_dir = DATASET / _slug(item.get("itemType"))
                 label_dir.mkdir(exist_ok=True)
-                Image.fromarray(frame).save(label_dir / f"{sid}-{idx}.jpg", quality=90)
+                image.save(label_dir / f"{sid}-{idx}{gold}.jpg", quality=90)
                 new_images += 1
             done.add(sid)
 

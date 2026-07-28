@@ -117,4 +117,53 @@ class TapCandidateStateTest {
     fun idleShowsNoPill() {
         assertNull(tapPillCopy(idle))
     }
+
+    // ── Forced evaluation (Blake 2026-07-28): a tap ALWAYS evaluates, even
+    // when it can't place — the classification lands in the miss states and
+    // the pill reports what the camera saw.
+
+    @Test
+    fun classificationLandsInNoRaycastState() {
+        val missed = idle.reduce(TapEvent.Tapped(0.5f, 0.5f)).reduce(TapEvent.RaycastMissed)
+        val evaluated = missed.reduce(TapEvent.Classified("Bottle", 0.8f))
+        assertEquals(TapPhase.NO_RAYCAST, evaluated.phase)
+        assertEquals("Bottle", evaluated.label)
+        assertEquals(0.8f, evaluated.confidence)
+    }
+
+    @Test
+    fun classificationLandsInGpsSyncingState() {
+        val syncing = idle.reduce(TapEvent.Tapped(0.5f, 0.5f)).reduce(TapEvent.NoGeoRef)
+        val evaluated = syncing.reduce(TapEvent.Classified("Can", 0.7f))
+        assertEquals(TapPhase.GPS_SYNCING, evaluated.phase)
+        assertEquals("Can", evaluated.label)
+    }
+
+    @Test
+    fun noRaycastPillReportsTheEvaluationWhenNamed() {
+        val evaluated = idle.reduce(TapEvent.Tapped(0.5f, 0.5f))
+            .reduce(TapEvent.RaycastMissed)
+            .reduce(TapEvent.Classified("Bottle", 0.8f))
+        val pill = tapPillCopy(evaluated)!!
+        assertTrue(pill.title.contains("Bottle"), pill.title)
+    }
+
+    @Test
+    fun noRaycastPillKeepsGuidanceWhenNothingNamed() {
+        val evaluated = idle.reduce(TapEvent.Tapped(0.5f, 0.5f))
+            .reduce(TapEvent.RaycastMissed)
+            .reduce(TapEvent.Classified(null, null))
+        val pill = tapPillCopy(evaluated)!!
+        assertEquals("Hold steady and tap the item again", pill.title)
+    }
+
+    @Test
+    fun gpsSyncingPillReportsTheEvaluationWhenNamed() {
+        val evaluated = idle.reduce(TapEvent.Tapped(0.5f, 0.5f))
+            .reduce(TapEvent.NoGeoRef)
+            .reduce(TapEvent.Classified("Wrapper", 0.6f))
+        val pill = tapPillCopy(evaluated)!!
+        assertTrue(pill.title.contains("Wrapper"), pill.title)
+        assertTrue(pill.title.contains("GPS"), pill.title)
+    }
 }

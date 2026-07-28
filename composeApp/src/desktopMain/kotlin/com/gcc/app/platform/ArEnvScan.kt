@@ -22,7 +22,7 @@ actual class ArEnvScanOverlay actual constructor() {
     actual val tapCandidate: StateFlow<TapCandidateState> = _tapCandidate.asStateFlow()
 
     actual val groundIntentPrompt: StateFlow<GroundIntentPrompt?> = MutableStateFlow(null)
-    actual fun confirmGroundIntentPrompt() {}
+    actual fun confirmGroundIntentPrompt(itemType: String?, labelSource: String?) {}
     actual fun rejectGroundIntentPrompt() {}
     actual suspend fun captureTapEvidencePhoto(): CapturedPhoto? = null
     actual fun confirmTapCandidate(): TapCandidateState? = null

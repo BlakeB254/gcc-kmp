@@ -49,6 +49,25 @@ data class ObservedSpotItem(
      */
     val atMs: Long? = null,
     /**
+     * Normalized image-space bounding box (center + half extents, top-left
+     * origin) of the item in the frame it was observed in — the Stage-2
+     * training-data flywheel: paired with the frame extracted at [atMs] (or
+     * the evidence photo), a labelled item becomes a labelled training CROP
+     * instead of a diluted whole frame. Null on items observed before this
+     * existed or on paths with no box (GPS-only observations). Additive.
+     */
+    val imageCx: Double? = null,
+    val imageCy: Double? = null,
+    val imageHalfW: Double? = null,
+    val imageHalfH: Double? = null,
+    /**
+     * How the label was assigned: "auto" (classifier), "user_chip" (type
+     * chip on a confirm card / intent prompt), "user_text" (typed via
+     * "Other…"). User-assigned labels are gold-standard training labels;
+     * additive, null on legacy items (= "auto" semantics).
+     */
+    val labelSource: String? = null,
+    /**
      * AR-local compass bearing (degrees, [0, 360)) from the camera to the
      * observed face at capture time — the orientation a true-scale footprint
      * should render at. Null when unmeasurable (no geo-ref, no camera

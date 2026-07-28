@@ -102,6 +102,25 @@ class GroundExclusionRulesTest {
         assertNull(GroundExclusionRules.backdropLabelFrom(listOf(obs("grass", 0.44f))))
     }
 
+    @Test
+    fun trainedModelBackgroundVerdictGoesSoftNotTerminal() {
+        // Stage-2 crop classifier negative class: quiet, never excluded.
+        val decision = GroundExclusionRules.classify(listOf(obs("background", 0.9f)))
+        assertNull(decision.exclusionLabel)
+        assertEquals("background", decision.backdropLabel)
+    }
+
+    @Test
+    fun trainedModelLitterVerdictOutranksItsOwnBackground() {
+        // First-match ordering: the model emits its top class first; a
+        // litter class wins over a lower-ranked background.
+        val decision = GroundExclusionRules.classify(
+            listOf(obs("plastic_bottle", 0.7f), obs("background", 0.3f)),
+        )
+        assertEquals("bottle", decision.trashType)
+        assertNull(decision.backdropLabel)
+    }
+
     // ── Tire/wheel are vehicle-context-gated (2026-07-25 field video: two
     // dumped tires in a vacant lot, zero identifications — a tire is only a
     // fixture part when a vehicle is actually in the labels) ──

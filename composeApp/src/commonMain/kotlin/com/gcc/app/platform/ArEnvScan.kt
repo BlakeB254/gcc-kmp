@@ -122,7 +122,10 @@ expect class ArEnvScanOverlay() {
     /** The user answered "yes, litter" on [groundIntentPrompt]: the candidate
      *  completes through the normal filing path (evidence photo, geo-ref,
      *  weight) with user-intent provenance. No-op when nothing is pending. */
-    fun confirmGroundIntentPrompt()
+    /** @param itemType optional user-assigned label from the prompt's chips /
+     *   "Other…" (display label; canonicalized at the item-build site).
+     *  @param labelSource "user_chip" | "user_text" when [itemType] is set. */
+    fun confirmGroundIntentPrompt(itemType: String? = null, labelSource: String? = null)
 
     /** The user answered "not litter" on [groundIntentPrompt]: terminal
      *  dismissal, reticle cleared, nothing files. No-op when nothing pending. */

@@ -73,7 +73,12 @@ internal class TapToConfirmEngine(
         val (imageX, imageY) = viewTapToImageCoords(tap.first, tap.second)
         val hit = raycastImage(frame, imageX, imageY)
         if (hit == null) {
+            // Forced evaluation (Blake 2026-07-28): even a tap that can't
+            // PLACE still EVALUATES — classify the crop and let the pill
+            // report what the camera saw ("Looks like: Bottle — aim at the
+            // ground..."). Same below for the no-geo-ref path.
             _tapCandidate.update { it.reduce(TapEvent.RaycastMissed) }
+            classifyTapped(frame, imageX, imageY)
             return
         }
         onRaycastHit?.invoke(hit, imageX, imageY)
@@ -81,6 +86,7 @@ internal class TapToConfirmEngine(
             // Surface hit, no AR↔GPS pairing yet — honest copy, not
             // "hold steady" (TapPhase.GPS_SYNCING).
             _tapCandidate.update { it.reduce(TapEvent.NoGeoRef) }
+            classifyTapped(frame, imageX, imageY)
             return
         }
         _tapCandidate.update {
@@ -122,7 +128,16 @@ internal class TapToConfirmEngine(
         val observations = classifyRegion(frame, imageX, imageY, TAP_CROP_FRACTION)
         val label = TrashDetectionRules.trashLabelFrom(observations)
         val confidence = label?.let { TrashDetectionRules.trashConfidenceFor(it, observations) }
-        _tapCandidate.update { it.reduce(TapEvent.Classified(label, confidence)) }
+        _tapCandidate.update {
+            it.reduce(
+                TapEvent.Classified(
+                    label, confidence,
+                    // The evaluated crop, for the Stage-2 training box on a
+                    // confirmed tap (ObservedSpotItem.imageCx/…).
+                    imageCx = imageX, imageCy = imageY, imageHalf = TAP_CROP_FRACTION / 2.0,
+                ),
+            )
+        }
     }
 
     /**

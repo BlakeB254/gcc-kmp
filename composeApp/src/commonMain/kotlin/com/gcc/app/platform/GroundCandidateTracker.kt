@@ -124,6 +124,11 @@ private class TrackedCandidate(
      *  EXCLUDED-on-"grass" path that silently killed litter whose crop
      *  classified as nothing but its surroundings. */
     var backdropNatural: Boolean = false,
+    /** How [itemType] was assigned when the user labelled it via the intent
+     *  prompt's chips/"Other…" — "user_chip" | "user_text"; null = classifier
+     *  ("auto"). Rides through to [CompletedCandidate.labelSource]: user
+     *  labels are the Stage-2 detector's gold training labels. */
+    var labelSource: String? = null,
 )
 
 /** A candidate whose scan progress reached 1.0 -- ready to file as a real litter item. */
@@ -145,6 +150,8 @@ data class CompletedCandidate(
      *  user_confirmed provenance so [hasUserConfirmedLitter] counts it as
      *  report evidence; a purely autonomous completion stays auto_detected. */
     val userIntent: Boolean = false,
+    /** "user_chip" | "user_text" when the user assigned the label; null = classifier. */
+    val labelSource: String? = null,
 )
 
 /**
@@ -441,6 +448,7 @@ class GroundCandidateTracker(val nowMs: () -> Long) {
                     imageCx = p.imageCx, imageCy = p.imageCy,
                     imageHalfW = p.imageHalfW, imageHalfH = p.imageHalfH,
                     userIntent = candidate.adoptedByTap,
+                    labelSource = candidate.labelSource,
                 ),
             )
         }
@@ -508,11 +516,19 @@ class GroundCandidateTracker(val nowMs: () -> Long) {
      *  next [completedCandidates] sweep completes it (full progress + intent)
      *  as [UNKNOWN_LITTER_LABEL] with [CompletedCandidate.userIntent] set.
      *  False when [id] is not awaiting intent (already reaped or answered). */
-    fun confirmIntent(id: Long): Boolean {
+    fun confirmIntent(id: Long, itemType: String? = null, labelSource: String? = null): Boolean {
         val candidate = candidates[id] ?: return false
         if (candidate.state != CandidateState.AWAITING_INTENT) return false
         candidate.adoptedByTap = true
         candidate.state = CandidateState.SCANNING
+        // Manual label from the prompt's chips / "Other…" — an intent
+        // candidate is by definition untyped, so the user's word IS the type
+        // (and a gold training label for Stage 2).
+        if (itemType != null) {
+            candidate.itemType = itemType
+            candidate.labelSource = labelSource
+            candidate.backdropNatural = false
+        }
         return true
     }
 

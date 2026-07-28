@@ -755,48 +755,56 @@ actual class ArEnvScanOverlay actual constructor() {
         tapEngine.dismiss()
     }
 
-    /** Last-write-wins single slot for the "is this litter?" answer:
-     *  (candidateId, confirmed). Written on the MAIN thread by the prompt
-     *  buttons, consumed at the top of [driveGroundCandidates] on the tick
-     *  thread — the tracker and [groundCandidatePackets] are tick-thread
-     *  structures and must never be mutated from main (audit finding, build
-     *  165: the old direct calls raced ingest()/dismissedUnknown() on the
-     *  exact tap the prompt exists for). Same handoff contract as
-     *  [TapToConfirmEngine]'s pendingFocusTap. */
-    private var pendingIntentAnswer: Pair<Long, Boolean>? = null
+    /** One queued "is this litter?" answer — see [pendingIntentAnswer]. */
+    private data class IntentAnswer(
+        val id: Long,
+        val confirmed: Boolean,
+        val itemType: String?,
+        val labelSource: String?,
+    )
+
+    /** Last-write-wins single slot for the "is this litter?" answer.
+     *  Written on the MAIN thread by the prompt buttons, consumed at the top
+     *  of [driveGroundCandidates] on the tick thread — the tracker and
+     *  [groundCandidatePackets] are tick-thread structures and must never be
+     *  mutated from main (audit finding, build 165: the old direct calls
+     *  raced ingest()/dismissedUnknown() on the exact tap the prompt exists
+     *  for). Same handoff contract as [TapToConfirmEngine]'s pendingFocusTap. */
+    private var pendingIntentAnswer: IntentAnswer? = null
 
     // Ground-sensor heartbeat counters (tick thread only) — see Step 1 of
     // driveGroundCandidates.
     private var groundPacketWindowCount = 0
     private var groundPacketWindowTicks = 0
 
-    actual fun confirmGroundIntentPrompt() {
+    actual fun confirmGroundIntentPrompt(itemType: String?, labelSource: String?) {
         val prompt = _groundIntentPrompt.value ?: return
         // Queue for the tick thread; the tracker flips it back to SCANNING
         // with intent set there, and the same tick completes it (full
         // progress + intent) through the normal completion path: evidence
         // photo, geo-ref resolution, user_confirmed provenance.
-        pendingIntentAnswer = prompt.id to true
+        pendingIntentAnswer = IntentAnswer(prompt.id, confirmed = true, itemType = itemType, labelSource = labelSource)
         _groundIntentPrompt.value = null // instant UI dismiss (StateFlow is thread-safe)
     }
 
     actual fun rejectGroundIntentPrompt() {
         val prompt = _groundIntentPrompt.value ?: return
-        pendingIntentAnswer = prompt.id to false
+        pendingIntentAnswer = IntentAnswer(prompt.id, confirmed = false, itemType = null, labelSource = null)
         _groundIntentPrompt.value = null
     }
 
     /** Tick-thread consumption of [pendingIntentAnswer] — all tracker and
      *  packet mutation happens here, where every other mutation runs. */
     private fun processPendingIntentAnswer(native: ArNativeSurface) {
-        val (id, confirmed) = pendingIntentAnswer ?: return
+        val (id, confirmed, itemType, labelSource) = pendingIntentAnswer ?: return
         pendingIntentAnswer = null
         if (confirmed) {
-            if (groundCandidateTracker.confirmIntent(id)) {
+            if (groundCandidateTracker.confirmIntent(id, itemType, labelSource)) {
                 ScanSessionTelemetry.active?.detection(
-                    label = UNKNOWN_LITTER_LABEL, confidence = null,
+                    label = itemType ?: UNKNOWN_LITTER_LABEL, confidence = null,
                     distanceM = groundCandidatePackets[id]?.distanceM?.toDouble(),
-                    source = "intent-prompt", outcome = "confirmed",
+                    source = "intent-prompt",
+                    outcome = if (itemType != null) "confirmed:${labelSource ?: "user"}" else "confirmed",
                 )
             }
         } else if (groundCandidateTracker.rejectIntent(id)) {

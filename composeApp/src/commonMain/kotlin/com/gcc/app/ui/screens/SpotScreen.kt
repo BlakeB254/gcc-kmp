@@ -228,7 +228,9 @@ fun SpotScreen(
                     observedItems = uiState.observedItems,
                     onTrashObserved = { item -> viewModel.addObservedItem(item) },
                     onScannedItemCompleted = { item, photo -> viewModel.addScannedItem(item, photo) },
-                    onConfirmedTapItem = { candidate, photo -> viewModel.addConfirmedTapItem(candidate, photo) },
+                    onConfirmedTapItem = { candidate, photo, typeOverride, labelSource ->
+                        viewModel.addConfirmedTapItem(candidate, photo, typeOverride, labelSource)
+                    },
                     onRejectedTapItem = { candidate -> viewModel.addRejectedTapItem(candidate) },
                     submitError = uiState.error,
                     onPurgeRecentCaptures = { cutoff -> viewModel.purgeRecentCaptures(cutoff) },
@@ -344,7 +346,7 @@ private fun CameraPhase(
      *  photo rides the same upload-then-enqueue path tap-path photos use. */
     onScannedItemCompleted: (ObservedSpotItem, CapturedPhoto?) -> Unit = { _, _ -> },
     /** The user tapped a candidate and pressed "Confirm litter" (constraint 2). */
-    onConfirmedTapItem: (TapCandidateState, CapturedPhoto?) -> Unit = { _, _ -> },
+    onConfirmedTapItem: (TapCandidateState, CapturedPhoto?, String?, String?) -> Unit = { _, _, _, _ -> },
     /** The user tapped a candidate and pressed "Not litter" — a negative example. */
     onRejectedTapItem: (TapCandidateState) -> Unit = {},
     submitError: String? = null,
@@ -614,6 +616,14 @@ private fun CameraPhase(
                     // file a report. Purely autonomous completions stay
                     // auto_detected (constraint 10).
                     provenance = if (completed.userIntent) PROVENANCE_USER_CONFIRMED else PROVENANCE_AUTO_DETECTED,
+                    // Stage-2 flywheel: the LiDAR packet's image-space box +
+                    // how the label was assigned ride the manifest, so the
+                    // DGX dataset builder can extract a labelled CROP.
+                    imageCx = completed.imageCx,
+                    imageCy = completed.imageCy,
+                    imageHalfW = completed.imageHalfW,
+                    imageHalfH = completed.imageHalfH,
+                    labelSource = completed.labelSource,
                 ),
                 photo,
             )
@@ -1390,7 +1400,7 @@ private fun CameraPhase(
                             // pill clears instantly; the photo is async.
                             confirmScope.launch {
                                 val photo = arOverlay?.captureTapEvidencePhoto()
-                                onConfirmedTapItem(confirmed, photo)
+                                onConfirmedTapItem(confirmed, photo, null, null)
                             }
                         }
                     }
@@ -1406,6 +1416,25 @@ private fun CameraPhase(
                     }
                 },
                 onDismiss = { arOverlay?.dismissTapCandidate() },
+                // Manual labelling (Blake 2026-07-28): a chip tap confirms AND
+                // labels in one gesture — the user's word outranks the
+                // classifier and becomes a Stage-2 training label.
+                onConfirmTyped = { label, freeText ->
+                    if (!gate.captureAllowed.value) {
+                        arOverlay?.dismissTapCandidate()
+                        toast = "Scan paused indoors — step outside and tap the item again"
+                    } else {
+                        arOverlay?.confirmTapCandidate()?.let { confirmed ->
+                            confirmScope.launch {
+                                val photo = arOverlay?.captureTapEvidencePhoto()
+                                onConfirmedTapItem(
+                                    confirmed, photo, label,
+                                    if (freeText) "user_text" else "user_chip",
+                                )
+                            }
+                        }
+                    }
+                },
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp),
             )
         }
@@ -1434,6 +1463,19 @@ private fun CameraPhase(
                 },
                 onReject = { arOverlay?.rejectGroundIntentPrompt() },
                 onDismiss = { arOverlay?.rejectGroundIntentPrompt() },
+                // Chip answer = "yes, and it's a <type>" in one gesture; the
+                // label rides to the tracker and files with the item.
+                onConfirmTyped = { label, freeText ->
+                    if (!gate.captureAllowed.value) {
+                        arOverlay?.rejectGroundIntentPrompt()
+                        toast = "Scan paused indoors — step outside and rescan the item"
+                    } else {
+                        arOverlay?.confirmGroundIntentPrompt(
+                            itemType = label,
+                            labelSource = if (freeText) "user_text" else "user_chip",
+                        )
+                    }
+                },
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp),
             )
         }

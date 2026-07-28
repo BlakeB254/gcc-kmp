@@ -427,10 +427,16 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         let request = VNClassifyImageRequest()
         let handler = VNImageRequestHandler(ciImage: cropped, options: [:])
         guard (try? handler.perform([request])) != nil, let results = request.results else { return [] }
-        return results
+        let appleLabels = results
             .sorted { $0.confidence > $1.confidence }
             .prefix(10)
             .map { "\($0.identifier)|\($0.confidence)" }
+        // Stage-2 slot: when the purpose-trained crop classifier ships in
+        // the bundle, its verdict is PREPENDED — Kotlin's first-match rules
+        // then prefer it over the generic taxonomy, with the Apple labels
+        // still present as vehicle/scene context. No model = no change.
+        let trained = LitterCropClassifier.shared.classify(cropped: cropped)
+        return trained + appleLabels
     }
 
     /// Camera forward ray in AR world space — the -Z column of the camera

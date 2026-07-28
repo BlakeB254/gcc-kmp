@@ -443,24 +443,39 @@ class SpotViewModel(
      *  carries report-grade evidence — before this, tap confirmations filed
      *  photoless and weightless, and a session with only taps could never
      *  pass completeScan's photos+evidence report gate at all. */
-    fun addConfirmedTapItem(candidate: TapCandidateState, photo: CapturedPhoto? = null) {
+    fun addConfirmedTapItem(
+        candidate: TapCandidateState,
+        photo: CapturedPhoto? = null,
+        /** User-assigned label from the pill's chips / "Other…" — overrides
+         *  the classifier's guess; [labelSource] is "user_chip"/"user_text". */
+        typeOverride: String? = null,
+        labelSource: String? = null,
+    ) {
         val lat = candidate.lat ?: return
         val lng = candidate.lng ?: return
-        ScanSessionTelemetry.active?.confirm(candidate.label ?: UNKNOWN_LITTER_LABEL)
-        val itemType = TrashItemCatalog.canonicalType(candidate.label ?: UNKNOWN_LITTER_LABEL)
+        val displayLabel = typeOverride ?: candidate.label ?: UNKNOWN_LITTER_LABEL
+        ScanSessionTelemetry.active?.confirm(displayLabel)
+        val itemType = TrashItemCatalog.canonicalType(displayLabel)
         photo?.let { addPhoto(it) }
         addObservedItem(
             ObservedSpotItem(
                 lat = lat,
                 lng = lng,
                 itemType = itemType,
-                confidence = candidate.confidence,
+                confidence = if (typeOverride != null) null else candidate.confidence,
                 domain = "litter",
                 provenance = PROVENANCE_USER_CONFIRMED,
                 // No LiDAR box on the tap path — use the type's typical mass
                 // so the live weight tally and the marker's weight field stop
                 // reading a confirmed item as 0 g.
                 estimatedWeightGrams = TrashItemCatalog.estimateWeightGrams(itemType, null),
+                // Stage-2 flywheel: the evaluated crop + label provenance.
+                imageCx = candidate.imageCx,
+                imageCy = candidate.imageCy,
+                imageHalfW = candidate.imageHalf,
+                imageHalfH = candidate.imageHalf,
+                labelSource = labelSource,
+                atMs = Clock.System.now().toEpochMilliseconds(),
             ),
             photoBytes = photo?.bytes,
         )

@@ -94,6 +94,11 @@ object GroundExclusionRules {
         "plant", "bush", "tree", "grass", "lawn", "turf", "meadow", "weed",
         "moss", "hay", "leaf", "leaves", "foliage", "flower", "soil", "dirt",
         "sand", "mud", "gravel", "rock", "stone", "pebble", "mulch",
+        // The Stage-2 crop classifier's negative class (LitterCropClassifier):
+        // a confident "background" verdict means "nothing litter-like in this
+        // crop" — soft, same as natural ground cover (quiet but tappable),
+        // never terminal while the model is young.
+        "background",
     )
 
     private val TRASH_TOKENS = setOf(
