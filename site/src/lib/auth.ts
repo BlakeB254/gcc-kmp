@@ -1,10 +1,14 @@
 import crypto from 'crypto'
 import { SignJWT, jwtVerify } from 'jose'
 
-if (!process.env.JWT_SECRET) {
-  throw new Error('JWT_SECRET environment variable must be set')
+// Lazily read — module-eval env throws fail Vercel PREVIEW builds (no
+// secrets there); see src/lib/mobile-auth.ts for the same fix.
+function jwtSecret(): Uint8Array {
+  if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET environment variable must be set')
+  }
+  return new TextEncoder().encode(process.env.JWT_SECRET)
 }
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET)
 
 /**
  * Hash a password using PBKDF2
@@ -31,7 +35,7 @@ export async function createToken(payload: { id: number; email: string; type: 'w
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('90d')
-    .sign(JWT_SECRET)
+    .sign(jwtSecret())
 }
 
 /**
@@ -39,7 +43,7 @@ export async function createToken(payload: { id: number; email: string; type: 'w
  */
 export async function verifyToken(token: string): Promise<{ id: number; email: string; type: string } | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET)
+    const { payload } = await jwtVerify(token, jwtSecret())
     return payload as { id: number; email: string; type: string }
   } catch {
     return null

@@ -1,10 +1,16 @@
 import crypto from 'crypto'
 import { SignJWT, jwtVerify } from 'jose'
 
-if (!process.env.JWT_SECRET) {
-  throw new Error('JWT_SECRET environment variable must be set')
+// Lazily read: a module-eval throw here failed every Vercel PREVIEW build
+// (previews define no secrets; `next build` imports this module while
+// collecting page data). Runtime behavior is unchanged — the first actual
+// sign/verify without the env var throws the same error.
+function jwtSecret(): Uint8Array {
+  if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET environment variable must be set')
+  }
+  return new TextEncoder().encode(process.env.JWT_SECRET)
 }
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET)
 const JWT_ISSUER = process.env.JWT_ISSUER || 'gcc-api'
 const JWT_AUDIENCE = process.env.JWT_AUDIENCE || 'gcc-app'
 const TOKEN_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
@@ -30,7 +36,7 @@ export async function createMobileToken(
     .setIssuer(JWT_ISSUER)
     .setAudience(JWT_AUDIENCE)
     .setExpirationTime(expiresAt)
-    .sign(JWT_SECRET)
+    .sign(jwtSecret())
 
   return { token, exp: expiresAt }
 }
@@ -42,7 +48,7 @@ export async function verifyMobileToken(
   token: string
 ): Promise<{ workerId: number; role: string } | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET, {
+    const { payload } = await jwtVerify(token, jwtSecret(), {
       issuer: JWT_ISSUER,
       audience: JWT_AUDIENCE,
     })
@@ -70,14 +76,14 @@ export async function createTwoFactorChallengeToken(
     .setIssuer(JWT_ISSUER)
     .setAudience(JWT_AUDIENCE)
     .setExpirationTime('5m')
-    .sign(JWT_SECRET)
+    .sign(jwtSecret())
 }
 
 export async function verifyTwoFactorChallengeToken(
   token: string
 ): Promise<{ workerId: number; email: string } | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET, {
+    const { payload } = await jwtVerify(token, jwtSecret(), {
       issuer: JWT_ISSUER,
       audience: JWT_AUDIENCE,
     })
