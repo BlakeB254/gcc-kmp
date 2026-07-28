@@ -4,6 +4,7 @@ import { workers } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { createMobileToken } from '@/lib/mobile-auth'
 import { mapWorkerToMobile } from '@/lib/worker-mapper'
+import { googleAuthExpectedAudiences } from './_expected-audiences'
 
 export const runtime = 'nodejs'
 
@@ -70,10 +71,7 @@ export async function POST(request: NextRequest) {
     // accepted as authentication for our app — a real cross-tenant
     // confusion risk. Read expected client IDs from the env so a missing
     // setting fails closed in production but stays out of the way in dev.
-    const expectedAudiences = [
-      process.env.GOOGLE_IOS_CLIENT_ID,
-      process.env.GOOGLE_WEB_CLIENT_ID,
-    ].filter((v): v is string => typeof v === 'string' && v.length > 0)
+    const expectedAudiences = googleAuthExpectedAudiences(process.env)
 
     if (expectedAudiences.length === 0) {
       // No configured audience — log loudly and proceed. In production
