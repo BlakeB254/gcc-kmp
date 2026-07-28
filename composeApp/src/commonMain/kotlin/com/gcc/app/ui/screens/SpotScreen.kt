@@ -60,6 +60,7 @@ import com.gcc.app.platform.minimapLitterItems
 import com.gcc.app.platform.bestOf
 import com.gcc.app.platform.SurfaceContextBus
 import com.gcc.app.platform.DetectionThermalBus
+import com.gcc.app.platform.GroundSensorBus
 import com.gcc.app.platform.fanHitQuality
 import com.gcc.app.platform.wireQualityForSegment
 import com.gcc.app.platform.purgeAndRetractCoverage
@@ -377,6 +378,7 @@ private fun CameraPhase(
     // is encoding at the reduced video tier — drives the "phone hot" chip.
     val captureVideoDegraded by (arOverlay?.captureVideoDegraded ?: remember { MutableStateFlow(false) }).collectAsState()
     val detectionThermalPaused by DetectionThermalBus.paused.collectAsState()
+    val groundSensorIdle by GroundSensorBus.idle.collectAsState()
     val trashCandidate by (arOverlay?.trashCandidate ?: remember { MutableStateFlow<TrashCandidate?>(null) }).collectAsState()
     // Multi-item reticle layer (Task 17) — additive display alongside
     // trashCandidate's single lock-on; never drives approach/confirm.
@@ -637,6 +639,7 @@ private fun CameraPhase(
         // while hot left a stale "phone cooling" chip greeting the next
         // session (audit finding, build 165).
         DetectionThermalBus.setPaused(false)
+        GroundSensorBus.reset()
         arOverlay?.setCoverageHitListener { hits ->
             if (!gate.captureAllowed.value) return@setCoverageHitListener
             tracker.updateWithRaycastHits(
@@ -1496,7 +1499,7 @@ private fun CameraPhase(
             // honestly, but never gate the scan on it. Top-start row 3
             // (140dp): below the stats chip's row 2, mirroring the 🐞
             // badge's row on the top-end side, so no chrome overlaps.
-            if (captureVideoDegraded || detectionThermalPaused) {
+            if (captureVideoDegraded || detectionThermalPaused || groundSensorIdle) {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier
@@ -1521,6 +1524,21 @@ private fun CameraPhase(
                             dotColor = GccClaimed,
                             backgroundColor = GccClaimed.copy(alpha = 0.15f),
                             emoji = "🌡",
+                        )
+                    }
+                    // Honest cue for a silent LiDAR sensor (build 169): two
+                    // consecutive ~30s windows with ZERO ground-candidate
+                    // packets while scanning. Tells the user — and us, via
+                    // their screenshot — that the SENSOR is starved, rather
+                    // than letting a dead pipeline masquerade as "no litter
+                    // here". Detection may still work via the classifier
+                    // path; the chip is a diagnostic, not a blocker.
+                    if (groundSensorIdle) {
+                        StatusChip(
+                            text = "3D sensor idle — no ground objects detected",
+                            dotColor = GccClaimed,
+                            backgroundColor = GccClaimed.copy(alpha = 0.15f),
+                            emoji = "📡",
                         )
                     }
                 }

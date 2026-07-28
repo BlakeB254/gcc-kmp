@@ -979,7 +979,19 @@ actual class ArEnvScanOverlay actual constructor() {
             // of hot-polling the failure; empty with no frame is just the
             // session warming up (normal cadence, matches SceneKit no-frame).
             commonObs = parseSceneLabels(native.classifySceneLabels())
-            if (commonObs.isEmpty()) return native.pixelBufferOrNull() != null
+            if (commonObs.isEmpty()) {
+                // Whole-frame Vision failed (or the session is warming up).
+                // Build 169: the LiDAR geometry pipeline is depth-only — it
+                // must NOT die with the 2D classifier, or a persistent
+                // Vision failure silently kills the entire scan (candidates,
+                // reticles, intent prompts AND queued prompt answers, which
+                // are consumed inside driveGroundCandidates). Drive it
+                // before backing off.
+                if (analysisEnabled && native.pixelBufferOrNull() != null) {
+                    driveGroundCandidates(native, Clock.System.now().toEpochMilliseconds())
+                }
+                return native.pixelBufferOrNull() != null
+            }
         } else {
             val pixelBuffer = frame?.capturedImage ?: return false
             val classifyRequest = VNClassifyImageRequest()
@@ -1088,6 +1100,7 @@ actual class ArEnvScanOverlay actual constructor() {
                     "tracking ${groundCandidatePackets.size} ids, " +
                     "active ${groundCandidateTracker.activeScanning().size}",
             )
+            GroundSensorBus.reportWindow(groundPacketWindowCount)
             groundPacketWindowCount = 0
             groundPacketWindowTicks = 0
         }
@@ -2117,5 +2130,13 @@ actual fun ArEnvScanView(overlay: ArEnvScanOverlay, modifier: Modifier) {
         onRelease = {
             overlay.stop()
         },
+        // THE dead-tap root cause (build 169, Blake's 167 field run): a
+        // Compose-Multiplatform interop UIKitView is interactive by DEFAULT
+        // — it consumed every touch that landed on the camera view, so the
+        // parent Box's detectTapGestures (CameraCapture) never fired,
+        // focusAt was never called, and tap-to-identify was structurally
+        // dead on the AR path in every build. The ARView needs no touches
+        // (no UIKit gesture recognizers); let them fall through to Compose.
+        interactive = false,
     )
 }

@@ -51,7 +51,7 @@ const val INTENT_PROMPT_TIMEOUT_SECONDS = 25.0
  *  cover crops match most of any lot — without this attention gate every
  *  weed would draw a reticle. Deliberately equal to
  *  [STEADY_CLOSE_FRAMES_FOR_FULL_ANGLE]: "user is plainly examining it". */
-private const val BACKDROP_SURFACE_CLOSE_FRAMES = 10
+private const val BACKDROP_SURFACE_CLOSE_FRAMES = 8
 
 /** Tracked-candidate count that triggers a terminal-ghost sweep in
  *  [GroundCandidateTracker.ingest] — over a multi-hour walk every
@@ -71,8 +71,12 @@ private const val TRIM_TARGET_CANDIDATES = 256
 private const val PROGRESS_COMPLETE_EPSILON = 0.0005f
 
 /** Close (<2m) re-observation frames that fully substitute for the 3-sector
- *  orbit term in [GroundCandidateTracker]'s progress — see progressOf. */
-private const val STEADY_CLOSE_FRAMES_FOR_FULL_ANGLE = 10f
+ *  orbit term in [GroundCandidateTracker]'s progress — see progressOf.
+ *  10 → 8 (build 169): at the 750ms tick, 10 frames = 7.5s of standing on
+ *  one item before auto-file — field-reported as "focused on it forever,
+ *  nothing" (167 run). 8 frames ≈ 6s; the classifier typing gate still
+ *  applies. */
+private const val STEADY_CLOSE_FRAMES_FOR_FULL_ANGLE = 8f
 
 /** Completion progress threshold for a tap-adopted candidate: explicit user
  *  intent plus decent geometric evidence files without demanding the full
@@ -581,7 +585,10 @@ class GroundCandidateTracker(val nowMs: () -> Long) {
         val steadyTerm = min(candidate.closeFrames / STEADY_CLOSE_FRAMES_FOR_FULL_ANGLE, 1f)
         val angleTerm = max(orbitTerm, steadyTerm)
         val closeTerm = min(candidate.closeFrames / 4f, 1f)
-        val observationTerm = min(candidate.observations / 6f, 1f)
+        // 6 → 4 observations for a full term (build 169): with the other
+        // terms already requiring sustained close attention, demanding 4.5s
+        // of raw sightings on top made auto-file feel dead in the field.
+        val observationTerm = min(candidate.observations / 4f, 1f)
         return 0.4f * angleTerm + 0.4f * closeTerm + 0.2f * observationTerm
     }
 }

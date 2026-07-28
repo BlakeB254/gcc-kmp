@@ -122,3 +122,32 @@ object DetectionThermalBus {
         _paused.value = value
     }
 }
+
+/**
+ * Visible truth for the LiDAR ground sensor (build 169): the heartbeat
+ * already logs packet counts to diagnostics, but the field failure mode is
+ * a user staring at obvious litter with no idea whether the SENSOR is dead
+ * or the decision layer is dropping candidates. Two consecutive silent
+ * heartbeat windows (~60s of zero packets while analysis is live) flips
+ * [idle] and the scan screen shows an honest chip.
+ */
+object GroundSensorBus {
+    private val _idle = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val idle: kotlinx.coroutines.flow.StateFlow<Boolean> = _idle
+
+    fun reportWindow(packetsInWindow: Int) {
+        if (packetsInWindow > 0) {
+            _idle.value = false
+            silentWindows = 0
+        } else if (++silentWindows >= 2) {
+            _idle.value = true
+        }
+    }
+
+    fun reset() {
+        silentWindows = 0
+        _idle.value = false
+    }
+
+    private var silentWindows = 0
+}

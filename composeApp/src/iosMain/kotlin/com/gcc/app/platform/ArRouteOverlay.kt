@@ -742,5 +742,8 @@ actual fun ArRouteOverlayView(overlay: ArRouteOverlay, modifier: Modifier) {
         onRelease = {
             overlay.stop()
         },
+        // Same dead-tap fix as ArEnvScanView: the interop view must not
+        // consume touches or route-lap tap-to-confirm (#210) never fires.
+        interactive = false,
     )
 }

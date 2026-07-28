@@ -56,11 +56,11 @@ class GroundCandidateRebuildTest {
         tracker.ingest(listOf(packet(1L)))
         tracker.recordClassification(1L, null, null, backdropLabel = "grass")
 
-        tracker.observeClose(1L, times = 9)
-        assertTrue(tracker.activeScanning().isEmpty(), "9 close frames — still quiet")
+        tracker.observeClose(1L, times = 7)
+        assertTrue(tracker.activeScanning().isEmpty(), "7 close frames — still quiet")
 
         tracker.observeClose(1L, times = 1)
-        assertEquals(listOf(1L), tracker.activeScanning().map { it.first }, "10th close frame surfaces it")
+        assertEquals(listOf(1L), tracker.activeScanning().map { it.first }, "8th close frame surfaces it")
     }
 
     @Test
