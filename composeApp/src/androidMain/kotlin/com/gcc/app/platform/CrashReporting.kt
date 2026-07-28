@@ -2,7 +2,6 @@ package com.gcc.app.platform
 
 import android.content.Context
 import com.gcc.shared.api.GccApiClient
-import com.gcc.shared.model.CrashReportRequest
 import kotlinx.datetime.Clock
 import java.io.File
 
@@ -43,7 +42,7 @@ actual suspend fun flushPendingCrashReport(apiClient: GccApiClient) {
     DiagnosticsLog.error("crash", text.take(1500))
     runCatching {
         apiClient.reportCrash(
-            CrashReportRequest(
+            crashReportRequest(
                 deviceId = CoverageDeviceId.value,
                 platform = "android",
                 exceptionMessage = text.lineSequence().drop(1).firstOrNull() ?: "unknown",

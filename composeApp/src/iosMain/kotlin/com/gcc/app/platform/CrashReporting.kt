@@ -3,8 +3,6 @@
 package com.gcc.app.platform
 
 import com.gcc.shared.api.GccApiClient
-import com.gcc.shared.model.CrashReportRequest
-import com.gcc.shared.model.MetricKitDiagnosticRequest
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlin.experimental.ExperimentalNativeApi
 import kotlinx.datetime.Clock
@@ -89,7 +87,7 @@ actual suspend fun flushPendingCrashReport(apiClient: GccApiClient) {
         if (text != null) {
             runCatching {
                 apiClient.reportCrash(
-                    CrashReportRequest(
+                    crashReportRequest(
                         deviceId = CoverageDeviceId.value,
                         platform = "ios",
                         exceptionMessage = text.lineSequence().drop(1).firstOrNull() ?: "unknown",
@@ -123,7 +121,7 @@ actual suspend fun flushPendingCrashReport(apiClient: GccApiClient) {
                 ?: continue
             val result = runCatching {
                 apiClient.uploadCrashDiagnostic(
-                    MetricKitDiagnosticRequest(
+                    metricKitDiagnosticRequest(
                         deviceId = CoverageDeviceId.value,
                         platform = "ios",
                         fileName = name,
