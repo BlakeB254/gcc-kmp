@@ -132,7 +132,11 @@ def train_gsplat_for_cell(
                        "northAligned": fusion_result.north_aligned,
                        "initPoints": int(fusion_result.merged_points.shape[0])}, fh)
 
-        iters = os.environ.get("GSPLAT_ITERS", "15000")
+        # 30k default since the quality-recipe upgrade (antialiased + pose
+        # refinement + exposure comp + LiDAR depth loss live in the trainer):
+        # ~2x the old 15k wall-clock (~95min/cell on the GB10). Set
+        # GSPLAT_ITERS=15000 to trade quality for turnaround.
+        iters = os.environ.get("GSPLAT_ITERS", "30000")
         print(f"gsplat_runner: cell {cell_id}: training on {n} frames, {iters} iters...")
         env = dict(os.environ, TORCH_CUDA_ARCH_LIST="12.0;12.1")
         proc = subprocess.run(
@@ -144,5 +148,22 @@ def train_gsplat_for_cell(
         if proc.returncode != 0 or not os.path.exists(out_ply):
             print(f"gsplat_runner: cell {cell_id}: training failed (rc={proc.returncode})", file=sys.stderr)
             return None, "training-failed"
+
+        # Post-training cleanup: haze / fog-sheet / off-surface-floater
+        # prune + ground and corridor crops (clean_splat.py, numpy-only).
+        # A cleanup failure must never cost a finished training run — fall
+        # back to the raw splat.
+        clean_ply = os.path.join(tmp, "splat_clean.ply")
+        cproc = subprocess.run(
+            [GSPLAT_PYTHON, os.path.join(GSPLAT_DIR, "clean_splat.py"),
+             "--ply", out_ply, "--points", os.path.join(tmp, "init_points.npy"),
+             "--poses", os.path.join(tmp, "poses.npy"), "--out", clean_ply],
+            env=env, timeout=1800,
+        )
+        if cproc.returncode == 0 and os.path.exists(clean_ply):
+            out_ply = clean_ply
+        else:
+            print(f"gsplat_runner: cell {cell_id}: cleanup failed (rc={cproc.returncode}),"
+                  " publishing uncleaned splat", file=sys.stderr)
         with open(out_ply, "rb") as f:
             return f.read(), None
