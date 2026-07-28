@@ -254,6 +254,16 @@ interface ArNativeSurface {
      * re-show it as a fresh reticle. Same rule for timed-out ids after
      * [clearScanReticle].
      */
+    /** Normalized view point (top-left origin) → normalized image point via
+     *  ARKit's displayTransform (authoritative aspect-fill mapping). Empty
+     *  list when no frame exists yet — callers fall back to the legacy
+     *  rotation-only math. */
+    fun viewToImagePoint(x: Double, y: Double): List<Double> = emptyList()
+
+    /** Inverse of [viewToImagePoint], for screen-space markers over
+     *  image-space boxes. Empty when no frame yet. */
+    fun imageToViewPoint(x: Double, y: Double): List<Double> = emptyList()
+
     /**
      * @param extentM the candidate's measured ground footprint (max of
      *   width/depth from the LiDAR packet) — the renderer sizes the ring to

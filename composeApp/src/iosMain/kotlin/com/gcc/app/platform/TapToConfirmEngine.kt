@@ -12,9 +12,14 @@ import platform.ARKit.ARHitTestResultTypeExistingPlaneUsingGeometry
 import platform.ARKit.ARHitTestResultTypeFeaturePoint
 import platform.CoreGraphics.CGPointMake
 import platform.CoreGraphics.CGRectMake
+import com.gcc.shared.geo.GeofenceVerification
+import kotlinx.cinterop.useContents
 import platform.Vision.VNClassificationObservation
 import platform.Vision.VNClassifyImageRequest
+import platform.Vision.VNGenerateObjectnessBasedSaliencyImageRequest
 import platform.Vision.VNImageRequestHandler
+import platform.Vision.VNRectangleObservation
+import platform.Vision.VNSaliencyImageObservation
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
 import kotlin.math.sqrt
@@ -67,10 +72,33 @@ internal class TapToConfirmEngine(
         _tapCandidate.update { it.reduce(TapEvent.Tapped(normalizedX, normalizedY)) }
     }
 
+    private val _tapSweep = MutableStateFlow<TapSweepState?>(null)
+    val tapSweep: StateFlow<TapSweepState?> = _tapSweep.asStateFlow()
+
+    fun consumeTapSweep(): List<TapSweepItem> {
+        val items = _tapSweep.value?.items.orEmpty()
+        _tapSweep.value = null
+        return items
+    }
+
+    fun dismissTapSweep() {
+        _tapSweep.value = null
+    }
+
     fun processPendingTap(frame: ARFrame?) {
         val tap = pendingFocusTap ?: return
         pendingFocusTap = null
-        val (imageX, imageY) = viewTapToImageCoords(tap.first, tap.second)
+        // Aspect-correct view→image mapping via ARKit's displayTransform when
+        // the native surface is live; the legacy rotation-only math ignored
+        // the aspect-fill crop and mislocated taps by up to ~19% of the frame
+        // ("selected an area I didn't tap", build 170). Fallback keeps the
+        // SceneKit path working.
+        val converted = nativeSurfaceProvider()?.viewToImagePoint(tap.first, tap.second)
+        val (imageX, imageY) = if (converted != null && converted.size == 2) {
+            converted[0] to converted[1]
+        } else {
+            viewTapToImageCoords(tap.first, tap.second)
+        }
         val hit = raycastImage(frame, imageX, imageY)
         if (hit == null) {
             // Forced evaluation (Blake 2026-07-28): even a tap that can't
@@ -95,6 +123,79 @@ internal class TapToConfirmEngine(
         dispatch_async(dispatch_get_main_queue()) { triggerHapticFeedback() }
         classifyTapped(frame, imageX, imageY)
         onTapGeoResolved?.invoke(hit)
+        // Tap SWEEP (Blake 2026-07-28): one tap should identify as many
+        // items in view as possible. Objectness saliency proposes regions
+        // across the whole frame; each region must geo-resolve and survive
+        // a fixture/backdrop veto to join the batch. ≥2 survivors surface
+        // as a "Found N items — confirm all" flow; otherwise the normal
+        // single-candidate pill stands alone.
+        sweepFrame(frame, tappedLat = latLng.first, tappedLng = latLng.second)
+    }
+
+    /** Max sweep regions offered per tap — precision beats volume in a batch confirm. */
+    private val sweepMaxItems = 5
+
+    /** Sweep items closer than this (meters, world) to each other or to the
+     *  tapped point collapse — one region per physical item. Matches the
+     *  retap-dedup radius in ObservedItemCounts. */
+    private val sweepDedupMeters = 0.6f
+
+    private fun sweepFrame(frame: ARFrame?, tappedLat: Double, tappedLng: Double) {
+        val pixelBuffer = nativeSurfaceProvider()?.pixelBufferOrNull() ?: frame?.capturedImage ?: return
+        val saliency = VNGenerateObjectnessBasedSaliencyImageRequest()
+        val handler = VNImageRequestHandler(cVPixelBuffer = pixelBuffer, options = emptyMap<Any?, Any>())
+        handler.performRequests(listOf(saliency), error = null)
+        val boxes = saliency.results
+            ?.filterIsInstance<VNSaliencyImageObservation>()
+            ?.firstOrNull()
+            ?.salientObjects
+            ?.filterIsInstance<VNRectangleObservation>()
+            ?: return
+
+        val accepted = mutableListOf<TapSweepItem>()
+        val acceptedWorld = mutableListOf<Pair<Float, Float>>()
+        for (box in boxes) {
+            if (accepted.size >= sweepMaxItems) break
+            box.boundingBox.useContents {
+                val cx = origin.x + size.width / 2.0
+                val cyTopDown = 1.0 - (origin.y + size.height / 2.0) // Vision box is bottom-left origin
+                val halfW = (size.width / 2.0).coerceAtLeast(0.02)
+                val halfH = (size.height / 2.0).coerceAtLeast(0.02)
+                val hit = raycastImage(frame, cx, cyTopDown) ?: return@useContents
+                if (hit.distance > TAP_IDENTIFY_MAX_METERS) return@useContents
+                val latLng = localToLatLng(hit.x, hit.z) ?: return@useContents
+                // World-dedup among sweep survivors and against the tapped
+                // point itself (the single-candidate pill already owns it).
+                val tooClose = acceptedWorld.any { (ax, az) ->
+                    val dx = ax - hit.x
+                    val dz = az - hit.z
+                    dx * dx + dz * dz < sweepDedupMeters * sweepDedupMeters
+                }
+                if (tooClose) return@useContents
+                val tappedDx = GeofenceVerification.distanceMeters(tappedLat, tappedLng, latLng.first, latLng.second)
+                if (tappedDx < sweepDedupMeters) return@useContents
+                // Fixture/backdrop veto on the region crop — a sweep must not
+                // batch-offer bushes, poles or bare ground.
+                val labels = classifyRegion(frame, cx, cyTopDown, fraction = (halfW * 2.6).coerceIn(0.08, 0.5))
+                val decision = GroundExclusionRules.classify(labels)
+                if (decision.exclusionLabel != null || decision.backdropLabel != null) return@useContents
+                val viewPoint = nativeSurfaceProvider()?.imageToViewPoint(cx, cyTopDown)
+                accepted.add(
+                    TapSweepItem(
+                        lat = latLng.first,
+                        lng = latLng.second,
+                        distanceMeters = hit.distance,
+                        imageCx = cx, imageCy = cyTopDown,
+                        imageHalfW = halfW, imageHalfH = halfH,
+                        viewX = viewPoint?.getOrNull(0) ?: cx,
+                        viewY = viewPoint?.getOrNull(1) ?: cyTopDown,
+                        label = TrashDetectionRules.trashLabelFrom(labels),
+                    ),
+                )
+                acceptedWorld.add(hit.x to hit.z)
+            }
+        }
+        _tapSweep.value = if (accepted.isEmpty()) null else TapSweepState(accepted)
     }
 
     fun confirm(): TapCandidateState? {

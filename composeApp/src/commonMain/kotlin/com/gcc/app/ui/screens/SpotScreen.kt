@@ -12,7 +12,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.Canvas
 import androidx.compose.material3.*
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.geometry.Size
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -61,6 +64,8 @@ import com.gcc.app.platform.bestOf
 import com.gcc.app.platform.SurfaceContextBus
 import com.gcc.app.platform.DetectionThermalBus
 import com.gcc.app.platform.GroundSensorBus
+import com.gcc.app.platform.TapSweepItem
+import com.gcc.app.platform.TapSweepState
 import com.gcc.app.platform.fanHitQuality
 import com.gcc.app.platform.wireQualityForSegment
 import com.gcc.app.platform.purgeAndRetractCoverage
@@ -232,6 +237,9 @@ fun SpotScreen(
                     onConfirmedTapItem = { candidate, photo, typeOverride, labelSource ->
                         viewModel.addConfirmedTapItem(candidate, photo, typeOverride, labelSource)
                     },
+                    onConfirmedSweepItems = { items, photo ->
+                        viewModel.addConfirmedSweepItems(items, photo)
+                    },
                     onRejectedTapItem = { candidate -> viewModel.addRejectedTapItem(candidate) },
                     submitError = uiState.error,
                     onPurgeRecentCaptures = { cutoff -> viewModel.purgeRecentCaptures(cutoff) },
@@ -350,6 +358,8 @@ private fun CameraPhase(
     onConfirmedTapItem: (TapCandidateState, CapturedPhoto?, String?, String?) -> Unit = { _, _, _, _ -> },
     /** The user tapped a candidate and pressed "Not litter" — a negative example. */
     onRejectedTapItem: (TapCandidateState) -> Unit = {},
+    /** Confirm-all on a tap sweep's batch (items + one shared evidence photo). */
+    onConfirmedSweepItems: (List<TapSweepItem>, CapturedPhoto?) -> Unit = { _, _ -> },
     submitError: String? = null,
     onPurgeRecentCaptures: (Long) -> Unit = {},
     /** Drains the confirmed-litter marker queue (30s cadence + dispose). */
@@ -1419,25 +1429,10 @@ private fun CameraPhase(
                     }
                 },
                 onDismiss = { arOverlay?.dismissTapCandidate() },
-                // Manual labelling (Blake 2026-07-28): a chip tap confirms AND
-                // labels in one gesture — the user's word outranks the
-                // classifier and becomes a Stage-2 training label.
-                onConfirmTyped = { label, freeText ->
-                    if (!gate.captureAllowed.value) {
-                        arOverlay?.dismissTapCandidate()
-                        toast = "Scan paused indoors — step outside and tap the item again"
-                    } else {
-                        arOverlay?.confirmTapCandidate()?.let { confirmed ->
-                            confirmScope.launch {
-                                val photo = arOverlay?.captureTapEvidencePhoto()
-                                onConfirmedTapItem(
-                                    confirmed, photo, label,
-                                    if (freeText) "user_text" else "user_chip",
-                                )
-                            }
-                        }
-                    }
-                },
+                // No label chips (Blake 2026-07-28 round 2): users confirm,
+                // the BACKEND names — labels ride the manifest for the recon
+                // pipeline instead of interrupting the field flow. The
+                // labelSource plumbing stays for the training flywheel.
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp),
             )
         }
@@ -1466,21 +1461,62 @@ private fun CameraPhase(
                 },
                 onReject = { arOverlay?.rejectGroundIntentPrompt() },
                 onDismiss = { arOverlay?.rejectGroundIntentPrompt() },
-                // Chip answer = "yes, and it's a <type>" in one gesture; the
-                // label rides to the tracker and files with the item.
-                onConfirmTyped = { label, freeText ->
-                    if (!gate.captureAllowed.value) {
-                        arOverlay?.rejectGroundIntentPrompt()
-                        toast = "Scan paused indoors — step outside and rescan the item"
-                    } else {
-                        arOverlay?.confirmGroundIntentPrompt(
-                            itemType = label,
-                            labelSource = if (freeText) "user_text" else "user_chip",
-                        )
-                    }
-                },
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp),
             )
+        }
+        // Tap-sweep batch offer (Blake 2026-07-28: "identify as many trash
+        // items in view on each tap"): dots mark every region the sweep
+        // geo-resolved and vetted; one bar confirms them all. The single-tap
+        // pill above still handles the tapped item itself.
+        val tapSweepState by (arOverlay?.tapSweep
+            ?: remember { MutableStateFlow<TapSweepState?>(null) }).collectAsState()
+        tapSweepState?.let { sweep ->
+            androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+                sweep.items.forEach { item ->
+                    val center = Offset(
+                        (item.viewX * size.width).toFloat(),
+                        (item.viewY * size.height).toFloat(),
+                    )
+                    drawCircle(GccGreen.copy(alpha = 0.9f), radius = 14.dp.toPx(), center = center, style = Stroke(width = 2.5.dp.toPx()))
+                    drawCircle(GccGreen.copy(alpha = 0.35f), radius = 5.dp.toPx(), center = center)
+                }
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 168.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color.Black.copy(alpha = 0.72f))
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+            ) {
+                Text(
+                    "Found ${sweep.items.size} more item${if (sweep.items.size == 1) "" else "s"} in view",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White,
+                )
+                TextButton(onClick = { arOverlay?.dismissTapSweep() }) {
+                    Text("Dismiss", color = Color.White.copy(alpha = 0.7f))
+                }
+                Button(
+                    onClick = {
+                        if (!gate.captureAllowed.value) {
+                            arOverlay?.dismissTapSweep()
+                            toast = "Scan paused indoors — step outside and rescan"
+                        } else {
+                            val items = arOverlay?.consumeTapSweep().orEmpty()
+                            if (items.isNotEmpty()) {
+                                confirmScope.launch {
+                                    val photo = arOverlay?.captureTapEvidencePhoto()
+                                    onConfirmedSweepItems(items, photo)
+                                }
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
+                ) { Text("Confirm all", color = Color.White) }
+            }
         }
         if (isScanMode) {
             // Live session tally (litter incidents + summed weight estimate)

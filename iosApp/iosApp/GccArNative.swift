@@ -399,6 +399,41 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     /// current frame (top-left origin, matching a `GroundCandidatePacket`'s
     /// image fields) — same request handling and error posture as
     /// `classifySceneLabels`: any failure returns `[]`, never throws.
+    /// Normalized VIEW point (top-left origin, the Compose tap space) →
+    /// normalized IMAGE point (capturedImage space), via ARKit's
+    /// displayTransform — the authoritative aspect-fill mapping. The old
+    /// Kotlin-side pure-rotation math ignored the fill crop (4:3 sensor on a
+    /// ~19.5:9 screen crops ~19% of the image per side), mislocating taps by
+    /// up to a meter at range — "it selected an area I didn't tap"
+    /// (build 170 root cause). Empty when no frame yet.
+    func viewToImagePoint(x: Double, y: Double) -> [Double] {
+        frameLock.lock()
+        let frame = lastFrame
+        frameLock.unlock()
+        guard let frame else { return [] }
+        let viewSize = arView.bounds.size
+        guard viewSize.width > 0, viewSize.height > 0 else { return [] }
+        // displayTransform maps normalized image coords -> normalized view
+        // coords for the given orientation; invert it for view -> image.
+        let transform = frame.displayTransform(for: .portrait, viewportSize: viewSize).inverted()
+        let imagePoint = CGPoint(x: x, y: y).applying(transform)
+        return [Double(imagePoint.x), Double(imagePoint.y)]
+    }
+
+    /// Inverse of `viewToImagePoint` — for drawing screen-space markers over
+    /// image-space boxes (tap-sweep dots). Empty when no frame yet.
+    func imageToViewPoint(x: Double, y: Double) -> [Double] {
+        frameLock.lock()
+        let frame = lastFrame
+        frameLock.unlock()
+        guard let frame else { return [] }
+        let viewSize = arView.bounds.size
+        guard viewSize.width > 0, viewSize.height > 0 else { return [] }
+        let transform = frame.displayTransform(for: .portrait, viewportSize: viewSize)
+        let viewPoint = CGPoint(x: x, y: y).applying(transform)
+        return [Double(viewPoint.x), Double(viewPoint.y)]
+    }
+
     func classifyRegionLabels(cx: Double, cy: Double, halfW: Double, halfH: Double) -> [String] {
         frameLock.lock()
         let frame = lastFrame

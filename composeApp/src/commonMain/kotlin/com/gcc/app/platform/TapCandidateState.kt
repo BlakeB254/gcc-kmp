@@ -118,6 +118,33 @@ val TapCandidateState.isIdentified: Boolean
         (confidence ?: 0f) >= TAP_IDENTIFY_MIN_CONFIDENCE &&
         (distanceMeters?.toDouble() ?: Double.MAX_VALUE) <= TAP_IDENTIFY_MAX_METERS
 
+/**
+ * One item found by a tap SWEEP (Blake 2026-07-28: "if I tap a view, identify
+ * as many trash items in view as possible on each tap"). A sweep runs
+ * objectness saliency over the whole frame at tap time, keeps regions that
+ * geo-resolve to the ground and don't classify as fixture/backdrop, and
+ * offers them as ONE batch confirmation — individual taps remain the
+ * fallback for anything the sweep missed.
+ */
+data class TapSweepItem(
+    val lat: Double,
+    val lng: Double,
+    val distanceMeters: Float,
+    /** Normalized image-space box (top-left origin) — the training crop. */
+    val imageCx: Double,
+    val imageCy: Double,
+    val imageHalfW: Double,
+    val imageHalfH: Double,
+    /** Normalized VIEW point for the on-screen marker dot. */
+    val viewX: Double,
+    val viewY: Double,
+    /** Classifier guess, if any — display/typing hint only; naming is the
+     *  backend's job (labels ride the manifest for the recon pipeline). */
+    val label: String? = null,
+)
+
+data class TapSweepState(val items: List<TapSweepItem>)
+
 /** Copy for the bottom pill. `null` means: draw no pill. */
 data class TapPillCopy(
     val title: String,

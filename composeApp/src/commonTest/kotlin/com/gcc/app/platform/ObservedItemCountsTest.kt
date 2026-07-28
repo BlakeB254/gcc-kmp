@@ -62,8 +62,41 @@ class ObservedItemCountsTest {
 
     @Test
     fun noMatchAddsTheIncomingItem() {
+        // Different type AND beyond the co-location radius: a genuinely new
+        // item (build 170 — at the same position this now upgrades instead;
+        // see retap tests below).
         val existing = listOf(item("litter", provenance = PROVENANCE_AUTO_DETECTED))
         val incoming = item("litter", itemType = "can", provenance = PROVENANCE_USER_CONFIRMED)
+            .let { it.copy(lat = it.lat + 2.0 / 111_320.0) } // ~2m away
+        assertEquals(DedupDecision.Add, dedupUpgradeDecision(existing, incoming))
+    }
+
+    // ── Build 170: retap dedup — a confirmed tap co-located (<0.6m) with an
+    // existing litter item matches regardless of type (classifier noise
+    // across retaps must not multiply dots), while real neighbors at ≥0.6m
+    // stay distinct.
+
+    @Test
+    fun coLocatedConfirmedRetapUpgradesAcrossTypes() {
+        val existing = listOf(item("litter", itemType = "bottle", provenance = PROVENANCE_AUTO_DETECTED))
+        val incoming = item("litter", itemType = "can", provenance = PROVENANCE_USER_CONFIRMED)
+        assertEquals(DedupDecision.Upgrade(0), dedupUpgradeDecision(existing, incoming))
+    }
+
+    @Test
+    fun neighborBeyondCoLocationRadiusStaysDistinctAcrossTypes() {
+        val existing = listOf(item("litter", itemType = "bottle", provenance = PROVENANCE_AUTO_DETECTED))
+        val incoming = item("litter", itemType = "can", provenance = PROVENANCE_USER_CONFIRMED)
+            .let { it.copy(lat = it.lat + 0.8 / 111_320.0) } // ~0.8m — a real neighbor
+        assertEquals(DedupDecision.Add, dedupUpgradeDecision(existing, incoming))
+    }
+
+    @Test
+    fun autoDetectedIncomingNeverUsesTheCoLocationMatch() {
+        // Only USER taps carry the retap-noise problem — auto ticks keep the
+        // strict type gate so multi-item piles map faithfully.
+        val existing = listOf(item("litter", itemType = "bottle", provenance = PROVENANCE_AUTO_DETECTED))
+        val incoming = item("litter", itemType = "can", provenance = PROVENANCE_AUTO_DETECTED)
         assertEquals(DedupDecision.Add, dedupUpgradeDecision(existing, incoming))
     }
 
@@ -135,9 +168,10 @@ class ObservedItemCountsTest {
     }
 
     @Test
-    fun differentItemTypeNeverMatches() {
+    fun differentItemTypeNeverMatchesBeyondCoLocation() {
         val existing = listOf(item("litter", itemType = "bottle", provenance = PROVENANCE_AUTO_DETECTED))
         val incoming = item("litter", itemType = "can", provenance = PROVENANCE_USER_CONFIRMED)
+            .let { it.copy(lat = it.lat + 1.0 / 111_320.0) } // ~1m — outside the retap radius
         assertEquals(DedupDecision.Add, dedupUpgradeDecision(existing, incoming))
     }
 

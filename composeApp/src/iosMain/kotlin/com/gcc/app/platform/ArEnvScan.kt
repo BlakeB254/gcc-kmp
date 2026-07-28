@@ -755,6 +755,12 @@ actual class ArEnvScanOverlay actual constructor() {
         tapEngine.dismiss()
     }
 
+    actual val tapSweep: StateFlow<TapSweepState?> get() = tapEngine.tapSweep
+
+    actual fun consumeTapSweep(): List<TapSweepItem> = tapEngine.consumeTapSweep()
+
+    actual fun dismissTapSweep() = tapEngine.dismissTapSweep()
+
     /** One queued "is this litter?" answer — see [pendingIntentAnswer]. */
     private data class IntentAnswer(
         val id: Long,

@@ -119,6 +119,17 @@ expect class ArEnvScanOverlay() {
      *  appearance-unknown ground candidate. Always null off-iOS. */
     val groundIntentPrompt: StateFlow<GroundIntentPrompt?>
 
+    /** Items a tap SWEEP found beyond the tapped point (objectness regions
+     *  that geo-resolved and survived the fixture/backdrop veto) — offered
+     *  as one batch confirmation. Null when the last tap swept nothing. */
+    val tapSweep: StateFlow<TapSweepState?>
+
+    /** Confirm-all: returns the sweep's items (caller files them) and clears. */
+    fun consumeTapSweep(): List<TapSweepItem>
+
+    /** Dismiss the sweep offer without filing anything. */
+    fun dismissTapSweep()
+
     /** The user answered "yes, litter" on [groundIntentPrompt]: the candidate
      *  completes through the normal filing path (evidence photo, geo-ref,
      *  weight) with user-intent provenance. No-op when nothing is pending. */

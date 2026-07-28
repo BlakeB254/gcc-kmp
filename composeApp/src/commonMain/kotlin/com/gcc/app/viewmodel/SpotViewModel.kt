@@ -4,6 +4,7 @@ import com.gcc.app.platform.ArMarkerQueue
 import com.gcc.app.platform.CapturedPhoto
 import com.gcc.app.platform.CoverageDeviceId
 import com.gcc.app.platform.DedupDecision
+import com.gcc.app.platform.TapSweepItem
 import com.gcc.app.platform.clusterVisibleLitter
 import com.gcc.app.platform.dedupUpgradeDecision
 import com.gcc.app.platform.DiagnosticsLog
@@ -479,6 +480,39 @@ class SpotViewModel(
             ),
             photoBytes = photo?.bytes,
         )
+    }
+
+    /** Confirm-all on a tap sweep (Blake 2026-07-28): every swept region
+     *  files as a user-confirmed item — one gesture, many items. Types are
+     *  the classifier's guess or unknown; NAMING is the backend's job (the
+     *  boxes ride the manifest for the recon pipeline). One shared evidence
+     *  photo rides the first marker + the report photo set. Dedup
+     *  (dedupUpgradeDecision) still applies per item, so re-sweeping a spot
+     *  can't double-file. */
+    fun addConfirmedSweepItems(items: List<TapSweepItem>, photo: CapturedPhoto? = null) {
+        if (items.isEmpty()) return
+        photo?.let { addPhoto(it) }
+        ScanSessionTelemetry.active?.confirm("sweep:${items.size}")
+        items.forEachIndexed { index, item ->
+            val itemType = TrashItemCatalog.canonicalType(item.label ?: UNKNOWN_LITTER_LABEL)
+            addObservedItem(
+                ObservedSpotItem(
+                    lat = item.lat,
+                    lng = item.lng,
+                    itemType = itemType,
+                    confidence = null,
+                    domain = "litter",
+                    provenance = PROVENANCE_USER_CONFIRMED,
+                    estimatedWeightGrams = TrashItemCatalog.estimateWeightGrams(itemType, null),
+                    imageCx = item.imageCx,
+                    imageCy = item.imageCy,
+                    imageHalfW = item.imageHalfW,
+                    imageHalfH = item.imageHalfH,
+                    atMs = Clock.System.now().toEpochMilliseconds(),
+                ),
+                photoBytes = if (index == 0) photo?.bytes else null,
+            )
+        }
     }
 
     /** A ground-candidate scan completed (auto or via the intent prompt). A
@@ -1067,11 +1101,20 @@ class SpotViewModel(
                 // Embed GPS EXIF into photos and upload via typed API (includes auth header)
                 val uploadedUrls = mutableListOf<String>()
                 if (state.capturedPhotos.isNotEmpty()) {
-                    val photoBytesWithGps = state.capturedPhotos.map { photo ->
-                        embedGpsExif(photo.bytes, submitLat, submitLng)
+                    try {
+                        val photoBytesWithGps = state.capturedPhotos.map { photo ->
+                            embedGpsExif(photo.bytes, submitLat, submitLng)
+                        }
+                        val urls = apiClient.uploadSpotPhotos(photoBytesWithGps)
+                        uploadedUrls.addAll(urls)
+                    } catch (e: Exception) {
+                        // Build 170 (field report: Complete Scan errored):
+                        // evidence photos are supporting material — a photo
+                        // upload failure must NOT abort the report. The
+                        // session's own photos still reach R2 through the
+                        // scan-session uploader either way.
+                        DiagnosticsLog.error("spot-submit", "photo upload failed — filing report without photos", e)
                     }
-                    val urls = apiClient.uploadSpotPhotos(photoBytesWithGps)
-                    uploadedUrls.addAll(urls)
                 }
 
                 // Collect depth analysis from the first photo that has it

@@ -18,6 +18,12 @@ private const val OBSERVED_ITEM_DEDUP_RADIUS_METERS = 4.0
  *  same item and dedups. */
 private const val CONFIRMED_DUPLICATE_RADIUS_METERS = 1.5
 
+/** Type-AGNOSTIC dedup radius for a user-confirmed incoming item (build
+ *  170): retaps of the same item scatter ≤~0.5m and classify differently
+ *  every time; real neighboring items (three cans in one view) sit ≥~0.6m
+ *  apart and must never merge. */
+private const val RETAP_AGNOSTIC_RADIUS_METERS = 0.6
+
 /** What [addObservedItem] (SpotViewModel) should do with an incoming item
  *  against the session's existing observed items. */
 sealed interface DedupDecision {
@@ -47,18 +53,38 @@ sealed interface DedupDecision {
  * plainly — it carries no new evidence.
  */
 fun dedupUpgradeDecision(existing: List<ObservedSpotItem>, incoming: ObservedSpotItem): DedupDecision {
-    var matchIndex = -1
-    var matchDistance = Double.MAX_VALUE
+    // Type-sensitive match within the standard radius, PLUS (build 170) a
+    // type-AGNOSTIC match at near-co-location for user-confirmed incoming:
+    // repeated taps on the same can classify differently every time
+    // ("Unknown litter" / "Can" / "Bottle" are classifier noise, not three
+    // items), and the type gate let every retap file a new dot. The agnostic
+    // radius stays BELOW typical real-item spacing — three cans ~0.6m apart
+    // must remain three items. A type MATCH is always preferred over a mere
+    // co-location when both are candidates.
+    var typeMatchIndex = -1
+    var typeMatchDistance = Double.MAX_VALUE
+    var coLocatedIndex = -1
+    var coLocatedDistance = Double.MAX_VALUE
     for ((index, prior) in existing.withIndex()) {
-        if (prior.itemType != incoming.itemType) continue
         val distance = GeofenceVerification.distanceMeters(
             prior.lat, prior.lng, incoming.lat, incoming.lng,
         )
-        if (distance < OBSERVED_ITEM_DEDUP_RADIUS_METERS && distance < matchDistance) {
-            matchIndex = index
-            matchDistance = distance
+        if (prior.itemType == incoming.itemType &&
+            distance < OBSERVED_ITEM_DEDUP_RADIUS_METERS && distance < typeMatchDistance
+        ) {
+            typeMatchIndex = index
+            typeMatchDistance = distance
+        }
+        if (incoming.provenance == PROVENANCE_USER_CONFIRMED &&
+            distance < RETAP_AGNOSTIC_RADIUS_METERS && distance < coLocatedDistance &&
+            (prior.domain == null || prior.domain == "litter")
+        ) {
+            coLocatedIndex = index
+            coLocatedDistance = distance
         }
     }
+    val matchIndex = if (typeMatchIndex >= 0) typeMatchIndex else coLocatedIndex
+    val matchDistance = if (typeMatchIndex >= 0) typeMatchDistance else coLocatedDistance
     if (matchIndex < 0) return DedupDecision.Add
     val matched = existing[matchIndex]
     val bothConfirmed = incoming.provenance == PROVENANCE_USER_CONFIRMED &&

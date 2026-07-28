@@ -23,6 +23,10 @@ actual class ArEnvScanOverlay actual constructor() {
 
     actual val groundIntentPrompt: StateFlow<GroundIntentPrompt?> = MutableStateFlow(null)
     actual fun confirmGroundIntentPrompt(itemType: String?, labelSource: String?) {}
+    actual val tapSweep: kotlinx.coroutines.flow.StateFlow<TapSweepState?> =
+        kotlinx.coroutines.flow.MutableStateFlow(null)
+    actual fun consumeTapSweep(): List<TapSweepItem> = emptyList()
+    actual fun dismissTapSweep() {}
     actual fun rejectGroundIntentPrompt() {}
     actual suspend fun captureTapEvidencePhoto(): CapturedPhoto? = null
     actual fun confirmTapCandidate(): TapCandidateState? = null
