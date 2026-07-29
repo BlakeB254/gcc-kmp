@@ -234,6 +234,9 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
 
         floorGrid?.anchor.removeFromParent()
         floorGrid = nil
+        selectionAnchor?.removeFromParent()
+        selectionAnchor = nil
+        selectionRing = nil
         // frameLock: the floor AABB fields are read off-main (see their kdoc).
         frameLock.lock()
         floorMinX = nil
@@ -406,6 +409,66 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     /// ~19.5:9 screen crops ~19% of the image per side), mislocating taps by
     /// up to a meter at range — "it selected an area I didn't tap"
     /// (build 170 root cause). Empty when no frame yet.
+    /// Provisional-selection highlight (build 176): a pulsing white ring at
+    /// the tapped/drawn spot, visible BEFORE the user confirms — "this is
+    /// what you selected". One pooled entity (latest selection wins);
+    /// `hideSelectionHighlight` on confirm (the green disc replaces it),
+    /// reject, dismiss, or supersede. Reuses the beacon ring textures.
+    private var selectionAnchor: AnchorEntity?
+    private var selectionRing: ModelEntity?
+    private static let selectionTint = UIColor.white.withAlphaComponent(0.95)
+    private static let selectionRingBaseSize: Float = 0.9 // beacon ring plane width
+
+    func showSelectionHighlight(x: Double, y: Double, z: Double, radiusM: Double) {
+        DispatchQueue.main.async { [self] in
+            let ring: ModelEntity
+            if let existing = selectionRing {
+                ring = existing
+            } else {
+                var material = PhysicallyBasedMaterial()
+                if let beaconTexture {
+                    material.baseColor = .init(tint: Self.selectionTint.withAlphaComponent(1), texture: .init(beaconTexture))
+                } else {
+                    material.baseColor = .init(tint: Self.selectionTint.withAlphaComponent(1))
+                }
+                material.emissiveColor = .init(color: .white)
+                material.emissiveIntensity = 1.5
+                material.roughness = 1.0
+                material.metallic = 0.0
+                if beaconTexture != nil, let mask = beaconOpacityTexture {
+                    material.blending = .transparent(opacity: .init(scale: 0.95, texture: .init(mask)))
+                } else {
+                    material.blending = .transparent(opacity: .init(floatLiteral: 0.95))
+                }
+                let model = ModelEntity(
+                    mesh: .generatePlane(
+                        width: Self.selectionRingBaseSize,
+                        depth: Self.selectionRingBaseSize,
+                        cornerRadius: Self.selectionRingBaseSize / 2
+                    ),
+                    materials: [material]
+                )
+                let anchor = AnchorEntity(world: SIMD3<Float>(0, 0, 0))
+                anchor.addChild(model)
+                arView.scene.addAnchor(anchor)
+                addPulse(to: model, scale: 1.12, duration: 0.7)
+                selectionAnchor = anchor
+                selectionRing = model
+                ring = model
+            }
+            selectionAnchor?.position = SIMD3(Float(x), Float(y) + 0.02, Float(z))
+            let diameter = Float(max(0.15, min(radiusM, 1.2)) * 2.0)
+            selectionAnchor?.scale = SIMD3(repeating: diameter / Self.selectionRingBaseSize)
+            ring.isEnabled = true
+        }
+    }
+
+    func hideSelectionHighlight() {
+        DispatchQueue.main.async { [self] in
+            selectionRing?.isEnabled = false
+        }
+    }
+
     func setGroundSensorCaps(maxFootprintM: Float, maxHeightM: Float) {
         // Sanity-clamped: remote tuning may adjust, never break.
         GroundAnomalyDetector.maxFootprintM = min(max(maxFootprintM, 0.3), 3.0)

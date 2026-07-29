@@ -1501,6 +1501,19 @@ private fun CameraPhase(
             if (markedRegion == null) return@LaunchedEffect
             pendingDrawn = arOverlay?.consumeMarkedRegion()
         }
+        // Selection ring under the drawn area while its confirm bar is up
+        // (build 176) — sized from the drawn box's angular width at the hit
+        // distance, so the ring hugs what was actually outlined.
+        LaunchedEffect(pendingDrawn) {
+            val drawn = pendingDrawn
+            if (drawn != null && scanTuning.drawnMarkEnabled) {
+                val radius = (drawn.distanceMeters * drawn.imageHalfW * 1.05)
+                    .toFloat().coerceIn(0.2f, 1.2f)
+                arOverlay?.showSelectionHighlight(drawn.worldX, drawn.worldY, drawn.worldZ, radius)
+            } else {
+                arOverlay?.hideSelectionHighlight()
+            }
+        }
         pendingDrawn?.takeIf { scanTuning.drawnMarkEnabled }?.let { drawn ->
             Row(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -1517,12 +1530,16 @@ private fun CameraPhase(
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.White,
                 )
-                TextButton(onClick = { pendingDrawn = null }) {
+                TextButton(onClick = {
+                    pendingDrawn = null
+                    arOverlay?.hideSelectionHighlight()
+                }) {
                     Text("Cancel", color = Color.White.copy(alpha = 0.7f))
                 }
                 Button(
                     onClick = {
                         pendingDrawn = null
+                        arOverlay?.hideSelectionHighlight()
                         if (!gate.captureAllowed.value) {
                             toast = "Scan paused indoors — step outside and mark again"
                         } else {

@@ -216,6 +216,13 @@ actual class ArEnvScanOverlay actual constructor() {
             focusImagePoint = imageX to imageY
             focusWorld = Triple(hit.x, hit.y, hit.z)
             focusUntilMs = Clock.System.now().toEpochMilliseconds() + FOCUS_DURATION_MS
+            // Pre-confirm selection cue (build 176, Blake: "no indicator of
+            // what has actually been selected until I confirm"): the ring
+            // appears at the raycast hit immediately — a surprising spot is
+            // an instant re-tap instead of a confirmed mistake.
+            nativeSurface?.showSelectionHighlight(
+                hit.x.toDouble(), hit.y.toDouble(), hit.z.toDouble(), 0.18,
+            )
         },
         onTapGeoResolved = { hit ->
             // Build 172 (phantom-dot root cause): adoption is DEFERRED to
@@ -765,16 +772,19 @@ actual class ArEnvScanOverlay actual constructor() {
             pendingAdoptWorld?.let { (x, y, z) -> addConfirmedTrashMarker(x, y, z) }
         }
         pendingAdoptWorld = null
+        hideSelectionHighlight()
         return confirmed
     }
 
     actual fun rejectTapCandidate(): TapCandidateState? {
         pendingAdoptWorld = null // explicit "not litter" — nothing may adopt
+        hideSelectionHighlight()
         return tapEngine.reject()
     }
 
     actual fun dismissTapCandidate() {
         pendingAdoptWorld = null // unanswered pill — an accidental tap costs nothing
+        hideSelectionHighlight()
         tapEngine.dismiss()
     }
 
@@ -786,6 +796,16 @@ actual class ArEnvScanOverlay actual constructor() {
 
     actual fun markRegion(x0: Double, y0: Double, x1: Double, y1: Double) =
         tapEngine.queueMarkRegion(x0, y0, x1, y1)
+
+    actual fun showSelectionHighlight(worldX: Float, worldY: Float, worldZ: Float, radiusM: Float) {
+        nativeSurface?.showSelectionHighlight(
+            worldX.toDouble(), worldY.toDouble(), worldZ.toDouble(), radiusM.toDouble(),
+        )
+    }
+
+    actual fun hideSelectionHighlight() {
+        nativeSurface?.hideSelectionHighlight()
+    }
 
     actual fun setGroundSensorCaps(maxFootprintM: Float, maxHeightM: Float) {
         nativeSurface?.setGroundSensorCaps(maxFootprintM, maxHeightM)

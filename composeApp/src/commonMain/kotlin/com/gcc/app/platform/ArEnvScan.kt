@@ -155,6 +155,14 @@ expect class ArEnvScanOverlay() {
      *  planted once per session. */
     fun syncExpectedTrashMarkers(points: List<Pair<Double, Double>>)
 
+    /** Provisional-selection ring (pre-confirm "this is selected" cue) at a
+     *  world point; hidden on confirm/reject/dismiss. Tap selections are
+     *  managed internally by the overlay; these are for the DRAWN-region
+     *  flow whose confirm bar lives in SpotScreen. */
+    fun showSelectionHighlight(worldX: Float, worldY: Float, worldZ: Float, radiusM: Float)
+
+    fun hideSelectionHighlight()
+
     /** Push remote ScanTuning sensor caps down to the LiDAR detector. */
     fun setGroundSensorCaps(maxFootprintM: Float, maxHeightM: Float)
 

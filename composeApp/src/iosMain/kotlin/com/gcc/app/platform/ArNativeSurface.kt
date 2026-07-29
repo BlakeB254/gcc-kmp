@@ -254,6 +254,13 @@ interface ArNativeSurface {
      * re-show it as a fresh reticle. Same rule for timed-out ids after
      * [clearScanReticle].
      */
+    /** Provisional-selection ring at a world point, shown BEFORE confirm —
+     *  "this is what you selected" (build 176). Latest call moves the one
+     *  pooled ring; [hideSelectionHighlight] on confirm/reject/dismiss. */
+    fun showSelectionHighlight(x: Double, y: Double, z: Double, radiusM: Double) {}
+
+    fun hideSelectionHighlight() {}
+
     /** Remote-tunable LiDAR sensor caps (ScanTuning → GroundAnomalyDetector):
      *  max candidate footprint span and height. Applied at scan open; the
      *  compiled defaults remain until the first call. */
