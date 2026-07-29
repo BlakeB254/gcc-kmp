@@ -6,6 +6,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.input.pointer.pointerInput
@@ -141,6 +142,13 @@ fun CameraCapture(
     ) {
         val miniMapWidth = (maxWidth * 0.36f).coerceIn(128.dp, 200.dp)
         val miniMapHeight = miniMapWidth * 0.78f
+        // Drawn-region marking (Blake 2026-07-28): drag a rectangle over
+        // trash to mark it — the drawing IS the confirmation, no popup. The
+        // rubber band renders below; on release the overlay geo-resolves the
+        // region on its tick thread and SpotScreen files it.
+        var dragStart by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
+        var dragCurrent by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
+
         // Live camera preview with overlays — tap anywhere to capture
         Box(
             modifier = Modifier
@@ -169,12 +177,74 @@ fun CameraCapture(
                             }
                         }
                     }
+                }
+                .pointerInput(environmentScanMode) {
+                    if (!environmentScanMode) return@pointerInput
+                    detectDragGestures(
+                        onDragStart = { offset ->
+                            dragStart = offset
+                            dragCurrent = offset
+                        },
+                        onDrag = { change, _ ->
+                            change.consume()
+                            dragCurrent = change.position
+                        },
+                        onDragCancel = {
+                            dragStart = null
+                            dragCurrent = null
+                        },
+                        onDragEnd = {
+                            val start = dragStart
+                            val end = dragCurrent
+                            dragStart = null
+                            dragCurrent = null
+                            if (start != null && end != null &&
+                                kotlin.math.abs(end.x - start.x) > 24f &&
+                                kotlin.math.abs(end.y - start.y) > 24f
+                            ) {
+                                arOverlay?.markRegion(
+                                    (start.x / size.width).toDouble(),
+                                    (start.y / size.height).toDouble(),
+                                    (end.x / size.width).toDouble(),
+                                    (end.y / size.height).toDouble(),
+                                )
+                            }
+                        },
+                    )
                 },
         ) {
             if (arOverlay != null) {
                 ArEnvScanView(overlay = arOverlay, modifier = Modifier.fillMaxSize())
             } else {
                 CameraPreview(modifier = Modifier.fillMaxSize())
+            }
+
+            // Drawn-region rubber band — composed AFTER the interop camera
+            // view so it renders above it, like every other overlay here.
+            if (environmentScanMode) {
+                val start = dragStart
+                val current = dragCurrent
+                if (start != null && current != null) {
+                    androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+                        val left = minOf(start.x, current.x)
+                        val top = minOf(start.y, current.y)
+                        val rectSize = androidx.compose.ui.geometry.Size(
+                            kotlin.math.abs(current.x - start.x),
+                            kotlin.math.abs(current.y - start.y),
+                        )
+                        drawRect(
+                            GccGreen.copy(alpha = 0.15f),
+                            topLeft = androidx.compose.ui.geometry.Offset(left, top),
+                            size = rectSize,
+                        )
+                        drawRect(
+                            GccGreen,
+                            topLeft = androidx.compose.ui.geometry.Offset(left, top),
+                            size = rectSize,
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx()),
+                        )
+                    }
+                }
             }
 
             // Capture-in-progress indicator

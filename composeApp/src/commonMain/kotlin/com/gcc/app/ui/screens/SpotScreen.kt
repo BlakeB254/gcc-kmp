@@ -1464,6 +1464,23 @@ private fun CameraPhase(
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp),
             )
         }
+        // Drawn-region marking: the drawing is the confirmation — file the
+        // resolved region the moment the tick thread publishes it, with a
+        // toast instead of any popup (Blake 2026-07-28 round 3).
+        val markedRegion by (arOverlay?.markedRegion
+            ?: remember { MutableStateFlow<TapSweepItem?>(null) }).collectAsState()
+        LaunchedEffect(markedRegion) {
+            val region = markedRegion ?: return@LaunchedEffect
+            arOverlay?.consumeMarkedRegion() ?: return@LaunchedEffect
+            if (!gate.captureAllowed.value) {
+                toast = "Scan paused indoors — step outside and mark again"
+                return@LaunchedEffect
+            }
+            val photo = arOverlay?.captureTapEvidencePhoto()
+            onConfirmedSweepItems(listOf(region), photo)
+            toast = "Marked trash area ✓"
+        }
+
         // Tap-sweep batch offer (Blake 2026-07-28: "identify as many trash
         // items in view on each tap"): dots mark every region the sweep
         // geo-resolved and vetted; one bar confirms them all. The single-tap

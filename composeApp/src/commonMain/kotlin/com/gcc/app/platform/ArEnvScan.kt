@@ -130,6 +130,17 @@ expect class ArEnvScanOverlay() {
     /** Dismiss the sweep offer without filing anything. */
     fun dismissTapSweep()
 
+    /** A drawn rectangle (normalized view corners) marking trash — the
+     *  drawing IS the confirmation; the region files directly with its box
+     *  for backend analysis. */
+    fun markRegion(x0: Double, y0: Double, x1: Double, y1: Double)
+
+    /** The last drawn region's resolved item (world + box), published once
+     *  the tick thread geo-resolves it. Consume-once via [consumeMarkedRegion]. */
+    val markedRegion: StateFlow<TapSweepItem?>
+
+    fun consumeMarkedRegion(): TapSweepItem?
+
     /** The user answered "yes, litter" on [groundIntentPrompt]: the candidate
      *  completes through the normal filing path (evidence photo, geo-ref,
      *  weight) with user-intent provenance. No-op when nothing is pending. */

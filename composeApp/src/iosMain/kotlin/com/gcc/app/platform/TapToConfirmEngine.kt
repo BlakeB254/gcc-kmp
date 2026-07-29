@@ -72,6 +72,61 @@ internal class TapToConfirmEngine(
         _tapCandidate.update { it.reduce(TapEvent.Tapped(normalizedX, normalizedY)) }
     }
 
+    /** Drawn-region marking (Blake 2026-07-28: draw a shape where the trash
+     *  is instead of answering type popups). Same last-write-wins main→tick
+     *  handoff as [pendingFocusTap]; corners are normalized VIEW coords. */
+    private var pendingMarkRegion: DoubleArray? = null
+
+    private val _markedRegion = MutableStateFlow<TapSweepItem?>(null)
+    val markedRegion: StateFlow<TapSweepItem?> = _markedRegion.asStateFlow()
+
+    fun queueMarkRegion(x0: Double, y0: Double, x1: Double, y1: Double) {
+        pendingMarkRegion = doubleArrayOf(x0, y0, x1, y1)
+    }
+
+    fun consumeMarkedRegion(): TapSweepItem? {
+        val item = _markedRegion.value
+        _markedRegion.value = null
+        return item
+    }
+
+    /** Tick-thread processing of a drawn region: view→image corners via the
+     *  aspect-correct converter, raycast the center for world/geo, classify
+     *  the crop for a HINT label (backend owns real typing), and publish —
+     *  the drawing itself is the confirmation, so no further UI gate. Null
+     *  result (no surface / no geo) publishes nothing; the caller's HUD
+     *  stays silent rather than blocking a walk with an error dialog. */
+    private fun processPendingMarkRegion(frame: ARFrame?) {
+        val region = pendingMarkRegion ?: return
+        pendingMarkRegion = null
+        val surface = nativeSurfaceProvider()
+        fun toImage(x: Double, y: Double): Pair<Double, Double> {
+            val converted = surface?.viewToImagePoint(x, y)
+            return if (converted != null && converted.size == 2) converted[0] to converted[1]
+            else viewTapToImageCoords(x, y)
+        }
+        val (ix0, iy0) = toImage(region[0], region[1])
+        val (ix1, iy1) = toImage(region[2], region[3])
+        val cx = ((ix0 + ix1) / 2.0).coerceIn(0.0, 1.0)
+        val cy = ((iy0 + iy1) / 2.0).coerceIn(0.0, 1.0)
+        val halfW = (kotlin.math.abs(ix1 - ix0) / 2.0).coerceIn(0.02, 0.5)
+        val halfH = (kotlin.math.abs(iy1 - iy0) / 2.0).coerceIn(0.02, 0.5)
+        val hit = raycastImage(frame, cx, cy) ?: return
+        val latLng = localToLatLng(hit.x, hit.z) ?: return
+        val labels = classifyRegion(frame, cx, cy, fraction = (halfW * 2).coerceIn(0.1, 0.6))
+        dispatch_async(dispatch_get_main_queue()) { triggerHapticFeedback() }
+        _markedRegion.value = TapSweepItem(
+            lat = latLng.first,
+            lng = latLng.second,
+            distanceMeters = hit.distance,
+            imageCx = cx, imageCy = cy,
+            imageHalfW = halfW, imageHalfH = halfH,
+            viewX = (region[0] + region[2]) / 2.0,
+            viewY = (region[1] + region[3]) / 2.0,
+            label = TrashDetectionRules.trashLabelFrom(labels),
+        )
+    }
+
     private val _tapSweep = MutableStateFlow<TapSweepState?>(null)
     val tapSweep: StateFlow<TapSweepState?> = _tapSweep.asStateFlow()
 
@@ -86,6 +141,7 @@ internal class TapToConfirmEngine(
     }
 
     fun processPendingTap(frame: ARFrame?) {
+        processPendingMarkRegion(frame)
         val tap = pendingFocusTap ?: return
         pendingFocusTap = null
         // Aspect-correct view→image mapping via ARKit's displayTransform when

@@ -27,6 +27,10 @@ actual class ArEnvScanOverlay actual constructor() {
         kotlinx.coroutines.flow.MutableStateFlow(null)
     actual fun consumeTapSweep(): List<TapSweepItem> = emptyList()
     actual fun dismissTapSweep() {}
+    actual fun markRegion(x0: Double, y0: Double, x1: Double, y1: Double) {}
+    actual val markedRegion: kotlinx.coroutines.flow.StateFlow<TapSweepItem?> =
+        kotlinx.coroutines.flow.MutableStateFlow(null)
+    actual fun consumeMarkedRegion(): TapSweepItem? = null
     actual fun rejectGroundIntentPrompt() {}
     actual suspend fun captureTapEvidencePhoto(): CapturedPhoto? = null
     actual fun confirmTapCandidate(): TapCandidateState? = null

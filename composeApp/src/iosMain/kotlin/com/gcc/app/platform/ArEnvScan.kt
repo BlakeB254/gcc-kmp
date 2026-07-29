@@ -761,6 +761,13 @@ actual class ArEnvScanOverlay actual constructor() {
 
     actual fun dismissTapSweep() = tapEngine.dismissTapSweep()
 
+    actual fun markRegion(x0: Double, y0: Double, x1: Double, y1: Double) =
+        tapEngine.queueMarkRegion(x0, y0, x1, y1)
+
+    actual val markedRegion: StateFlow<TapSweepItem?> get() = tapEngine.markedRegion
+
+    actual fun consumeMarkedRegion(): TapSweepItem? = tapEngine.consumeMarkedRegion()
+
     /** One queued "is this litter?" answer — see [pendingIntentAnswer]. */
     private data class IntentAnswer(
         val id: Long,
