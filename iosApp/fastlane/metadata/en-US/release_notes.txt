@@ -1,5 +1,6 @@
-• Environment scans now measure exactly what your camera saw: close-up detail scans and swept areas shade differently on the map, and indoor moments are automatically excluded.
-• Scans record full session data in the background (video, motion, LiDAR depth) to build the community's 3D world model — uploads wait for Wi-Fi or charging.
-• Trash and landmarks appear on the map at their real size and position at close zoom; the map now updates near-live as scans happen.
-• Big stability round: fixed crashes when completing scans and reopening the scanner, plus map fixes — all block boundaries and exclusion areas show correctly, and scan spots now carry photos of what was found.
-• Cleaner scan UI: one scan button, honest recording indicator, live scan-quality feedback, and clearer scanned-area colors.
+• Smarter litter detection: the environment scan now finds items on the ground with LiDAR — bottles, cans, bags, and larger dumping — and asks you to confirm with one tap.
+• Tap or draw: tap any item to identify it instantly, or drag a box over a messy area to mark it all at once. Made a mistake? Undo it on the spot.
+• Trash spots stay visible: confirmed finds get an AR marker at the exact spot, and returning scans show pulsing markers where litter was previously reported — walk right to it and verify it's still there or now clean.
+• Truthful maps: tap any problem area to see its photos, item summary, and estimated weight for the whole area; marking an area clean now happens through an on-site verification scan.
+• Ground awareness: scans recognize grass, pavement, and street surfaces, improving both detection and the community 3D world model.
+• Reliability round: accurate tap placement, no duplicate spots from repeat taps, better session diagnostics, and many stability fixes.
