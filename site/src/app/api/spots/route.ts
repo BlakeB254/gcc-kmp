@@ -281,7 +281,11 @@ export async function POST(request: NextRequest) {
     // its own coordinates so the map/heatmap layers place items accurately.
     // Sanity-gated to 150m of the report location to keep junk out of the twin.
     const OBSERVATION_DOMAINS = ['litter', 'vegetation', 'construction', 'land_use'] as const
-    const clientItems: { lat: number; lng: number; itemType: string; severity?: number; confidence?: number; estimatedWeightGrams?: number; estimatedWidthMeters?: number; yawDegrees?: number; domain?: (typeof OBSERVATION_DOMAINS)[number] }[] =
+    // 100, not 25: a single thorough walk confirms 30+ items (2026-07-29 field
+    // session: 29). Items past the cap didn't just drop — their cells were
+    // then swept "clean" below, deleting the in-scan marker rows (and photos).
+    const MAX_ITEMS_PER_SUBMIT = 100
+    const clientItems: { lat: number; lng: number; itemType: string; severity?: number; confidence?: number; estimatedWeightGrams?: number; estimatedWidthMeters?: number; yawDegrees?: number; domain?: (typeof OBSERVATION_DOMAINS)[number]; mediaUrl?: string }[] =
       Array.isArray(observedItems)
         ? observedItems
             .filter((it: any) =>
@@ -290,7 +294,7 @@ export async function POST(request: NextRequest) {
               typeof it?.itemType === 'string' &&
               Math.abs(Number(it.lat) - lat) < 0.0015 &&
               Math.abs(Number(it.lng) - lng) < 0.002)
-            .slice(0, 25)
+            .slice(0, MAX_ITEMS_PER_SUBMIT)
             .map((it: any) => ({
               lat: Number(it.lat),
               lng: Number(it.lng),
@@ -301,6 +305,8 @@ export async function POST(request: NextRequest) {
               estimatedWidthMeters: typeof it.estimatedWidthMeters === 'number' && Number.isFinite(it.estimatedWidthMeters) ? it.estimatedWidthMeters : undefined,
               yawDegrees: typeof it.yawDegrees === 'number' && Number.isFinite(it.yawDegrees) ? it.yawDegrees : undefined,
               domain: OBSERVATION_DOMAINS.includes(it.domain) ? (it.domain as (typeof OBSERVATION_DOMAINS)[number]) : undefined,
+              // Same shape gate as /api/observations/ar-detected: https + sane length.
+              mediaUrl: typeof it.mediaUrl === 'string' && it.mediaUrl.startsWith('https://') && it.mediaUrl.length <= 500 ? it.mediaUrl : undefined,
             }))
         : []
 
@@ -419,7 +425,9 @@ export async function POST(request: NextRequest) {
             }
           : undefined,
         confidence: item.confidence,
-        mediaUrl: Array.isArray(mediaUrls) && mediaUrls.length > 0 ? mediaUrls[0] : undefined,
+        // The item's OWN evidence photo when the client sent one; the shared
+        // session photo is only a fallback (pre-per-item-photo clients).
+        mediaUrl: item.mediaUrl ?? (Array.isArray(mediaUrls) && mediaUrls.length > 0 ? mediaUrls[0] : undefined),
         capturedAt: observationsAt,
       })
       if (anchorObservationId === undefined) anchorObservationId = observation?.id

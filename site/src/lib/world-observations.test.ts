@@ -7,6 +7,7 @@ import {
   selectReportsInStaleCells,
   resolveByCoveredCells,
   mergeObservationAttributes,
+  mergeObservationMediaUrl,
   computeDiagnosticStatus,
 } from './world-observations'
 
@@ -241,4 +242,27 @@ test('mergeObservationAttributes: new keys win over inherited ones', () => {
 test('mergeObservationAttributes: no prior row (first observation at this cell+itemType) — incoming attributes pass through unchanged', () => {
   assert.deepEqual(mergeObservationAttributes(null, { severity: 2 }), { severity: 2 })
   assert.deepEqual(mergeObservationAttributes(undefined, undefined), undefined)
+})
+
+// ── mergeObservationMediaUrl: evidence-photo supersede policy ──────────────
+// The 2026-07-29 field bug: a submit whose photo upload failed superseded
+// photo-bearing marker rows with mediaUrl NULL — the map LOST photos it
+// already had. Photoless re-files must inherit; real photos must win.
+
+test('mergeObservationMediaUrl: photoless re-file inherits the prior photo', () => {
+  assert.equal(mergeObservationMediaUrl('https://r2/prior.jpg', null), 'https://r2/prior.jpg')
+  assert.equal(mergeObservationMediaUrl('https://r2/prior.jpg', undefined), 'https://r2/prior.jpg')
+})
+
+test('mergeObservationMediaUrl: incoming photo wins over the prior one', () => {
+  assert.equal(mergeObservationMediaUrl('https://r2/prior.jpg', 'https://r2/new.jpg'), 'https://r2/new.jpg')
+})
+
+test('mergeObservationMediaUrl: no photo anywhere stays undefined (not null)', () => {
+  assert.equal(mergeObservationMediaUrl(null, null), undefined)
+  assert.equal(mergeObservationMediaUrl(undefined, undefined), undefined)
+})
+
+test('mergeObservationMediaUrl: first photo lands on a previously photoless row', () => {
+  assert.equal(mergeObservationMediaUrl(null, 'https://r2/new.jpg'), 'https://r2/new.jpg')
 })

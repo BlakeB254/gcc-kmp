@@ -32,6 +32,8 @@ import com.gcc.app.platform.getDeviceModel
 import com.gcc.app.platform.getOsVersion
 import com.gcc.shared.cache.CaptureChunkStore
 import com.gcc.shared.serialization.GccJson
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.datetime.Clock
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -139,6 +141,11 @@ class SpotViewModel(
 ) {
     companion object {
         const val MAX_PHOTOS = 3
+        /** Submit-time bound on catch-up photo uploads for items whose
+         *  evidence frame never went through the marker path (cluster-held
+         *  singles, upload hiccups). Keeps Complete Scan latency bounded on
+         *  weak uplinks — items past the cap file photoless as before. */
+        const val MAX_LATE_ITEM_PHOTO_UPLOADS = 12
         /** How long the session-summary upload card watches the concurrent
          *  capture-chunk drain before resolving to QUEUED. Sized for a large
          *  video chunk on a weak cellular uplink (field report, TestFlight
@@ -168,6 +175,17 @@ class SpotViewModel(
     // cluster-visibility gate re-evaluates on every add, so without this an
     // item would enqueue once per later addition to its cluster.
     private val enqueuedMarkerStamps = mutableSetOf<Long>()
+    // atMs → uploaded (privacy-screened) photo URL from the marker path.
+    // submitReport stamps these onto ObservedSpotItem.mediaUrl so each item's
+    // world_observations row keeps ITS photo instead of sharing mediaUrls[0].
+    private val itemMediaUrls = mutableMapOf<Long, String>()
+    // Content-keyed dedup for evidence uploads (Blake 2026-07-29: no duplicate
+    // images of the same piece of trash): a sweep batch attaches ONE frame to
+    // every item, and each used to upload it separately — N identical images
+    // under N distinct URLs that no display-side distinct() could collapse.
+    // Same bytes now upload once; every later caller reuses the URL.
+    private val uploadedPhotoUrlByContent = mutableMapOf<String, String>()
+    private val photoUploadMutex = Mutex()
     // Task 17: indices (into capturedPhotos, kept in sync with photoStamps
     // the same way removePhoto/purgeRecentCaptures already do) of photos
     // captured with >= 2 identified-litter reticles on screen — the "best
@@ -386,31 +404,11 @@ class SpotViewModel(
         if (stamped.domain != null && stamped.domain != "litter") return
         scope.launch {
             try {
-                // Privacy screen BEFORE any bytes leave the device (Blake,
-                // 2026-07-22): a public-map litter image must never show a
-                // person, an animal, or a home interior. Blocked photo =
-                // marker files without media; never blocks the report.
-                val screenedBytes = photoBytes?.let { bytes ->
-                    val verdict = screenLitterPhotoPrivacy(bytes)
-                    if (verdict.allowed) bytes
-                    else {
-                        DiagnosticsLog.info(
-                            "photo-privacy",
-                            "marker photo withheld (${verdict.reason}) — marker enqueued without media",
-                        )
-                        null
-                    }
-                }
                 // Upload-then-enqueue: raw bytes never enter the persisted
                 // ArMarkerQueue — only the resolved URL (or null on failure).
-                val mediaUrl = screenedBytes?.let { bytes ->
-                    try {
-                        apiClient.uploadSpotPhotos(listOf(bytes)).firstOrNull()
-                    } catch (e: Exception) {
-                        DiagnosticsLog.error("env-scan", "marker photo upload failed (enqueuing without photo)", e)
-                        null
-                    }
-                }
+                // Privacy screen + content dedup live inside the helper.
+                val mediaUrl = photoBytes?.let { uploadEvidencePhotoDeduped(it, "env-scan") }
+                if (mediaUrl != null) stamped.atMs?.let { itemMediaUrls[it] = mediaUrl }
                 arMarkerQueue.enqueue(
                     ArDetectedMarkerRequest(
                         lat = stamped.lat,
@@ -435,6 +433,68 @@ class SpotViewModel(
                 // to complete.
                 DiagnosticsLog.error("env-scan", "arMarkerQueue.enqueue failed", e)
             }
+        }
+    }
+
+    /**
+     * Upload an evidence frame exactly once per unique content: concurrent
+     * callers holding the same frame (a sweep batch fans one frame across
+     * every item) serialize on [photoUploadMutex] and reuse the first
+     * upload's URL, so one piece of trash never yields N identical hosted
+     * images. Privacy screen BEFORE any bytes leave the device (Blake,
+     * 2026-07-22): a public-map litter image must never show a person, an
+     * animal, or a home interior. Returns null (caller files photoless) on
+     * a privacy block or upload failure — never throws, never blocks a scan.
+     */
+    private suspend fun uploadEvidencePhotoDeduped(bytes: ByteArray, logTag: String): String? {
+        val contentKey = "${bytes.size}:${bytes.contentHashCode()}"
+        photoUploadMutex.withLock {
+            uploadedPhotoUrlByContent[contentKey]?.let { return it }
+            val verdict = screenLitterPhotoPrivacy(bytes)
+            if (!verdict.allowed) {
+                DiagnosticsLog.info(
+                    "photo-privacy",
+                    "evidence photo withheld (${verdict.reason}) — filing without media",
+                )
+                return null
+            }
+            return try {
+                val url = apiClient.uploadSpotPhotos(listOf(bytes)).firstOrNull()
+                if (url != null) uploadedPhotoUrlByContent[contentKey] = url
+                url
+            } catch (e: Exception) {
+                DiagnosticsLog.error(logTag, "evidence photo upload failed (filing without photo)", e)
+                null
+            }
+        }
+    }
+
+    /**
+     * Stamp each observed item with its own uploaded photo URL for the wire
+     * model. Marker-path uploads already populated [itemMediaUrls]; items the
+     * cluster gate held back (or whose upload failed mid-scan) still hold raw
+     * bytes in the summary evidence strip — those get a bounded, best-effort,
+     * privacy-screened catch-up upload here. Failures leave the item photoless
+     * exactly as before; they never block the submit.
+     */
+    private suspend fun withItemMediaUrls(
+        items: List<ObservedSpotItem>,
+        evidence: List<LitterEvidenceShot>,
+    ): List<ObservedSpotItem> {
+        val evidenceByStamp = evidence.associateBy { it.atMs }
+        var lateUploadAttempts = 0
+        return items.map { item ->
+            val stamp = item.atMs ?: return@map item
+            var url = itemMediaUrls[stamp]
+            if (url == null && lateUploadAttempts < MAX_LATE_ITEM_PHOTO_UPLOADS) {
+                val bytes = evidenceByStamp[stamp]?.bytes
+                if (bytes != null) {
+                    lateUploadAttempts++
+                    url = uploadEvidencePhotoDeduped(bytes, "spot-submit")
+                    if (url != null) itemMediaUrls[stamp] = url
+                }
+            }
+            if (url != null) item.copy(mediaUrl = url) else item
         }
     }
 
@@ -803,6 +863,8 @@ class SpotViewModel(
                 rejectedItems.clear()
                 multiItemPhotoIndices.clear()
                 observedItemStamps.clear()
+                itemMediaUrls.clear()
+                uploadedPhotoUrlByContent.clear()
                 photoStamps.clear()
                 _uiState.value = _uiState.value.copy(
                     scanFinishedWithoutReport = true,
@@ -1214,6 +1276,11 @@ class SpotViewModel(
                     ?.take(2000)
                     ?.takeIf { it.isNotEmpty() }
 
+                // Per-item map photos: each item's world_observations row keeps
+                // ITS evidence frame (marker-path URL, or a late upload from the
+                // evidence strip) instead of every item sharing mediaUrls[0].
+                val itemsWithMedia = withItemMediaUrls(state.observedItems, state.litterEvidence)
+
                 val request = CreateSpotRequest(
                     type = CommunityReportType.SIGHTING,
                     lat = submitLat,
@@ -1233,7 +1300,7 @@ class SpotViewModel(
                     // nearby stale reports instead of 409ing. `null` here
                     // made zero-item scans read as manual reports and get
                     // rejected with 'already exists within 15m'.
-                    observedItems = state.observedItems,
+                    observedItems = itemsWithMedia,
                     objectCapture = state.objectCapture,
                     coveredCellIds = coveredCellIds,
                 )
@@ -1403,6 +1470,8 @@ class SpotViewModel(
     fun reset() {
         _uiState.value = SpotUiState()
         observedItemStamps.clear()
+        itemMediaUrls.clear()
+        uploadedPhotoUrlByContent.clear()
         photoStamps.clear()
         rejectedItems.clear()
         multiItemPhotoIndices.clear()

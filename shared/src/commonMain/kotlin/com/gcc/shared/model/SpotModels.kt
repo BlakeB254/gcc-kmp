@@ -77,6 +77,14 @@ data class ObservedSpotItem(
     /** How this observation came to exist: see ObservedItemCounts' PROVENANCE_* constants.
      *  Null on legacy payloads written before provenance existed. */
     val provenance: String? = null,
+    /**
+     * Per-item evidence photo URL (already uploaded + privacy-screened by the
+     * in-scan marker path). The server stores it on this item's
+     * world_observations row so the map blob card shows THIS item's photo —
+     * before this field, up to 25 items shared mediaUrls[0] and every other
+     * capture never reached the map. Additive, null on legacy payloads.
+     */
+    val mediaUrl: String? = null,
 )
 
 /**

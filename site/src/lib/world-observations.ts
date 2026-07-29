@@ -74,6 +74,21 @@ export function mergeObservationAttributes(
 }
 
 /**
+ * Supersede policy for an observation's evidence photo, mirroring
+ * `mergeObservationAttributes`: the incoming photo wins when present, but a
+ * photoLESS re-file (a submit whose photo upload failed, an old client, a
+ * lean auto re-scan) inherits the prior current row's photo instead of
+ * erasing it. Evidence — like a diagnosis — is a fact about the litter, not
+ * a property of the latest scan. Pure, so the policy is unit-testable.
+ */
+export function mergeObservationMediaUrl(
+  prior: string | null | undefined,
+  incoming: string | null | undefined
+): string | undefined {
+  return incoming ?? prior ?? undefined
+}
+
+/**
  * Litter-truth lifecycle (Pillar 8 items 7-8): determine 'diagnosed' vs
  * 'observed' from an observation's attributes. OBSERVED = identified from
  * afar (distant detection photo + position/type), no close capture.
@@ -158,7 +173,7 @@ export async function recordWorldObservation(input: RecordObservationInput) {
     // detect with no size data) must not wipe a prior observation's measured
     // estimates (weight/width/objectCapture). New keys win over inherited.
     const [prior] = await db
-      .select({ attributes: worldObservations.attributes })
+      .select({ attributes: worldObservations.attributes, mediaUrl: worldObservations.mediaUrl })
       .from(worldObservations)
       .where(and(
         eq(worldObservations.locationCellId, cellId),
@@ -172,6 +187,11 @@ export async function recordWorldObservation(input: RecordObservationInput) {
         prior?.attributes as Record<string, unknown> | null | undefined,
         input.attributes
       ),
+      // mediaUrl merges forward the same way: a photoless re-file (submit
+      // whose photo upload failed, or a pre-per-item-photo client) must not
+      // replace a row that HAS evidence with one that doesn't — that exact
+      // path was deleting mid-scan marker photos from the map at submit.
+      mediaUrl: mergeObservationMediaUrl(prior?.mediaUrl, input.mediaUrl),
     }
 
     await db
