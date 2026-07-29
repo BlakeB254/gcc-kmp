@@ -37,7 +37,6 @@ fun TrashConfirmCard(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val info = TrashItemCatalog.infoFor(candidate.itemType)
     val weightGrams = TrashItemCatalog.estimateWeightGrams(candidate.itemType, candidate.estimatedWidthMeters)
     val weightText = if (weightGrams >= 1000) {
         "~${(weightGrams / 100).toDouble() / 10} kg"
@@ -55,7 +54,10 @@ fun TrashConfirmCard(
     ) {
         Text(
             text = buildString {
-                append(info.displayName)
+                // Naming rule (Blake 2026-07-28): the user sees "Litter",
+                // never the classifier's material guess — typing is the
+                // backend's job. Size/weight stay: they're LiDAR-measured.
+                append("Litter")
                 sizeText?.let { append(" · $it") }
                 append(" · $weightText")
             },

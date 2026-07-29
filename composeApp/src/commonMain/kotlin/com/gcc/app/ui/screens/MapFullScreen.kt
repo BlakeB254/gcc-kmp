@@ -891,10 +891,38 @@ fun MapFullScreen(
             // Coverage-cell info card — tap a scanned (green/amber) tile to
             // see when it was last scanned and what that scan found nearby.
             selectedCoverageCell?.let { cell ->
+                val rectifyScope = rememberCoroutineScope()
                 CoverageCellInfoCard(
                     cell = cell,
                     observations = mapObservations,
                     allCells = coverageCells,
+                    onMarkClean = {
+                        // One tap rectifies the tapped blob: server marks the
+                        // location clean; locally the blob's litter zeroes and
+                        // its observations drop so the color corrects
+                        // immediately (the next poll re-syncs from server).
+                        val blob = com.gcc.app.ui.map.sameColorBlobCells(cell, coverageCells)
+                        val blobIds = blob.map { it.locationCellId }.toSet()
+                        val lngScale = kotlin.math.cos(cell.lat * kotlin.math.PI / 180.0)
+                        mapObservations = mapObservations.filterNot { obs ->
+                            blob.any { blobCell ->
+                                val dLatM = (obs.lat - blobCell.lat) * 111_320.0
+                                val dLngM = (obs.lng - blobCell.lng) * 111_320.0 * lngScale
+                                dLatM * dLatM + dLngM * dLngM < 8.0 * 8.0
+                            }
+                        }
+                        coverageCells = coverageCells.map {
+                            if (it.locationCellId in blobIds) it.copy(litterCount = 0, litterWeightGrams = 0.0) else it
+                        }
+                        selectedCoverageCell = null
+                        rectifyScope.launch {
+                            try {
+                                gccApiClient.rectifyObservationAtLocation(cell.lat, cell.lng)
+                            } catch (e: Exception) {
+                                DiagnosticsLog.error("map-rectify", "mark-clean from map failed (local view already corrected)", e)
+                            }
+                        }
+                    },
                     onDismiss = { selectedCoverageCell = null },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -1934,6 +1962,10 @@ private fun CoverageCellInfoCard(
     /** Viewport cells — a tap answers for the whole same-color blob, not
      *  the single 10m tile (Blake 2026-07-28). Empty = single-cell mode. */
     allCells: List<com.gcc.shared.model.MapCoverageCell> = emptyList(),
+    /** "Mark this area clean" — user-initiated rectification straight from
+     *  the map card (Blake 2026-07-29: easier mark/unmark of past map data
+     *  than waiting for the proximity re-prompt). Null hides the action. */
+    onMarkClean: (() -> Unit)? = null,
 ) {
     val lngScale = kotlin.math.cos(cell.lat * kotlin.math.PI / 180.0)
     // The tapped cell's contiguous same-severity blob; observations within
@@ -2085,6 +2117,18 @@ private fun CoverageCellInfoCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSubtle,
                     )
+                }
+                // Direct rectification from the map (Blake 2026-07-29) —
+                // no more waiting to walk past the spot for the proximity
+                // prompt to offer the cleanup.
+                if (onMarkClean != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TextButton(
+                        onClick = onMarkClean,
+                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                    ) {
+                        Text("Mark this area clean ✓", color = GccGreen)
+                    }
                 }
             }
         }

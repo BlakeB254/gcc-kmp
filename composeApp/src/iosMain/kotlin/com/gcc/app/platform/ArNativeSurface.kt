@@ -254,6 +254,12 @@ interface ArNativeSurface {
      * re-show it as a fresh reticle. Same rule for timed-out ids after
      * [clearScanReticle].
      */
+    /** Established floor height in AR world Y, or NaN before any floor plane
+     *  is known. Gates 2D-classifier promotions to ON-THE-GROUND hits —
+     *  build 172: building WINDOWS classified "glass" and promoted at
+     *  eye height. */
+    fun floorHeightY(): Double = Double.NaN
+
     /** Normalized view point (top-left origin) → normalized image point via
      *  ARKit's displayTransform (authoritative aspect-fill mapping). Empty
      *  list when no frame exists yet — callers fall back to the legacy

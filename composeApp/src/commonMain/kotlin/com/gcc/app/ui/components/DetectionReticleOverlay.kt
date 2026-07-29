@@ -128,7 +128,11 @@ fun DetectionReticleOverlay(
             // already shows ("Trash spotted — walk up close to identify
             // it"). The reticle keeps its visual circle/arc/checkmark and the
             // item label; the move-closer text now has exactly one home.
-            val label = textMeasurer.measure(detection.label, labelStyle)
+            // User-facing naming rule (Blake 2026-07-28, "Glass"-on-windows
+            // report): everything the scanner selects reads "Litter" — the
+            // classifier's material/type guess is internal data for the
+            // backend, never a user-facing claim.
+            val label = textMeasurer.measure("Litter", labelStyle)
             drawText(
                 textLayoutResult = label,
                 topLeft = Offset(
@@ -181,7 +185,7 @@ fun MultiItemDetectionOverlay(
                     radius = radius,
                     center = center,
                 )
-                val label = textMeasurer.measure(reticle.label, labelStyle)
+                val label = textMeasurer.measure("Litter", labelStyle) // same naming rule as above
                 drawText(
                     textLayoutResult = label,
                     topLeft = Offset(

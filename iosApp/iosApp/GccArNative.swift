@@ -406,6 +406,12 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     /// ~19.5:9 screen crops ~19% of the image per side), mislocating taps by
     /// up to a meter at range — "it selected an area I didn't tap"
     /// (build 170 root cause). Empty when no frame yet.
+    func floorHeightY() -> Double {
+        frameLock.lock()
+        defer { frameLock.unlock() }
+        return floorWorldY.map(Double.init) ?? Double.nan
+    }
+
     func viewToImagePoint(x: Double, y: Double) -> [KotlinDouble] {
         frameLock.lock()
         let frame = lastFrame

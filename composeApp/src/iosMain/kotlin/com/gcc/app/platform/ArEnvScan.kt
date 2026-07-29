@@ -218,21 +218,26 @@ actual class ArEnvScanOverlay actual constructor() {
             focusUntilMs = Clock.System.now().toEpochMilliseconds() + FOCUS_DURATION_MS
         },
         onTapGeoResolved = { hit ->
-            // Env-only: ground-candidate tap-adoption, moved verbatim from
-            // the pre-extraction tap flow — only ever ran once geo-resolve
-            // succeeded.
-            val scanningBeforeTap = groundCandidateTracker.activeScanning().mapTo(mutableSetOf()) { it.first }
-            groundCandidateTracker.adoptTap(hit.x, hit.y, hit.z)?.let { adoptedId ->
-                if (adoptedId !in scanningBeforeTap) {
-                    ScanSessionTelemetry.active?.detection(
-                        label = null, confidence = null,
-                        distanceM = groundCandidatePackets[adoptedId]?.distanceM?.toDouble(),
-                        source = "tap", outcome = "accepted",
-                    )
-                }
-            }
+            // Build 172 (phantom-dot root cause): adoption is DEFERRED to
+            // pill CONFIRM. Adopting here gave the ground candidate
+            // user-intent completion rights the moment the tap geo-resolved
+            // — it then auto-filed at the 0.6 progress bar even when the
+            // user answered "Not litter" (or ignored the pill entirely):
+            // Blake's 171 walk filed a ~1g "Litter" dot from an explicit
+            // rejection. The world point is stashed (tick thread); only
+            // confirmTapCandidate() promotes it to an adoption.
+            pendingAdoptWorld = Triple(hit.x, hit.y, hit.z)
         },
     )
+
+    /** Tick-thread stash of the last geo-resolved tap's world point — the
+     *  adoption candidate IF the pill is confirmed. Cleared on reject and
+     *  dismiss. See onTapGeoResolved. */
+    private var pendingAdoptWorld: Triple<Float, Float, Float>? = null
+
+    /** Main→tick adoption order, set by [confirmTapCandidate] (last-write-
+     *  wins slot, same contract as pendingIntentAnswer). */
+    private var pendingTapAdoption: Triple<Float, Float, Float>? = null
     actual val tapCandidate: StateFlow<TapCandidateState> = tapEngine.tapCandidate
 
     private val _groundIntentPrompt = MutableStateFlow<GroundIntentPrompt?>(null)
@@ -747,11 +752,25 @@ actual class ArEnvScanOverlay actual constructor() {
         return localToLatLng(x, z, refLat, refLng, refX, refZ, lngScale)
     }
 
-    actual fun confirmTapCandidate(): TapCandidateState? = tapEngine.confirm()
+    actual fun confirmTapCandidate(): TapCandidateState? {
+        val confirmed = tapEngine.confirm()
+        if (confirmed != null) {
+            // The user vouched — NOW the ground candidate at the tapped
+            // point may adopt (consumed at the top of driveGroundCandidates
+            // on the tick thread; see onTapGeoResolved for why not earlier).
+            pendingTapAdoption = pendingAdoptWorld
+        }
+        pendingAdoptWorld = null
+        return confirmed
+    }
 
-    actual fun rejectTapCandidate(): TapCandidateState? = tapEngine.reject()
+    actual fun rejectTapCandidate(): TapCandidateState? {
+        pendingAdoptWorld = null // explicit "not litter" — nothing may adopt
+        return tapEngine.reject()
+    }
 
     actual fun dismissTapCandidate() {
+        pendingAdoptWorld = null // unanswered pill — an accidental tap costs nothing
         tapEngine.dismiss()
     }
 
@@ -1092,6 +1111,18 @@ actual class ArEnvScanOverlay actual constructor() {
         // returns the candidate to SCANNING so completedCandidates below
         // files it this same tick).
         processPendingIntentAnswer(native)
+        // Confirmed-tap adoption (build 172: adoption follows the pill
+        // CONFIRM, never the tap itself — see onTapGeoResolved).
+        pendingTapAdoption?.let { (x, y, z) ->
+            pendingTapAdoption = null
+            groundCandidateTracker.adoptTap(x, y, z)?.let { adoptedId ->
+                ScanSessionTelemetry.active?.detection(
+                    label = null, confidence = null,
+                    distanceM = groundCandidatePackets[adoptedId]?.distanceM?.toDouble(),
+                    source = "tap", outcome = "accepted",
+                )
+            }
+        }
 
         // Step 1: ingest this tick's LiDAR anomaly packets. groundCandidatePackets
         // mirrors the latest geometry for every id fed to the tracker — see its
@@ -1504,7 +1535,16 @@ actual class ArEnvScanOverlay actual constructor() {
 
         val imageX = visionX
         val imageY = 1.0 - visionY
-        val hit = tapEngine.raycastImage(frame, imageX, imageY)
+        var hit = tapEngine.raycastImage(frame, imageX, imageY)
+        // ON-THE-GROUND gate (build 172): building WINDOWS classify "glass"
+        // at eye height and were promoted with reticle + "Trash spotted"
+        // caption. Litter sits on the ground — a hit more than 1m above the
+        // established floor cannot promote (null hit = the near/streak gates
+        // below fail exactly as if the raycast missed).
+        val floorY = native?.floorHeightY()
+        if (hit != null && floorY != null && floorY.isFinite() && hit.y - floorY > 1.0f) {
+            hit = null
+        }
         val distance = hit?.distance
 
         val viewX = (1.0 - imageY).toFloat()
