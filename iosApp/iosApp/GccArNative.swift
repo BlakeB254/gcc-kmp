@@ -406,6 +406,12 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     /// ~19.5:9 screen crops ~19% of the image per side), mislocating taps by
     /// up to a meter at range — "it selected an area I didn't tap"
     /// (build 170 root cause). Empty when no frame yet.
+    func setGroundSensorCaps(maxFootprintM: Float, maxHeightM: Float) {
+        // Sanity-clamped: remote tuning may adjust, never break.
+        GroundAnomalyDetector.maxFootprintM = min(max(maxFootprintM, 0.3), 3.0)
+        GroundAnomalyDetector.maxHeightM = min(max(maxHeightM, 0.2), 1.5)
+    }
+
     func floorHeightY() -> Double {
         frameLock.lock()
         defer { frameLock.unlock() }

@@ -10,10 +10,13 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 
 /**
- * Global in-app diagnostics log for field testing: every scan-flow error (and
- * key lifecycle events) lands here so an on-screen panel ([com.gcc.app.ui.components.DiagnosticsOverlay])
- * can show the tail — an error screenshot then carries the "why", not just
- * the symptom. Entries also go to stdout (NSLog/logcat) for tethered debugging.
+ * Global scan diagnostics log: every scan-flow error (and key lifecycle
+ * event) lands here and ships with the session — the mixed tail in
+ * `EnvScanManifest.diagnosticsLog`, the complete error ring in
+ * `EnvScanManifest.errorLog` (build 175: the on-screen 🐞 badge was
+ * retired; telemetry now travels with the scan data to the reconstruction
+ * backend, where analyze_scan_errors.py aggregates it). Entries also go to
+ * stdout (NSLog/logcat) for tethered debugging.
  *
  * Ring buffer, newest first, capped at [MAX_ENTRIES]; safe to call from any
  * thread/coroutine (single atomic StateFlow update per append).
@@ -46,8 +49,6 @@ object DiagnosticsLog {
     /** Newest first. */
     val entries: StateFlow<List<Entry>> = _entries.asStateFlow()
 
-    private val _errorCount = MutableStateFlow(0)
-    val errorCount: StateFlow<Int> = _errorCount.asStateFlow()
 
     /**
      * Flight-recorder mirror (scan-session-replay PRD Phase 1): while a scan
@@ -93,10 +94,26 @@ object DiagnosticsLog {
         append(Level.ERROR, tag, message + detail)
     }
 
+    /** Dedicated ERROR ring (newest first): errors must survive info-line
+     *  churn — the mixed [MAX_ENTRIES] ring can evict every error on a long
+     *  session, which is exactly when they matter. Ships COMPLETE (up to
+     *  the cap) in `EnvScanManifest.errorLog` to the reconstruction
+     *  backend's bucket, where analyze_scan_errors.py aggregates it
+     *  (Blake 2026-07-29: error telemetry to the world-model backend). */
+    private const val MAX_ERROR_ENTRIES = 200
+    private val _errorEntries = kotlinx.coroutines.flow.MutableStateFlow<List<Entry>>(emptyList())
+
+    /** Every ERROR line this session (chronological), for the manifest.
+     *  Null when clean so the wire field stays absent. */
+    fun errorLinesForManifest(): List<String>? =
+        _errorEntries.value.asReversed().map { it.format() }.ifEmpty { null }
+
     private fun append(level: Level, tag: String, message: String) {
         val entry = Entry(Clock.System.now().toEpochMilliseconds(), level, tag, message)
         _entries.value = (listOf(entry) + _entries.value).take(MAX_ENTRIES)
-        if (level == Level.ERROR) _errorCount.value += 1
+        if (level == Level.ERROR) {
+            _errorEntries.value = (listOf(entry) + _errorEntries.value).take(MAX_ERROR_ENTRIES)
+        }
         // A sink failure must never take down the code path that logged —
         // the event log is telemetry, the log line is the product.
         try {

@@ -971,6 +971,7 @@ class SpotViewModel(
                     arFrameConvention = EnvScanManifest.AR_FRAME_CONVENTION,
                     rejectedItems = rejectedSnapshot.ifEmpty { null },
                     diagnosticsLog = DiagnosticsLog.tailForManifest(),
+                    errorLog = DiagnosticsLog.errorLinesForManifest(),
                     multiItemPhotoKeys = multiItemPhotoKeys,
                     surfaceBreakdown = draft.surfaceBreakdown.ifEmpty { null },
                 )

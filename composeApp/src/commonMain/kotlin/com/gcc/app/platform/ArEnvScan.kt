@@ -155,6 +155,9 @@ expect class ArEnvScanOverlay() {
      *  planted once per session. */
     fun syncExpectedTrashMarkers(points: List<Pair<Double, Double>>)
 
+    /** Push remote ScanTuning sensor caps down to the LiDAR detector. */
+    fun setGroundSensorCaps(maxFootprintM: Float, maxHeightM: Float)
+
     /** The user answered "yes, litter" on [groundIntentPrompt]: the candidate
      *  completes through the normal filing path (evidence photo, geo-ref,
      *  weight) with user-intent provenance. No-op when nothing is pending. */

@@ -215,6 +215,15 @@ data class EnvScanManifest(
      * or when no cell was close enough to tag.
      */
     val surfaceBreakdown: Map<String, Int>? = null,
+    /**
+     * COMPLETE error-level log for the session (chronological, capped at
+     * 200 lines client-side) — unlike [diagnosticsLog] (a mixed-severity
+     * tail that can rotate errors out), this is every error the session
+     * hit. Feeds scripts/reconstruction/analyze_scan_errors.py, whose
+     * findings drive the /api/scan-config tuning loop. Null = clean
+     * session or pre-175 client.
+     */
+    val errorLog: List<String>? = null,
 ) {
     companion object {
         /** ARKit `gravityAndHeading`: +X = east, +Y = up (gravity-aligned),

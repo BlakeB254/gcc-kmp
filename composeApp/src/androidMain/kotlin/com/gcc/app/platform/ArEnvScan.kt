@@ -33,6 +33,7 @@ actual class ArEnvScanOverlay actual constructor() {
     actual fun consumeMarkedRegion(): TapSweepItem? = null
     actual fun addConfirmedTrashMarker(worldX: Float, worldY: Float, worldZ: Float) {}
     actual fun syncExpectedTrashMarkers(points: List<Pair<Double, Double>>) {}
+    actual fun setGroundSensorCaps(maxFootprintM: Float, maxHeightM: Float) {}
     actual fun rejectGroundIntentPrompt() {}
     actual suspend fun captureTapEvidencePhoto(): CapturedPhoto? = null
     actual fun confirmTapCandidate(): TapCandidateState? = null

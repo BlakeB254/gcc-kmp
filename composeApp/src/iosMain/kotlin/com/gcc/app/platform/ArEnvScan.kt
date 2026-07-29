@@ -787,6 +787,10 @@ actual class ArEnvScanOverlay actual constructor() {
     actual fun markRegion(x0: Double, y0: Double, x1: Double, y1: Double) =
         tapEngine.queueMarkRegion(x0, y0, x1, y1)
 
+    actual fun setGroundSensorCaps(maxFootprintM: Float, maxHeightM: Float) {
+        nativeSurface?.setGroundSensorCaps(maxFootprintM, maxHeightM)
+    }
+
     actual fun addConfirmedTrashMarker(worldX: Float, worldY: Float, worldZ: Float) {
         nativeSurface?.addMarker(worldX.toDouble(), worldY.toDouble(), worldZ.toDouble(), kind = 0)
     }

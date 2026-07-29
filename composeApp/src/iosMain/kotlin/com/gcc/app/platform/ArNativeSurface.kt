@@ -254,6 +254,11 @@ interface ArNativeSurface {
      * re-show it as a fresh reticle. Same rule for timed-out ids after
      * [clearScanReticle].
      */
+    /** Remote-tunable LiDAR sensor caps (ScanTuning → GroundAnomalyDetector):
+     *  max candidate footprint span and height. Applied at scan open; the
+     *  compiled defaults remain until the first call. */
+    fun setGroundSensorCaps(maxFootprintM: Float, maxHeightM: Float) {}
+
     /** Established floor height in AR world Y, or NaN before any floor plane
      *  is known. Gates 2D-classifier promotions to ON-THE-GROUND hits —
      *  build 172: building WINDOWS classified "glass" and promoted at

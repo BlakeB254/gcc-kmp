@@ -47,13 +47,16 @@ final class GroundAnomalyDetector {
     /// gate outright. Fixture/backdrop classification and the user-confirm
     /// flow guard the top end; the geometric cap only needs to exclude
     /// people/cars, which the footprint cap already does.
-    private static let maxHeightM: Float = 0.9
+    static var maxHeightM: Float = 0.9
     private static let minFootprintM: Float = 0.05
     /// 1.0 → 1.4 (build 171, Blake's 170 field run): a large dumped trash
     /// bag spans >1m and was rejected outright — only the small can beside
     /// it identified. Cars stay excluded by span in their long axis plus
     /// the fixture veto downstream; people by the height cap.
-    private static let maxFootprintM: Float = 1.4
+    /// `var` (build 175): remote-tunable via ScanTuning/setGroundSensorCaps
+    /// — written once at scan open before analysis starts, read on the
+    /// analysis queue.
+    static var maxFootprintM: Float = 1.4
     private static let maxGridWidth = 64
     private static let maxGridHeight = 48
     private static let maxCandidates = 8

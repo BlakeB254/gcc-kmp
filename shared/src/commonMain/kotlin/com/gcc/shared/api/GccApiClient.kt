@@ -1015,6 +1015,18 @@ class GccApiClient(
      * (non-superseded, non-excluded) observations from both route scans and
      * spot reports. Optional [bbox] is "minLng,minLat,maxLng,maxLat".
      */
+    /** Remote scan tuning — the error-analysis feedback knobs. FAIL-OPEN:
+     *  any transport/parse problem returns compiled defaults; a scan must
+     *  never block on config. */
+    suspend fun getScanTuning(): ScanTuning = try {
+        val response = httpClient.get("$baseUrl/api/scan-config")
+        if (response.status.isSuccess()) {
+            json.decodeFromString<ScanTuning>(response.bodyAsText())
+        } else ScanTuning()
+    } catch (_: Exception) {
+        ScanTuning()
+    }
+
     suspend fun getMapObservations(bbox: String? = null, since: String? = null): List<WorldObservation> {
         val response = httpClient.get("$baseUrl/api/map/observations") {
             bbox?.let { parameter("bbox", it) }

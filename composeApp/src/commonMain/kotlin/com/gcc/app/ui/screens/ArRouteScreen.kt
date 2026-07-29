@@ -55,7 +55,6 @@ import com.gcc.app.platform.WorldMarkerKind
 import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.ui.components.ConfirmingOutdoorsChip
 import com.gcc.app.ui.components.DetectionReticleOverlay
-import com.gcc.app.ui.components.DiagnosticsOverlay
 import com.gcc.app.ui.components.GoOutsideOverlay
 import com.gcc.app.ui.components.PointsPip
 import com.gcc.app.ui.components.PointsPipOverlay
@@ -604,7 +603,6 @@ fun ArRouteScreen(
             modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 18.dp),
         )
 
-        DiagnosticsOverlay()
 
         // Tap-to-confirm candidate pill (bottom-center) — sits above the lap
         // fill bar so its buttons stay reachable while a candidate is live.

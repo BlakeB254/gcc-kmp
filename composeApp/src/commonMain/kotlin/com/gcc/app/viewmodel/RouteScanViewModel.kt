@@ -1453,6 +1453,7 @@ class RouteScanViewModel(
                     geoRefEvents = draft.geoRefEvents.ifEmpty { null },
                     arFrameConvention = EnvScanManifest.AR_FRAME_CONVENTION,
                     diagnosticsLog = DiagnosticsLog.tailForManifest(),
+                    errorLog = DiagnosticsLog.errorLinesForManifest(),
                 )
                 sessionUploader.uploadOrQueue(manifest, eventLines)
             } catch (e: Exception) {

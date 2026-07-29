@@ -331,7 +331,6 @@ fun SpotScreen(
                 )
             }
 
-            DiagnosticsOverlay()
         }
     }
 }
@@ -1394,6 +1393,19 @@ private fun CameraPhase(
         // Task 17: multi-item reticles — same gating as the single reticle
         // above (frozen/hidden while the confirm card is up).
         if (trashCandidate == null) MultiItemDetectionOverlay(reticles = multiItemReticles)
+        // Remote scan tuning (error-analysis feedback loop): fetched once
+        // per scan open, fail-open to compiled defaults. Applies the safe
+        // knobs only — feature toggles here, sensor caps down to the LiDAR
+        // detector.
+        var scanTuning by remember { mutableStateOf(com.gcc.shared.model.ScanTuning()) }
+        LaunchedEffect(arOverlay) {
+            if (arOverlay == null) return@LaunchedEffect
+            scanTuning = apiClient.getScanTuning()
+            arOverlay.setGroundSensorCaps(scanTuning.sensorMaxFootprintM, scanTuning.sensorMaxHeightM)
+            if (scanTuning.revision > 0) {
+                DiagnosticsLog.info("scan-tuning", "applied revision ${scanTuning.revision}: ${scanTuning.notes ?: ""}")
+            }
+        }
         // A tapped candidate outranks the passive auto-detect reticle.
         val confirmScope = rememberCoroutineScope()
         // Undo window: the last confirm action (tap/sweep/drawn) can be
@@ -1489,7 +1501,7 @@ private fun CameraPhase(
             if (markedRegion == null) return@LaunchedEffect
             pendingDrawn = arOverlay?.consumeMarkedRegion()
         }
-        pendingDrawn?.let { drawn ->
+        pendingDrawn?.takeIf { scanTuning.drawnMarkEnabled }?.let { drawn ->
             Row(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1563,7 +1575,7 @@ private fun CameraPhase(
         // pill above still handles the tapped item itself.
         val tapSweepState by (arOverlay?.tapSweep
             ?: remember { MutableStateFlow<TapSweepState?>(null) }).collectAsState()
-        tapSweepState?.let { sweep ->
+        tapSweepState?.takeIf { scanTuning.sweepEnabled }?.let { sweep ->
             androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
                 sweep.items.forEach { item ->
                     val center = Offset(

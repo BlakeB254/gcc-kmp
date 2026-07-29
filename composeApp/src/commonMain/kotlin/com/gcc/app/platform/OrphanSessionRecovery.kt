@@ -230,6 +230,7 @@ internal suspend fun recoverOrphanScanSessions(
                 // run's recovery-sweep lines, not the crashed run's (the ring
                 // buffer is in-memory only).
                 diagnosticsLog = DiagnosticsLog.tailForManifest(),
+                    errorLog = DiagnosticsLog.errorLinesForManifest(),
             )
             // uploadOrQueue never throws (it queues internally on failure —
             // including the event log, which persists beside the manifest) —
