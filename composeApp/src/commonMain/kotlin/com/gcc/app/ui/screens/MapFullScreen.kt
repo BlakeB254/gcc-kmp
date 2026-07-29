@@ -79,6 +79,11 @@ import org.koin.compose.koinInject
 // the fetch LaunchedEffect for why a tighter My-Area box lost cells.
 private const val COVERAGE_FETCH_PAD_DEGREES = 0.02
 
+/** "Verify clean with a scan" only opens the scanner when the tapped area
+ *  is walkably close — the scan's geofenced credit and the 5m proximity
+ *  clean-confirm do the real verification once there. */
+private const val VERIFY_CLEAN_SCAN_RADIUS_METERS = 120.0
+
 @Composable
 fun MapFullScreen(
     onBack: () -> Unit = {},
@@ -224,6 +229,8 @@ fun MapFullScreen(
     // state), and every successful fetch snapshots into the scan-area cache so
     // the map has a last-known coverage picture offline / at next open.
     var coverageCells by remember { mutableStateOf(listOf<com.gcc.shared.model.MapCoverageCell>()) }
+    // Transient hint line (auto-clears) — e.g. "walk closer to verify".
+    var mapNotice by remember { mutableStateOf<String?>(null) }
     // Current observations near the viewport — the "what the last scan found"
     // payload behind the coverage-cell info card.
     var mapObservations by remember { mutableStateOf(listOf<com.gcc.shared.model.WorldObservation>()) }
@@ -890,37 +897,49 @@ fun MapFullScreen(
 
             // Coverage-cell info card — tap a scanned (green/amber) tile to
             // see when it was last scanned and what that scan found nearby.
+            mapNotice?.let { notice ->
+                LaunchedEffect(notice) {
+                    kotlinx.coroutines.delay(3500)
+                    mapNotice = null
+                }
+                Text(
+                    notice,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.White,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .statusBarsPadding()
+                        .padding(top = 60.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.Black.copy(alpha = 0.75f))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                )
+            }
             selectedCoverageCell?.let { cell ->
-                val rectifyScope = rememberCoroutineScope()
                 CoverageCellInfoCard(
                     cell = cell,
                     observations = mapObservations,
                     allCells = coverageCells,
                     onMarkClean = {
-                        // One tap rectifies the tapped blob: server marks the
-                        // location clean; locally the blob's litter zeroes and
-                        // its observations drop so the color corrects
-                        // immediately (the next poll re-syncs from server).
-                        val blob = com.gcc.app.ui.map.sameColorBlobCells(cell, coverageCells)
-                        val blobIds = blob.map { it.locationCellId }.toSet()
-                        val lngScale = kotlin.math.cos(cell.lat * kotlin.math.PI / 180.0)
-                        mapObservations = mapObservations.filterNot { obs ->
-                            blob.any { blobCell ->
-                                val dLatM = (obs.lat - blobCell.lat) * 111_320.0
-                                val dLngM = (obs.lng - blobCell.lng) * 111_320.0 * lngScale
-                                dLatM * dLatM + dLngM * dLngM < 8.0 * 8.0
-                            }
+                        // Scan-verified clean (Blake 2026-07-29): no armchair
+                        // clearing — the button opens the environment scan
+                        // when the user is CLOSE, and the in-scan flows
+                        // (orange expected discs -> proximity clean-confirm)
+                        // do the actual rectification with a scan session
+                        // behind it. Far away = honest hint, no action.
+                        val here = locationProvider.currentLocation.value
+                        val distanceM = here?.let {
+                            com.gcc.shared.geo.GeofenceVerification.distanceMeters(
+                                it.lat, it.lng, cell.lat, cell.lng,
+                            )
                         }
-                        coverageCells = coverageCells.map {
-                            if (it.locationCellId in blobIds) it.copy(litterCount = 0, litterWeightGrams = 0.0) else it
-                        }
-                        selectedCoverageCell = null
-                        rectifyScope.launch {
-                            try {
-                                gccApiClient.rectifyObservationAtLocation(cell.lat, cell.lng)
-                            } catch (e: Exception) {
-                                DiagnosticsLog.error("map-rectify", "mark-clean from map failed (local view already corrected)", e)
-                            }
+                        if (distanceM != null && distanceM <= VERIFY_CLEAN_SCAN_RADIUS_METERS) {
+                            selectedCoverageCell = null
+                            onNavigateToSpot()
+                        } else {
+                            mapNotice = distanceM?.let {
+                                "Walk closer to verify — this area is ~${it.toInt()}m away"
+                            } ?: "Waiting for GPS — try again in a moment"
                         }
                     },
                     onDismiss = { selectedCoverageCell = null },
@@ -2127,7 +2146,7 @@ private fun CoverageCellInfoCard(
                         onClick = onMarkClean,
                         modifier = Modifier.align(Alignment.CenterHorizontally),
                     ) {
-                        Text("Mark this area clean ✓", color = GccGreen)
+                        Text("Verify clean with a scan", color = GccGreen)
                     }
                 }
             }
