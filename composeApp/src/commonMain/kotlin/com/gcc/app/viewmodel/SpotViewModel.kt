@@ -458,28 +458,63 @@ class SpotViewModel(
         ScanSessionTelemetry.active?.confirm(displayLabel)
         val itemType = TrashItemCatalog.canonicalType(displayLabel)
         photo?.let { addPhoto(it) }
-        addObservedItem(
-            ObservedSpotItem(
-                lat = lat,
-                lng = lng,
-                itemType = itemType,
-                confidence = if (typeOverride != null) null else candidate.confidence,
-                domain = "litter",
-                provenance = PROVENANCE_USER_CONFIRMED,
-                // No LiDAR box on the tap path — use the type's typical mass
-                // so the live weight tally and the marker's weight field stop
-                // reading a confirmed item as 0 g.
-                estimatedWeightGrams = TrashItemCatalog.estimateWeightGrams(itemType, null),
-                // Stage-2 flywheel: the evaluated crop + label provenance.
-                imageCx = candidate.imageCx,
-                imageCy = candidate.imageCy,
-                imageHalfW = candidate.imageHalf,
-                imageHalfH = candidate.imageHalf,
-                labelSource = labelSource,
-                atMs = Clock.System.now().toEpochMilliseconds(),
-            ),
-            photoBytes = photo?.bytes,
+        val observed = ObservedSpotItem(
+            lat = lat,
+            lng = lng,
+            itemType = itemType,
+            confidence = if (typeOverride != null) null else candidate.confidence,
+            domain = "litter",
+            provenance = PROVENANCE_USER_CONFIRMED,
+            // No LiDAR box on the tap path — use the type's typical mass
+            // so the live weight tally and the marker's weight field stop
+            // reading a confirmed item as 0 g.
+            estimatedWeightGrams = TrashItemCatalog.estimateWeightGrams(itemType, null),
+            // Stage-2 flywheel: the evaluated crop + label provenance.
+            imageCx = candidate.imageCx,
+            imageCy = candidate.imageCy,
+            imageHalfW = candidate.imageHalf,
+            imageHalfH = candidate.imageHalf,
+            labelSource = labelSource,
+            atMs = Clock.System.now().toEpochMilliseconds(),
         )
+        addObservedItem(observed, photoBytes = photo?.bytes)
+        lastConfirmBatch = listOf(observed)
+    }
+
+    /** The items added by the most recent confirm action — the UNDO window's
+     *  target (Blake 2026-07-29: mistakes must be erasable). Keyed off atMs
+     *  at removal time, which naturally no-ops for dedup-UPGRADED existing
+     *  items (they keep their original stamp) so undoing a retap-confirm
+     *  can't delete a genuine earlier observation. */
+    private var lastConfirmBatch: List<ObservedSpotItem> = emptyList()
+
+    /**
+     * Reverse the most recent confirm: drop its items + evidence-strip
+     * entries locally and best-effort rectify each location server-side (the
+     * marker upload may already have landed — rectify resolves it exactly
+     * like a "mark clean" answer would). AR discs planted for the batch stay
+     * until session end (harmless; the data is gone).
+     */
+    fun undoLastConfirm(): Boolean {
+        val batch = lastConfirmBatch
+        lastConfirmBatch = emptyList()
+        if (batch.isEmpty()) return false
+        val stamps = batch.mapNotNull { it.atMs }.toSet()
+        _uiState.value = _uiState.value.copy(
+            observedItems = _uiState.value.observedItems.filterNot { it.atMs in stamps },
+            litterEvidence = _uiState.value.litterEvidence.filterNot { it.atMs in stamps },
+        )
+        scope.launch {
+            batch.distinctBy { gridCell10m(it.lat, it.lng) }.forEach { item ->
+                runCatching { apiClient.rectifyObservationAtLocation(item.lat, item.lng) }
+                    .onFailure { DiagnosticsLog.error("undo", "server-side undo rectify failed (local removed)", it) }
+            }
+        }
+        ScanSessionTelemetry.active?.detection(
+            label = null, confidence = null, distanceM = null,
+            source = "undo", outcome = "removed:${batch.size}",
+        )
+        return true
     }
 
     /** Confirm-all on a tap sweep (Blake 2026-07-28): every swept region
@@ -493,30 +528,31 @@ class SpotViewModel(
         if (items.isEmpty()) return
         photo?.let { addPhoto(it) }
         ScanSessionTelemetry.active?.confirm("sweep:${items.size}")
+        val batch = mutableListOf<ObservedSpotItem>()
         items.forEach { item ->
             val itemType = TrashItemCatalog.canonicalType(item.label ?: UNKNOWN_LITTER_LABEL)
-            addObservedItem(
-                ObservedSpotItem(
-                    lat = item.lat,
-                    lng = item.lng,
-                    itemType = itemType,
-                    confidence = null,
-                    domain = "litter",
-                    provenance = PROVENANCE_USER_CONFIRMED,
-                    estimatedWeightGrams = TrashItemCatalog.estimateWeightGrams(itemType, null),
-                    imageCx = item.imageCx,
-                    imageCy = item.imageCy,
-                    imageHalfW = item.imageHalfW,
-                    imageHalfH = item.imageHalfH,
-                    atMs = Clock.System.now().toEpochMilliseconds(),
-                ),
-                // The shared frame rides EVERY batch item: each map dot gets
-                // a photo and each item gets a summary evidence-strip entry
-                // (Blake 2026-07-28: all trash images post-scan + on the
-                // map). ≤5 items per sweep bounds the duplicate uploads.
-                photoBytes = photo?.bytes,
+            val observed = ObservedSpotItem(
+                lat = item.lat,
+                lng = item.lng,
+                itemType = itemType,
+                confidence = null,
+                domain = "litter",
+                provenance = PROVENANCE_USER_CONFIRMED,
+                estimatedWeightGrams = TrashItemCatalog.estimateWeightGrams(itemType, null),
+                imageCx = item.imageCx,
+                imageCy = item.imageCy,
+                imageHalfW = item.imageHalfW,
+                imageHalfH = item.imageHalfH,
+                atMs = Clock.System.now().toEpochMilliseconds(),
             )
+            // The shared frame rides EVERY batch item: each map dot gets
+            // a photo and each item gets a summary evidence-strip entry
+            // (Blake 2026-07-28: all trash images post-scan + on the
+            // map). ≤5 items per sweep bounds the duplicate uploads.
+            addObservedItem(observed, photoBytes = photo?.bytes)
+            batch.add(observed)
         }
+        lastConfirmBatch = batch
     }
 
     /** A ground-candidate scan completed (auto or via the intent prompt). A

@@ -138,6 +138,10 @@ data class TapSweepItem(
     /** Normalized VIEW point for the on-screen marker dot. */
     val viewX: Double,
     val viewY: Double,
+    /** AR-world hit point — anchors the persistent AR marker on confirm. */
+    val worldX: Float = 0f,
+    val worldY: Float = 0f,
+    val worldZ: Float = 0f,
     /** Classifier guess, if any — display/typing hint only; naming is the
      *  backend's job (labels ride the manifest for the recon pipeline). */
     val label: String? = null,

@@ -123,6 +123,7 @@ internal class TapToConfirmEngine(
             imageHalfW = halfW, imageHalfH = halfH,
             viewX = (region[0] + region[2]) / 2.0,
             viewY = (region[1] + region[3]) / 2.0,
+            worldX = hit.x, worldY = hit.y, worldZ = hit.z,
             label = TrashDetectionRules.trashLabelFrom(labels),
         )
     }
@@ -245,6 +246,7 @@ internal class TapToConfirmEngine(
                         imageHalfW = halfW, imageHalfH = halfH,
                         viewX = viewPoint?.getOrNull(0) ?: cx,
                         viewY = viewPoint?.getOrNull(1) ?: cyTopDown,
+                        worldX = hit.x, worldY = hit.y, worldZ = hit.z,
                         label = TrashDetectionRules.trashLabelFrom(labels),
                     ),
                 )

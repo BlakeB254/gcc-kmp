@@ -583,6 +583,8 @@ actual class ArEnvScanOverlay actual constructor() {
         refZ = position[2]
         lngScale = lngScaleFor(lat)
         hasGeoRef = true
+        // Any expected-trash markers queued before the pairing can plant now.
+        plantExpectedMarkersIfReady()
         // The pairing record the DGX splat pipeline registers the AR-local
         // pose stream with: BOTH clocks (epoch ms + ARKit frame time, the
         // pose sidecar's clock) and BOTH frames (lat/lng + AR-local camera
@@ -759,6 +761,8 @@ actual class ArEnvScanOverlay actual constructor() {
             // point may adopt (consumed at the top of driveGroundCandidates
             // on the tick thread; see onTapGeoResolved for why not earlier).
             pendingTapAdoption = pendingAdoptWorld
+            // And the spot gets its persistent green AR disc.
+            pendingAdoptWorld?.let { (x, y, z) -> addConfirmedTrashMarker(x, y, z) }
         }
         pendingAdoptWorld = null
         return confirmed
@@ -782,6 +786,39 @@ actual class ArEnvScanOverlay actual constructor() {
 
     actual fun markRegion(x0: Double, y0: Double, x1: Double, y1: Double) =
         tapEngine.queueMarkRegion(x0, y0, x1, y1)
+
+    actual fun addConfirmedTrashMarker(worldX: Float, worldY: Float, worldZ: Float) {
+        nativeSurface?.addMarker(worldX.toDouble(), worldY.toDouble(), worldZ.toDouble(), kind = 0)
+    }
+
+    /** Session-scope dedup for expected markers (10m-cell keyed) + the
+     *  pre-geo-ref queue [syncExpectedTrashMarkers] promises. */
+    private val plantedExpectedCells = mutableSetOf<String>()
+    private var pendingExpectedPoints: List<Pair<Double, Double>> = emptyList()
+
+    actual fun syncExpectedTrashMarkers(points: List<Pair<Double, Double>>) {
+        pendingExpectedPoints = points
+        plantExpectedMarkersIfReady()
+    }
+
+    private fun plantExpectedMarkersIfReady() {
+        if (!hasGeoRef) return
+        val surface = nativeSurface ?: return
+        val floorY = surface.floorHeightY()
+        for ((lat, lng) in pendingExpectedPoints) {
+            val key = com.gcc.shared.geo.gridCell10m(lat, lng)
+            if (key in plantedExpectedCells) continue
+            val local = latLngToLocal(lat, lng, refLat, refLng, refX, refZ, lngScale)
+            val dx = local.first - refX
+            val dz = local.second - refZ
+            // Placement error grows with distance from the geo-ref anchor —
+            // same cap rationale as the guidance beacon.
+            if (dx * dx + dz * dz > 50.0 * 50.0) continue
+            plantedExpectedCells.add(key)
+            val y = if (floorY.isFinite()) floorY + 0.03 else (refY - GROUND_OFFSET_METERS).toDouble()
+            surface.addMarker(local.first, y, local.second, kind = 1)
+        }
+    }
 
     actual val markedRegion: StateFlow<TapSweepItem?> get() = tapEngine.markedRegion
 
@@ -1306,6 +1343,12 @@ actual class ArEnvScanOverlay actual constructor() {
         groundCandidateTracker.completedCandidates().forEach { completed ->
             groundCandidatePackets.remove(completed.id)
             native.completeScanReticle(completed.id)
+            // Persistent green disc where the item was identified — the
+            // completion reticle dissolves after 1.5s, but the SPOT stays
+            // marked for the rest of the session (Blake 2026-07-29).
+            native.addMarker(
+                completed.x.toDouble(), completed.y.toDouble(), completed.z.toDouble(), kind = 0,
+            )
             val listener = groundCandidateCompletedListener
             if (listener != null) {
                 // Same conversion the element-registration path uses

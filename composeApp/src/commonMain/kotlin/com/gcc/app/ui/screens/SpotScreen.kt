@@ -240,6 +240,7 @@ fun SpotScreen(
                     onConfirmedSweepItems = { items, photo ->
                         viewModel.addConfirmedSweepItems(items, photo)
                     },
+                    onUndoLastConfirm = { viewModel.undoLastConfirm() },
                     onRejectedTapItem = { candidate -> viewModel.addRejectedTapItem(candidate) },
                     submitError = uiState.error,
                     onPurgeRecentCaptures = { cutoff -> viewModel.purgeRecentCaptures(cutoff) },
@@ -360,6 +361,8 @@ private fun CameraPhase(
     onRejectedTapItem: (TapCandidateState) -> Unit = {},
     /** Confirm-all on a tap sweep's batch (items + one shared evidence photo). */
     onConfirmedSweepItems: (List<TapSweepItem>, CapturedPhoto?) -> Unit = { _, _ -> },
+    /** Reverse the most recent confirm (the UNDO bar). True when something was removed. */
+    onUndoLastConfirm: () -> Boolean = { false },
     submitError: String? = null,
     onPurgeRecentCaptures: (Long) -> Unit = {},
     /** Drains the confirmed-litter marker queue (30s cadence + dispose). */
@@ -1393,6 +1396,9 @@ private fun CameraPhase(
         if (trashCandidate == null) MultiItemDetectionOverlay(reticles = multiItemReticles)
         // A tapped candidate outranks the passive auto-detect reticle.
         val confirmScope = rememberCoroutineScope()
+        // Undo window: the last confirm action (tap/sweep/drawn) can be
+        // reversed for a few seconds — the friendliest mistake eraser.
+        var undoVisibleUntilMs by remember { mutableStateOf(0L) }
         if (trashCandidate == null && tapCandidate.phase != TapPhase.IDLE) {
             TapCandidatePill(
                 state = tapCandidate,
@@ -1414,6 +1420,7 @@ private fun CameraPhase(
                             confirmScope.launch {
                                 val photo = arOverlay?.captureTapEvidencePhoto()
                                 onConfirmedTapItem(confirmed, photo, null, null)
+                                undoVisibleUntilMs = Clock.System.now().toEpochMilliseconds() + 6_000
                             }
                         }
                     }
@@ -1464,21 +1471,90 @@ private fun CameraPhase(
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp),
             )
         }
-        // Drawn-region marking: the drawing is the confirmation — file the
-        // resolved region the moment the tick thread publishes it, with a
-        // toast instead of any popup (Blake 2026-07-28 round 3).
+        // Returning-scan anchors (Blake 2026-07-29): the server's known
+        // dirty observations near this scan render as pulsing orange AR
+        // discs — yesterday's find is visible IN PLACE, so still-there /
+        // now-clean verification is a glance, not map reading.
+        LaunchedEffect(expectedDirty) {
+            arOverlay?.syncExpectedTrashMarkers(expectedDirty.map { it.lat to it.lng })
+        }
+
+        // Drawn-region marking (Blake 2026-07-29 revision): a drawn box now
+        // requires a CONFIRM — an accidental drag was filing spots with no
+        // way to cancel. The resolved region parks here until answered.
+        var pendingDrawn by remember { mutableStateOf<TapSweepItem?>(null) }
         val markedRegion by (arOverlay?.markedRegion
             ?: remember { MutableStateFlow<TapSweepItem?>(null) }).collectAsState()
         LaunchedEffect(markedRegion) {
-            val region = markedRegion ?: return@LaunchedEffect
-            arOverlay?.consumeMarkedRegion() ?: return@LaunchedEffect
-            if (!gate.captureAllowed.value) {
-                toast = "Scan paused indoors — step outside and mark again"
-                return@LaunchedEffect
+            if (markedRegion == null) return@LaunchedEffect
+            pendingDrawn = arOverlay?.consumeMarkedRegion()
+        }
+        pendingDrawn?.let { drawn ->
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 216.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color.Black.copy(alpha = 0.72f))
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+            ) {
+                Text(
+                    "Mark the drawn area as litter?",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White,
+                )
+                TextButton(onClick = { pendingDrawn = null }) {
+                    Text("Cancel", color = Color.White.copy(alpha = 0.7f))
+                }
+                Button(
+                    onClick = {
+                        pendingDrawn = null
+                        if (!gate.captureAllowed.value) {
+                            toast = "Scan paused indoors — step outside and mark again"
+                        } else {
+                            confirmScope.launch {
+                                val photo = arOverlay?.captureTapEvidencePhoto()
+                                onConfirmedSweepItems(listOf(drawn), photo)
+                                arOverlay?.addConfirmedTrashMarker(drawn.worldX, drawn.worldY, drawn.worldZ)
+                                undoVisibleUntilMs = Clock.System.now().toEpochMilliseconds() + 6_000
+                                toast = "Marked trash area ✓"
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
+                ) { Text("Confirm", color = Color.White) }
             }
-            val photo = arOverlay?.captureTapEvidencePhoto()
-            onConfirmedSweepItems(listOf(region), photo)
-            toast = "Marked trash area ✓"
+        }
+        // The undo bar (auto-hides). Rendered whenever the window is open;
+        // a ticking clock key re-evaluates visibility once a second.
+        var undoClock by remember { mutableStateOf(0L) }
+        LaunchedEffect(undoVisibleUntilMs) {
+            while (Clock.System.now().toEpochMilliseconds() < undoVisibleUntilMs) {
+                undoClock = Clock.System.now().toEpochMilliseconds()
+                kotlinx.coroutines.delay(500)
+            }
+            undoClock = Clock.System.now().toEpochMilliseconds()
+        }
+        if (undoClock < undoVisibleUntilMs) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(bottom = 168.dp, start = 16.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.Black.copy(alpha = 0.72f))
+                    .padding(start = 12.dp),
+            ) {
+                Text("✓ Marked", style = MaterialTheme.typography.labelMedium, color = Color.White)
+                TextButton(onClick = {
+                    undoVisibleUntilMs = 0L
+                    if (onUndoLastConfirm()) toast = "Removed ✓"
+                }) {
+                    Text("UNDO", color = GccGreen)
+                }
+            }
         }
 
         // Tap-sweep batch offer (Blake 2026-07-28: "identify as many trash
@@ -1527,6 +1603,10 @@ private fun CameraPhase(
                                 confirmScope.launch {
                                     val photo = arOverlay?.captureTapEvidencePhoto()
                                     onConfirmedSweepItems(items, photo)
+                                    items.forEach {
+                                        arOverlay?.addConfirmedTrashMarker(it.worldX, it.worldY, it.worldZ)
+                                    }
+                                    undoVisibleUntilMs = Clock.System.now().toEpochMilliseconds() + 6_000
                                 }
                             }
                         }

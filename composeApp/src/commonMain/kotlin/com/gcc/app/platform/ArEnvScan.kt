@@ -141,6 +141,20 @@ expect class ArEnvScanOverlay() {
 
     fun consumeMarkedRegion(): TapSweepItem?
 
+    /** Plant a persistent green "confirmed trash" AR disc at an AR-world
+     *  point — every confirm path (tap, sweep, drawn, auto) anchors one so
+     *  the spot stays visibly marked for the rest of the session
+     *  (Blake 2026-07-29). */
+    fun addConfirmedTrashMarker(worldX: Float, worldY: Float, worldZ: Float)
+
+    /** Project the server's known dirty observations into AR as pulsing
+     *  orange "expected trash" discs — a RETURNING scan renders yesterday's
+     *  finds in place, so verifying "still there / now clean" is a
+     *  look-at-the-spot check instead of map reading. Geo-ref-gated
+     *  internally (queued until the pairing lands); duplicate lat/lngs are
+     *  planted once per session. */
+    fun syncExpectedTrashMarkers(points: List<Pair<Double, Double>>)
+
     /** The user answered "yes, litter" on [groundIntentPrompt]: the candidate
      *  completes through the normal filing path (evidence photo, geo-ref,
      *  weight) with user-intent provenance. No-op when nothing is pending. */
