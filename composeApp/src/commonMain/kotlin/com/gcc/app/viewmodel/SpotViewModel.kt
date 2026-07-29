@@ -493,7 +493,7 @@ class SpotViewModel(
         if (items.isEmpty()) return
         photo?.let { addPhoto(it) }
         ScanSessionTelemetry.active?.confirm("sweep:${items.size}")
-        items.forEachIndexed { index, item ->
+        items.forEach { item ->
             val itemType = TrashItemCatalog.canonicalType(item.label ?: UNKNOWN_LITTER_LABEL)
             addObservedItem(
                 ObservedSpotItem(
@@ -510,7 +510,11 @@ class SpotViewModel(
                     imageHalfH = item.imageHalfH,
                     atMs = Clock.System.now().toEpochMilliseconds(),
                 ),
-                photoBytes = if (index == 0) photo?.bytes else null,
+                // The shared frame rides EVERY batch item: each map dot gets
+                // a photo and each item gets a summary evidence-strip entry
+                // (Blake 2026-07-28: all trash images post-scan + on the
+                // map). ≤5 items per sweep bounds the duplicate uploads.
+                photoBytes = photo?.bytes,
             )
         }
     }

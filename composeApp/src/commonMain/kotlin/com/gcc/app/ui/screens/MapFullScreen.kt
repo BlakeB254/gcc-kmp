@@ -894,6 +894,7 @@ fun MapFullScreen(
                 CoverageCellInfoCard(
                     cell = cell,
                     observations = mapObservations,
+                    allCells = coverageCells,
                     onDismiss = { selectedCoverageCell = null },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -1930,13 +1931,23 @@ private fun CoverageCellInfoCard(
     observations: List<com.gcc.shared.model.WorldObservation>,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Viewport cells — a tap answers for the whole same-color blob, not
+     *  the single 10m tile (Blake 2026-07-28). Empty = single-cell mode. */
+    allCells: List<com.gcc.shared.model.MapCoverageCell> = emptyList(),
 ) {
     val lngScale = kotlin.math.cos(cell.lat * kotlin.math.PI / 180.0)
-    val nearby = remember(cell.locationCellId, observations) {
+    // The tapped cell's contiguous same-severity blob; observations within
+    // 8m of ANY blob cell feed the panel (photos, item summary, weight).
+    val blobCells = remember(cell.locationCellId, allCells) {
+        com.gcc.app.ui.map.sameColorBlobCells(cell, allCells)
+    }
+    val nearby = remember(cell.locationCellId, observations, blobCells) {
         observations.filter { obs ->
-            val dLatM = (obs.lat - cell.lat) * 111_320.0
-            val dLngM = (obs.lng - cell.lng) * 111_320.0 * lngScale
-            dLatM * dLatM + dLngM * dLngM < 8.0 * 8.0
+            blobCells.any { blobCell ->
+                val dLatM = (obs.lat - blobCell.lat) * 111_320.0
+                val dLngM = (obs.lng - blobCell.lng) * 111_320.0 * lngScale
+                dLatM * dLatM + dLngM * dLngM < 8.0 * 8.0
+            }
         }
     }
     val dirty = nearby.filter { it.state == "dirty" && (it.domain == null || it.domain == "litter") }
@@ -1956,7 +1967,9 @@ private fun CoverageCellInfoCard(
             compareByDescending<com.gcc.shared.model.WorldObservation> { it.diagnosticStatus == "diagnosed" }
                 .thenByDescending { it.severity ?: 0 }
                 .thenByDescending { it.capturedAt ?: "" }
-        ).mapNotNull { it.mediaUrl }.distinct().take(4)
+        // 12, not 4: a blob-wide panel must show the AREA's evidence
+        // (Blake 2026-07-28) — PhotoStrip scrolls horizontally either way.
+        ).mapNotNull { it.mediaUrl }.distinct().take(12)
     }
     var fullScreenImageIndex by remember { mutableStateOf<Int?>(null) }
 
