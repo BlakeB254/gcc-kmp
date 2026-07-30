@@ -56,7 +56,9 @@ def _export_session_frames(manifest: dict, T_cell: np.ndarray, frames_dir: str,
     for kinds in chunks.values():
         if n - start_index >= budget:
             break
-        if r2_store.object_exists(r2_store.unreadable_marker_key_for(kinds["mov"])):
+        if r2_store.is_configured() and r2_store.object_exists(
+            r2_store.unreadable_marker_key_for(kinds["mov"])
+        ):
             print(f"gsplat_runner: skipping permanently unreadable video {kinds['mov']}")
             continue
         video = r2_store.download_bytes(kinds["mov"])

@@ -401,7 +401,7 @@ def _session_fusion_input_from_manifest(manifest_obj: r2_store.ManifestObject) -
         kinds = chunks[index]
         if "jsonl" not in kinds or "depth" not in kinds:
             continue  # no pose or no depth for this chunk -- nothing to fuse
-        if "mov" in kinds and r2_store.object_exists(
+        if "mov" in kinds and r2_store.is_configured() and r2_store.object_exists(
             r2_store.unreadable_marker_key_for(kinds["mov"])
         ):
             print(
