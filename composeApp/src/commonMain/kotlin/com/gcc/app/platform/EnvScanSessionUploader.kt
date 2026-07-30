@@ -28,9 +28,10 @@ import kotlinx.serialization.encodeToString
  * [CoverageEventQueue]) and re-uploads on the next scan session — nothing is
  * lost while storage is being stood up, and offline sessions catch up too.
  *
- * Photos are NOT queued: their bytes only live in memory during the capture
- * session, and they already reach the server durably via the community-report
- * media upload. The manifest records whichever photoKeys did make it to R2.
+ * Photo bytes are queued separately in [com.gcc.app.platform.capture.CaptureChunkUploader].
+ * This queue stores the manifest after those durable artifact rows have been
+ * written, and deterministic photo keys keep the manifest's image/GPS links
+ * stable even when the device is offline at scan completion.
  */
 @OptIn(ExperimentalEncodingApi::class)
 class EnvScanSessionUploader(
@@ -198,6 +199,7 @@ class EnvScanSessionUploader(
             while (pending.size > MAX_QUEUED) pending.removeAt(0)
             persistLocked()
         }
+        scheduleBackgroundScanUpload()
         scheduleRetryFlush()
     }
 

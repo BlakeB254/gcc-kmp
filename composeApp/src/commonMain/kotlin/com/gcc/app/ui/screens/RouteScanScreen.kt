@@ -83,12 +83,12 @@ fun RouteScanScreen(
                     )
                 } else {
                     ScoutScreen(
+                        viewModel = viewModel,
                         uiState = uiState,
                         allowUnpublished = allowUnpublished,
                         isOutsideBoundary = isOutsideBoundary,
                         onStartScout = { viewModel.startScout() },
                         onCompleteScout = { viewModel.completeScout() },
-                        onForceCompleteScout = { viewModel.completeScout(force = true) },
                         onCaptureHotspot = { showScoutCapture = true },
                         onBeginRoute = { viewModel.beginRoute() },
                         onBack = onBack,

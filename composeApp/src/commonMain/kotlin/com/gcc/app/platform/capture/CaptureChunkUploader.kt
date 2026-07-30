@@ -5,6 +5,7 @@ import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.ScanSessionTelemetry
 import com.gcc.app.platform.deleteLocalFile
 import com.gcc.app.platform.readLocalFileBytes
+import com.gcc.app.platform.scheduleBackgroundScanUpload
 import com.gcc.shared.api.CaptureStorageNotConfiguredException
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.cache.CaptureChunkRecord
@@ -16,8 +17,8 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.datetime.Clock
 
 /**
- * Uploads background full-session capture chunks (HEVC video + pose/
- * intrinsics sidecar + LiDAR depth keyframes — bookkept in
+ * Uploads background full-session capture artifacts (completion JPEGs, HEVC
+ * video, pose/intrinsics sidecars, and LiDAR depth keyframes — bookkept in
  * [CaptureChunkStore], written by [com.gcc.app.platform.ArEnvScanOverlay])
  * to R2 once policy allows it. Policy (any one satisfies): Wi-Fi, OR the
  * device is charging, OR the user opted into cellular uploads (multiplatform-
@@ -32,9 +33,9 @@ import kotlinx.datetime.Clock
  * [com.gcc.app.platform.EnvScanSessionUploader.flushPending] runs), and the
  * native recorder's finished-chunk drain (best-effort kick after each
  * insert). There is deliberately NO reactive "network flipped to Wi-Fi"
- * listener in this task — the state checks above already bound staleness to
- * "next scan or next app launch," matching [com.gcc.app.platform.EnvScanSessionUploader]'s
- * existing (also non-reactive) pattern.
+ * listener is necessary here: policy/failure paths schedule the native iOS
+ * BGProcessing task, while foreground activation and the next scan remain
+ * additional drain opportunities.
  */
 class CaptureChunkUploader(
     private val apiClient: GccApiClient,
@@ -51,7 +52,10 @@ class CaptureChunkUploader(
 
     suspend fun flushPending() {
         mutex.withLock {
-            if (!uploadPolicyAllows()) return
+            if (!uploadPolicyAllows()) {
+                scheduleBackgroundScanUpload()
+                return
+            }
             val pending = try {
                 store.pendingChunks()
             } catch (e: Exception) {
@@ -64,6 +68,7 @@ class CaptureChunkUploader(
                     uploadOne(chunk)
                 } catch (e: CaptureStorageNotConfiguredException) {
                     lastError = "scan storage not configured (501)"
+                    scheduleBackgroundScanUpload()
                     return // still 501 (R2 not provisioned) — nothing else in the batch can succeed either
                 } catch (e: Exception) {
                     DiagnosticsLog.error(
@@ -79,6 +84,7 @@ class CaptureChunkUploader(
                         detail = e.message?.take(120),
                     )
                     failure = "chunk ${chunk.chunkIndex} ${chunk.kind}: ${e.message ?: e::class.simpleName}"
+                    scheduleBackgroundScanUpload()
                 }
             }
             lastError = failure
@@ -103,6 +109,7 @@ class CaptureChunkUploader(
             return
         }
         val ext = extensionFor(chunk.kind)
+        val artifactPath = artifactPathFor(chunk)
         val ticket = try {
             apiClient.createCaptureUploadUrl(
                 CaptureUploadUrlRequest(
@@ -111,7 +118,7 @@ class CaptureChunkUploader(
                     capturedAt = "${chunk.sessionId}-chunk${chunk.chunkIndex}-${chunk.kind}",
                     ext = ext,
                     sessionId = chunk.sessionId,
-                    artifactPath = "capture/chunk-${chunk.chunkIndex}.$ext",
+                    artifactPath = artifactPath,
                 )
             )
         } catch (e: Exception) {
@@ -162,13 +169,32 @@ class CaptureChunkUploader(
             "video" -> "mov"
             "sidecar" -> "jsonl"
             "depth" -> "bin"
+            "photo" -> "jpg"
             else -> "bin"
         }
 
         internal fun contentTypeFor(ext: String): String = when (ext) {
             "mov" -> "video/quicktime"
             "jsonl" -> "application/x-ndjson"
+            "jpg" -> "image/jpeg"
             else -> "application/octet-stream"
+        }
+
+        internal fun artifactPathFor(chunk: CaptureChunkRecord): String =
+            if (chunk.kind == "photo") {
+                "photos/photo-${chunk.chunkIndex}.jpg"
+            } else {
+                "capture/chunk-${chunk.chunkIndex}.${extensionFor(chunk.kind)}"
+            }
+
+        /**
+         * Exact key the server's `rawSessionArtifactKey` returns for a queued
+         * artifact. A manifest can therefore retain its photo relationship
+         * while the durable file is still waiting for connectivity.
+         */
+        internal fun expectedR2Key(chunk: CaptureChunkRecord): String {
+            val safeSessionId = chunk.sessionId.replace(Regex("[^0-9A-Za-z._-]"), "-")
+            return "raw/${chunk.locationCellId}/$safeSessionId/${artifactPathFor(chunk)}"
         }
 
         /**

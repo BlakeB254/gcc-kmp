@@ -60,6 +60,11 @@ fun ScanMinimapOverlay(
     centerLat: Double,
     centerLng: Double,
     zoom: Double,
+    /** Live user coordinate. Defaults to the map center for the traditional
+     * user-following environment minimap; block-route maps pass it explicitly
+     * so the camera can stay fitted to the whole assignment. */
+    userLat: Double = centerLat,
+    userLng: Double = centerLng,
     scanCellCenters: List<Pair<Double, Double>>,
     cellSizeMeters: Double,
     trashItems: List<Coordinates>,
@@ -286,9 +291,9 @@ fun ScanMinimapOverlay(
         // (saturated at the user dot, fading with distance) plus a heavier
         // edge so the facing direction is unmissable at a glance.
         if (headingDegrees != null) {
-            val cone = headingConePolygon(centerLat, centerLng, animatedHeading)
+            val cone = headingConePolygon(userLat, userLng, animatedHeading)
             if (cone.size >= 3) {
-                val coneCenter = Offset(size.width / 2f, size.height / 2f)
+                val coneCenter = toOffset(userLat, userLng)
                 val conePath = Path()
                 var coneReachPx = 0f
                 cone.forEachIndexed { index, (lat, lng) ->
@@ -323,7 +328,7 @@ fun ScanMinimapOverlay(
         // the origin, fading to nothing at the reach — so it reads as an actual
         // flashlight beam (Blake's "flashlight effect") instead of a flat blob.
         if (visibilityBeam.size >= 3) {
-            val beamCenter = Offset(size.width / 2f, size.height / 2f)
+            val beamCenter = toOffset(userLat, userLng)
             val beamPath = Path()
             var maxReachPx = 0f
             visibilityBeam.forEachIndexed { index, (lat, lng) ->
@@ -443,7 +448,7 @@ fun ScanMinimapOverlay(
         // information; only draw the ring once the target clears the dot.
         guidanceTarget?.let { target ->
             val c = toOffset(target.lat, target.lng)
-            val selfC = Offset(size.width / 2f, size.height / 2f)
+            val selfC = toOffset(userLat, userLng)
             val awayPx = (c - selfC).getDistance()
             if (awayPx >= 26.dp.toPx()) {
                 drawCircle(color = TrashOrange, radius = 9.dp.toPx(), center = c, style = Stroke(width = 2.dp.toPx()))
@@ -453,10 +458,10 @@ fun ScanMinimapOverlay(
 
         // User-position dot, drawn LAST so it always sits above the veil,
         // fills and every other layer (Blake: "hard to see the user dot").
-        // The minimap is centered on the live GPS fix (centerLat/centerLng),
-        // so the user is always exactly at the canvas center — no projection
-        // needed. Replaces reliance on any MapLibre location puck underneath.
-        val selfCenter = Offset(size.width / 2f, size.height / 2f)
+        // Route maps may stay centered on the entire assigned block, while
+        // environment minimaps keep the historical user-follow camera. One
+        // projected coordinate supports both without a duplicate map puck.
+        val selfCenter = toOffset(userLat, userLng)
         // Dark backing disc first: the dot's white ring + green core would
         // otherwise sit green-on-green over CLOSE-scanned tiles (0.65 green) and
         // the green beam, washing out. A translucent dark pad guarantees the

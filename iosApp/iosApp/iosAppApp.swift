@@ -1,6 +1,7 @@
 import SwiftUI
 import UserNotifications
 import ComposeApp
+import BackgroundTasks
 
 #if canImport(GoogleSignIn)
 import GoogleSignIn
@@ -43,6 +44,7 @@ struct iosAppApp: App {
 // and the LoginScreen Google button hides itself.
 
 private let googleIosClientIdPlaceholder = "GOOGLE_IOS_CLIENT_ID_PLACEHOLDER"
+private let scanUploadTaskIdentifier = "com.globalcommunitycleaners.worker.scan-upload"
 
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(
@@ -50,6 +52,22 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+
+        BGTaskScheduler.shared.register(
+            forTaskWithIdentifier: scanUploadTaskIdentifier,
+            using: nil
+        ) { [weak self] task in
+            guard let processingTask = task as? BGProcessingTask else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+            self?.handleScanUpload(processingTask)
+        }
+        BackgroundScanUploadBridge.shared.scheduleCallback = { [weak self] in
+            DispatchQueue.main.async {
+                self?.scheduleScanUpload()
+            }
+        }
 
         // Apple-native crash/hang diagnostics (MetricKit): payloads arrive on
         // the launch after an incident and are persisted for the in-app
@@ -80,6 +98,36 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         configureGoogleSignIn()
 
         return true
+    }
+
+    private func scheduleScanUpload() {
+        let request = BGProcessingTaskRequest(identifier: scanUploadTaskIdentifier)
+        request.requiresNetworkConnectivity = true
+        request.requiresExternalPower = false
+        do {
+            try BGTaskScheduler.shared.submit(request)
+        } catch {
+            // Duplicate/policy-denied requests are non-fatal: the durable
+            // queues also drain on foreground activation and next scan.
+        }
+    }
+
+    private func handleScanUpload(_ task: BGProcessingTask) {
+        let completionLock = NSLock()
+        var completed = false
+        func finish(_ success: Bool) {
+            completionLock.lock()
+            defer { completionLock.unlock() }
+            guard !completed else { return }
+            completed = true
+            task.setTaskCompleted(success: success)
+        }
+        task.expirationHandler = {
+            finish(false)
+        }
+        BackgroundScanUploadBridge.shared.flushPending { success in
+            finish(success.boolValue)
+        }
     }
 
     // MARK: - Push Notification Token

@@ -58,6 +58,11 @@ expect fun ObjectCaptureHostView(controller: ObjectCaptureController, modifier: 
 /** Read a local file produced by the capture flow (USDZ upload path). */
 expect fun readLocalFileBytes(path: String): ByteArray?
 
+/** Atomically write binary scan evidence to [path], creating parent
+ * directories as needed. Used to move completion photos out of RAM and into
+ * the same durable retry lifecycle as video/depth capture artifacts. */
+expect fun writeLocalFileBytes(path: String, bytes: ByteArray)
+
 /** Delete a local file once its bytes are durably uploaded (capture-chunk
  *  upload path, [com.gcc.app.platform.capture.CaptureChunkUploader]). A
  *  missing file is not an error — never throws. */
@@ -124,3 +129,8 @@ expect fun scanSessionsDirPath(): String?
  *  [com.gcc.shared.cache.CaptureChunkStore] (Task 4/5's post-timeout orphan
  *  case). Null on desktop/android, matching [sessionJournalPath]. */
 expect fun captureSessionsDirPath(): String?
+
+/** Durable JPEG path for one environment-scan summary photo. Null only on
+ * platforms that do not expose a capture-session directory. */
+fun sessionPhotoPath(sessionId: String, index: Int): String? =
+    captureSessionsDirPath()?.let { "$it/$sessionId/photos/photo-$index.jpg" }

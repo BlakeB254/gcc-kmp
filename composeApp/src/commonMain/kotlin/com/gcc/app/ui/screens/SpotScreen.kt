@@ -301,6 +301,7 @@ fun SpotScreen(
 
                 SpotPhase.RESULT -> ResultPhase(
                     report = uiState.submittedReport,
+                    reportSyncing = uiState.isSubmitting,
                     session = uiState.completedSession,
                     uploadStatus = uiState.uploadStatus,
                     // Display rule (Blake, 2026-07-23): the summary shows —
@@ -594,6 +595,7 @@ private fun CameraPhase(
                 )
             )
         }
+
         // Completed ground-candidate scans (Task 4/6): a LiDAR-tracked
         // candidate that reached 100% scan progress, with a REAL measured
         // bounding box — files as confirmed litter (auto-detected, not user-
@@ -1888,6 +1890,34 @@ private fun CameraPhase(
             )
         }
 
+        if (completingScan) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.72f))
+                    .clickable {},
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.padding(28.dp),
+                ) {
+                    CircularProgressIndicator(color = GccGreen)
+                    Text(
+                        "Saving your scan on this iPhone…",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White,
+                    )
+                    Text(
+                        "Opening the summary next. Cloud uploads continue in the background.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.82f),
+                    )
+                }
+            }
+        }
+
         if (showObjectCapture) {
             ObjectCapturePhase(
                 onDone = { outcome ->
@@ -2542,7 +2572,7 @@ private fun UploadProgressCard(status: SessionUploadStatus) {
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                "Keep the app open until this finishes — your scan builds the 3D neighborhood map.",
+                "Saved on this iPhone. You can leave this screen while Background App Refresh uploads it for the 3D neighborhood map.",
                 style = MaterialTheme.typography.bodySmall,
                 color = TextSubtle,
             )
@@ -2569,7 +2599,7 @@ private fun UploadProgressCard(status: SessionUploadStatus) {
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 "${status.doneSteps} of ${status.totalSteps} uploaded so far. The rest is saved on your phone " +
-                    "and retries automatically when you reopen the app or start your next scan.",
+                    "and retries with Background App Refresh, when you reopen the app, or when you start your next scan.",
                 style = MaterialTheme.typography.bodySmall,
                 color = TextMuted,
             )
@@ -2580,6 +2610,7 @@ private fun UploadProgressCard(status: SessionUploadStatus) {
 @Composable
 private fun ResultPhase(
     report: com.gcc.shared.model.CommunityReport?,
+    reportSyncing: Boolean,
     session: EnvScanSessionDraft?,
     uploadStatus: SessionUploadStatus?,
     litterCount: Int,
@@ -2622,6 +2653,22 @@ private fun ResultPhase(
         // about to pocket the phone knows whether their scan is safe.
         if (uploadStatus != null) item {
             UploadProgressCard(uploadStatus)
+        }
+
+        if (report == null && reportSyncing) item {
+            GccCard(accentColor = CardAccentSky) {
+                Text(
+                    "Scan saved — report syncing",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = GccClaimed,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "You can leave this screen. Photos and scan data continue in the background and retry automatically.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted,
+                )
+            }
         }
 
         // Report confirmation (only when a report was actually filed).
@@ -2787,9 +2834,10 @@ private fun ResultPhase(
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 GccButton(
-                    text = "Scan Another Area",
+                    text = if (reportSyncing) "Report syncing…" else "Scan Another Area",
                     onClick = onNewReport,
                     variant = GccButtonVariant.OUTLINED,
+                    enabled = !reportSyncing,
                 )
                 GccButton(
                     text = "Back to Dashboard",

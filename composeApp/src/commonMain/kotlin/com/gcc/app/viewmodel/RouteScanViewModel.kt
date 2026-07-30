@@ -42,6 +42,7 @@ import com.gcc.app.platform.routeTapFiling
 import com.gcc.app.platform.runOrphanRecoverySweepOnce
 import com.gcc.app.platform.sessionEventLogPath
 import com.gcc.app.platform.sessionJournalPath
+import com.gcc.app.platform.scheduleBackgroundScanUpload
 import com.gcc.app.platform.wireQualityForSegment
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.cache.CaptureChunkStore
@@ -99,6 +100,17 @@ data class ProblemArea(
     val severityWeight: Int,
 )
 
+internal fun routeLapOneReady(
+    coveragePercent: Double,
+    closeCoveragePercent: Double,
+    loopClosed: Boolean,
+    requiresCloseCoverage: Boolean,
+): Boolean =
+    coveragePercent >= RouteScanViewModel.LAP_COMPLETE_PERCENT &&
+        (!requiresCloseCoverage ||
+            closeCoveragePercent >= RouteScanViewModel.LAP_CLOSE_COMPLETE_PERCENT) &&
+        loopClosed
+
 data class RouteScanUiState(
     val scanId: Int? = null,
     val routeId: Int = 0,
@@ -106,6 +118,10 @@ data class RouteScanUiState(
     val deviceType: DeviceType = DeviceType.GPS,
     val phase: ScanPhase = ScanPhase.SCOUTING,
     val coveragePercent: Double = 0.0,
+    /** Required-corridor cells captured at CLOSE quality (≤4m + good AR
+     * tracking). AR routes use this as the detail gate for Lap 1; GPS-only
+     * devices cannot produce CLOSE raycasts and therefore omit that gate. */
+    val closeCoveragePercent: Double = 0.0,
     val hotspots: List<ScanHotspot> = emptyList(),
     /** True while the worker is walking too fast for good scan coverage. */
     val movingTooFast: Boolean = false,
@@ -168,6 +184,14 @@ class RouteScanViewModel(
          * "complete" state.
          */
         const val LAP_COMPLETE_PERCENT = 95.0
+
+        /**
+         * CLOSE-quality detail required on AR-capable route scans. Requiring
+         * 100% would strand a worker on boundary slivers that ARKit cannot
+         * raycast, while 80% still makes most of the assigned block useful
+         * for DGX reconstruction instead of merely GPS-grazed.
+         */
+        const val LAP_CLOSE_COMPLETE_PERCENT = 80.0
 
         /** Landmarks within this distance cluster into one problem area. */
         const val PROBLEM_CLUSTER_METERS = 30.0
@@ -256,6 +280,10 @@ class RouteScanViewModel(
     private var lapEventLog: SessionEventLog? = null
     private var lapSessionRecorder = newLapSessionRecorder("baseline")
     private var lapTransitionFired = false
+    /** Set only after the complete Lap-1 gate succeeds. Checked again at the
+     * review → cleaning transition so a navigation bug cannot skip the
+     * identification scan within this client session. */
+    private var lapOneValidated = false
 
     private val coverageTracker = CoverageTracker()
     private val aiDirectionEngine = AiDirectionEngine()
@@ -305,16 +333,13 @@ class RouteScanViewModel(
     )
 
     init {
-        // Catch up lap manifests that couldn't reach R2 last time (offline /
-        // storage unprovisioned). Spot scans always did this on open; route
-        // manifests queued here used to strand until the user happened to
-        // open an ENV scan (the only other flushPending caller).
-        launchDetached { sessionUploader.flushPending() }
-        // Same opportunistic catch-up for background capture chunks (Pillar
-        // 1) — route scans don't produce them (v1 scope guard: ENV/SPOT
-        // only), but any pending from a prior Spot session still deserve a
-        // chance to flush whenever ANY scan screen opens.
-        launchDetached { captureUploader.flushPending() }
+        // Artifact bytes first, then manifests that reference them. Route
+        // screens also provide an opportunistic drain for an earlier
+        // environment scan.
+        launchDetached {
+            captureUploader.flushPending()
+            sessionUploader.flushPending()
+        }
         // Pillar 6 orphan recovery — same call SpotViewModel makes. This VM
         // is a Koin `factory` (recreated per screen open), but the sweep's
         // internal once-per-process guard means only the FIRST scan-screen VM
@@ -834,6 +859,7 @@ class RouteScanViewModel(
             outerRing.map { it.lat to it.lng } to innerRings.map { ring -> ring.map { it.lat to it.lng } }
         lapSessionRecorder = newLapSessionRecorder("baseline")
         lapTransitionFired = false
+        lapOneValidated = false
         visitedProblemAreas.clear()
         lap1Observations = emptyList()
         rectifiedObservationIds.clear()
@@ -846,6 +872,11 @@ class RouteScanViewModel(
                 _uiState.value = _uiState.value.copy(coveragePercent = pct)
                 // Flight recorder: 25/50/75/95% milestones (log dedupes).
                 lapEventLog?.coverage(pct)
+            }
+        }
+        scope.launch {
+            coverageTracker.closePercent.collect { pct ->
+                _uiState.value = _uiState.value.copy(closeCoveragePercent = pct)
             }
         }
         scope.launch {
@@ -1023,14 +1054,16 @@ class RouteScanViewModel(
     // ── Phase transitions ────────────────────────────────────────────
 
     /**
-     * Advance SCOUTING → SCOUT_REVIEW. [force] bypasses [canCompleteScout] so a
-     * worker is never stranded in the scout lap when coverage stalls below the
-     * thresholds and a section can't be photo-recorded (the only otherwise-
-     * reachable escape is all-sections-recorded, which is all-or-nothing). The
-     * UI gates the forced path behind a confirm dialog; coverage still uploads.
+     * Advance SCOUTING → SCOUT_REVIEW only after the assigned block corridor
+     * is filled, the route loop is closed, and (on AR devices) enough cells
+     * have CLOSE-quality detail. There is deliberately no worker bypass:
+     * Lap 1 is the evidence gate that makes Lap 2 safe to begin.
      */
-    fun completeScout(force: Boolean = false) {
-        if (!force && !canCompleteScout()) return
+    fun completeScout() {
+        if (!canCompleteScout()) {
+            _uiState.value = _uiState.value.copy(error = scoutCompletionGuidance())
+            return
+        }
         val state = _uiState.value
         val scanId = state.scanId ?: return
 
@@ -1042,9 +1075,12 @@ class RouteScanViewModel(
                     AdvancePhaseRequest(
                         phase = ScanPhase.SCOUT_REVIEW,
                         coveragePercent = state.coveragePercent,
+                        closeCoveragePercent = state.closeCoveragePercent,
+                        loopClosed = state.isLoopClosed,
                         scoutPathGeoJson = geoJson,
                     )
                 )
+                lapOneValidated = true
                 _uiState.value = _uiState.value.copy(
                     phase = ScanPhase.SCOUT_REVIEW,
                     error = null,
@@ -1061,6 +1097,12 @@ class RouteScanViewModel(
     }
 
     fun startCleaning() {
+        if (!lapOneValidated) {
+            _uiState.value = _uiState.value.copy(
+                error = "Lap 1 must pass the full scan gate before cleaning can begin.",
+            )
+            return
+        }
         val scanId = _uiState.value.scanId ?: return
         scope.launch {
             try {
@@ -1303,11 +1345,27 @@ class RouteScanViewModel(
 
     fun canCompleteScout(): Boolean {
         val state = _uiState.value
-        val allSectionsRecorded = state.routeSections.isNotEmpty() &&
-            state.routeSections.none { it.status == RouteScanSectionStatus.PENDING }
-        return state.coveragePercent >= LAP_COMPLETE_PERCENT ||
-            (state.coveragePercent >= 85.0 && state.isLoopClosed) ||
-            allSectionsRecorded
+        return routeLapOneReady(
+            coveragePercent = state.coveragePercent,
+            closeCoveragePercent = state.closeCoveragePercent,
+            loopClosed = state.isLoopClosed,
+            requiresCloseCoverage = state.deviceType == DeviceType.AR,
+        )
+    }
+
+    /** Short, user-facing checklist item for the first unmet Lap-1 gate. */
+    fun scoutCompletionGuidance(): String {
+        val state = _uiState.value
+        return when {
+            state.coveragePercent < LAP_COMPLETE_PERCENT ->
+                "Keep scanning the shaded block: ${state.coveragePercent.toInt()}% of ${LAP_COMPLETE_PERCENT.toInt()}% covered."
+            state.deviceType == DeviceType.AR &&
+                state.closeCoveragePercent < LAP_CLOSE_COMPLETE_PERCENT ->
+                "Move closer to the remaining light-green areas: ${state.closeCoveragePercent.toInt()}% of ${LAP_CLOSE_COMPLETE_PERCENT.toInt()}% close-detail captured."
+            !state.isLoopClosed ->
+                "Return to the start marker to close Lap 1."
+            else -> "Lap 1 is ready for review."
+        }
     }
 
     fun allHotspotsDone(): Boolean {
@@ -1365,7 +1423,8 @@ class RouteScanViewModel(
         // baseline lap's events must not be read from (or lost to) lap 2.
         val eventLog = lapEventLog?.takeIf { it.sessionId == recorder.sessionId }
         val state = _uiState.value
-        scope.launch {
+        scheduleBackgroundScanUpload()
+        launchDetached {
             try {
                 // Stop background capture FIRST so the final chunks are booked
                 // into CaptureChunkStore before the captureChunks lookup below
@@ -1386,18 +1445,16 @@ class RouteScanViewModel(
                 eventLog?.lap(lapKind, "lap completed")
                 val eventLines = eventLog?.snapshotLines()
                 eventLog?.let(ScanSessionTelemetry::deactivate)
-                // Pillar 6: this recorder's session is done either way (an
-                // empty draft archives nothing below) — its on-disk journal
-                // has no further use. No-op on desktop/android (journalPath
-                // is always null there).
-                sessionJournalPath(draft.sessionId)?.let { deleteLocalFile(it) }
-                sessionEventLogPath(draft.sessionId)?.let { deleteLocalFile(it) }
-                if (draft.path.isEmpty()) return@launch // nothing recorded — nothing to archive
+                // Even a path-less lap can carry a crash-adjacent event log
+                // or finalized capture artifact, so archive it rather than
+                // deleting the only recovery journal.
                 // Uploaded-so-far capture-chunk R2 keys (route-lap capture):
                 // late uploads are still keyed by sessionId in R2 regardless
                 // of whether they made it into this manifest snapshot.
                 val captureChunkKeys = try {
-                    captureChunkStore.chunksForSession(draft.sessionId).mapNotNull { it.r2Key }
+                    captureChunkStore.chunksForSession(draft.sessionId)
+                        .filter { it.kind != "photo" && it.uploadedAtMs != -1L }
+                        .map { it.r2Key ?: CaptureChunkUploader.expectedR2Key(it) }
                 } catch (e: Exception) {
                     DiagnosticsLog.error("env-capture", "lap captureChunks lookup failed (manifest continues without)", e)
                     emptyList()
@@ -1439,6 +1496,7 @@ class RouteScanViewModel(
                             severity = h.severity,
                             confidence = h.confidence,
                             atMs = h.detectedAt.toEpochMilliseconds(),
+                            mediaUrl = h.beforePhotoUrl,
                         )
                     },
                     photoKeys = emptyList(),
@@ -1456,6 +1514,10 @@ class RouteScanViewModel(
                     errorLog = DiagnosticsLog.errorLinesForManifest(),
                 )
                 sessionUploader.uploadOrQueue(manifest, eventLines)
+                // Only delete the recovery journal after the manifest/event
+                // pair is durable in R2 or the persistent retry queue.
+                sessionJournalPath(draft.sessionId)?.let { deleteLocalFile(it) }
+                sessionEventLogPath(draft.sessionId)?.let { deleteLocalFile(it) }
             } catch (e: Exception) {
                 DiagnosticsLog.error("env-capture", "$lapKind lap session archive failed", e)
             }
@@ -1660,9 +1722,7 @@ class RouteScanViewModel(
                         // First-lap completion: the required area is filled —
                         // archive the baseline session and advance to review
                         // (the gateway into the cleanup lap).
-                        if (!lapTransitionFired &&
-                            _uiState.value.coveragePercent >= LAP_COMPLETE_PERCENT
-                        ) {
+                        if (!lapTransitionFired && canCompleteScout()) {
                             lapTransitionFired = true
                             _uiState.value = _uiState.value.copy(
                                 sectionPrompt = "Lap 1 complete — block documented. Review what you found.",

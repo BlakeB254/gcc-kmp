@@ -10,6 +10,7 @@ import {
   isValidScanPhaseTransition,
   normalizeScanPhase,
   toMobileRouteScan,
+  validateLapOneProof,
 } from '@/lib/mobile-route-scan-response'
 
 export const dynamic = 'force-dynamic'
@@ -51,6 +52,24 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       )
     }
     const now = new Date().toISOString()
+
+    // Guided-route builds send the same quality proof their hard client gate
+    // uses. Keep older TestFlight builds wire-compatible, but reject
+    // internally inconsistent proof whenever either additive field appears.
+    if (
+      scan.phase === 'scouting' &&
+      phase === 'scout_review' &&
+      validateLapOneProof(body, String(scan.deviceType).toLowerCase() === 'ar') === false
+    ) {
+      return NextResponse.json(
+        {
+          data: null,
+          success: false,
+          message: 'Lap 1 is incomplete: 95% corridor coverage, a closed loop, and 80% AR close-detail are required',
+        },
+        { status: 409 },
+      )
+    }
 
     const [updated] = await db
       .update(routeScans)
