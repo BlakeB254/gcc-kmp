@@ -2,4 +2,5 @@
 • Durable evidence: completion photos are saved on the iPhone first, retain stable scan/GPS links while offline, and retry through iOS Background App Refresh.
 • Guided route minimap: Lap 1 stays framed on the assigned block and clearly distinguishes ground that is scanned from ground that still needs scanning.
 • Guarded two-lap flow: cleaning remains locked until Lap 1 reaches 95% block coverage, 80% close-detail coverage on AR devices, and returns to the start to close the loop.
-• Reconstruction-ready sessions: photos, video, depth, poses, observations, and manifests share stable session keys for the DGX world-recreation pipeline.
+• Reconstruction-ready routes: AR-capable Lap 1 now also requires a real 3D recorder start and AR↔GPS pairing before cleaning unlocks.
+• Durable route delivery: the route manifest waits for its same-chunk video, depth, and pose records so R2 and the DGX reconstruction index receive a complete inventory.

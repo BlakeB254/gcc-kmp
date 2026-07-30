@@ -415,9 +415,12 @@ fun ScoutScreen(
                 else -> {
                     val closeReady = uiState.deviceType != DeviceType.AR ||
                         uiState.closeCoveragePercent >= RouteScanViewModel.LAP_CLOSE_COMPLETE_PERCENT
+                    val captureReady = uiState.deviceType != DeviceType.AR ||
+                        uiState.reconstructionCaptureReady
                     val canComplete =
                         uiState.coveragePercent >= RouteScanViewModel.LAP_COMPLETE_PERCENT &&
                             closeReady &&
+                            captureReady &&
                             uiState.isLoopClosed
                     GccButton(
                         text = if (canComplete) "Review Lap 1" else "Finish the full scan to continue",
@@ -432,6 +435,8 @@ fun ScoutScreen(
                                     "Scan the remaining shaded ground · ${uiState.coveragePercent.toInt()}% covered"
                                 !closeReady ->
                                     "Move closer to light-green areas · ${uiState.closeCoveragePercent.toInt()}% close detail"
+                                !captureReady ->
+                                    "Open AR guidance and wait for REC to start the 3D world-twin capture"
                                 else -> "Return to your starting point to close the loop"
                             },
                             style = MaterialTheme.typography.labelSmall,
