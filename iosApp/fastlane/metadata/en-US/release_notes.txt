@@ -1,3 +1,6 @@
+• Park coverage restored: scanned park paths and open areas now receive the same color-coded map feedback as roads, sidewalks, and lots.
+• Scan photos stay with their finds: completion photos are linked individually to nearby timestamped observations and remain available from the map.
+• More reliable 3D capture: camera frames are retained safely while they are processed, reducing missing evidence during longer environment scans.
 • Smarter litter detection: the environment scan now finds items on the ground with LiDAR — bottles, cans, bags, and larger dumping — and asks you to confirm with one tap.
 • Tap or draw: tap any item to identify it instantly, or drag a box over a messy area to mark it all at once. Made a mistake? Undo it on the spot.
 • Trash spots stay visible: confirmed finds get an AR marker at the exact spot, and returning scans show pulsing markers where litter was previously reported — walk right to it and verify it's still there or now clean.
