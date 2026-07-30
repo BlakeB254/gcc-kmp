@@ -84,8 +84,10 @@ private fun MainViewControllerWithDemo(demoMode: Boolean): platform.UIKit.UIView
             ) { _ ->
                 flushScope.launch {
                     try {
-                        sessionUploader?.flushPending()
+                        // Artifact bytes first, then manifests that reference
+                        // their deterministic keys.
                         chunkUploader?.flushPending()
+                        sessionUploader?.flushPending()
                     } catch (e: Exception) {
                         DiagnosticsLog.error("env-capture", "foreground flush failed", e)
                     }

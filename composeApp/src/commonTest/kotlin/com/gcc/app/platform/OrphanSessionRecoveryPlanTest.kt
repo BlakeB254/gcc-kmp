@@ -102,4 +102,17 @@ class OrphanSessionRecoveryPlanTest {
             plan,
         )
     }
+
+    @Test
+    fun unbookedCompletionPhotoIsRecoveredAsDurableArtifact() {
+        val plan = planOrphanChunkBooking(
+            existing = emptyList(),
+            files = listOf("/cap/photos/photo-0.jpg"),
+        )
+
+        assertEquals(
+            listOf(OrphanChunkFile(0, "photo", "/cap/photos/photo-0.jpg")),
+            plan,
+        )
+    }
 }

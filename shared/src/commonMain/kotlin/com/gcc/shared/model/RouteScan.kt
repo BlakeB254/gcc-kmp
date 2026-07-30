@@ -74,6 +74,10 @@ data class CreateScanRequest(
 data class AdvancePhaseRequest(
     val phase: ScanPhase,
     val coveragePercent: Double? = null,
+    /** Additive Lap-1 completion evidence. Older clients omit both fields;
+     * the API remains wire-compatible while new builds can be audited. */
+    val closeCoveragePercent: Double? = null,
+    val loopClosed: Boolean? = null,
     val scoutPathGeoJson: String? = null,
     val cleanPathGeoJson: String? = null,
 )

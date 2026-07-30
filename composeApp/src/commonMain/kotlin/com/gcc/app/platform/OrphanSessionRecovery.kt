@@ -1,5 +1,6 @@
 package com.gcc.app.platform
 
+import com.gcc.app.platform.capture.CaptureChunkUploader
 import com.gcc.shared.cache.CaptureChunkRecord
 import com.gcc.shared.cache.CaptureChunkStore
 import com.gcc.shared.model.EnvScanManifest
@@ -193,12 +194,18 @@ internal suspend fun recoverOrphanScanSessions(
                 orphan.eventLogPath?.let { deleteLocalFile(it) }
                 continue
             }
-            val chunkKeys = try {
-                captureChunkStore.chunksForSession(orphan.sessionId).mapNotNull { it.r2Key }
+            val artifacts = try {
+                captureChunkStore.chunksForSession(orphan.sessionId)
             } catch (e: Exception) {
                 DiagnosticsLog.error("env-capture", "recovery: captureChunks lookup failed for ${orphan.sessionId}", e)
                 emptyList()
             }
+            val photoKeys = artifacts
+                .filter { it.kind == "photo" && it.uploadedAtMs != -1L }
+                .map { it.r2Key ?: CaptureChunkUploader.expectedR2Key(it) }
+            val chunkKeys = artifacts
+                .filter { it.kind != "photo" && it.uploadedAtMs != -1L }
+                .map { it.r2Key ?: CaptureChunkUploader.expectedR2Key(it) }
             val manifest = EnvScanManifest(
                 sessionId = orphan.sessionId,
                 deviceId = CoverageDeviceId.value,
@@ -215,7 +222,7 @@ internal suspend fun recoverOrphanScanSessions(
                 scannedCells = emptyList(),
                 scannedCellSizeMeters = 3.0,
                 observedItems = emptyList(),
-                photoKeys = emptyList(),
+                photoKeys = photoKeys,
                 lapKind = "recovered",
                 gateEvents = journal?.gateEvents ?: emptyList(),
                 captureChunks = chunkKeys.ifEmpty { null },
@@ -252,7 +259,7 @@ internal suspend fun recoverOrphanScanSessions(
     }
 }
 
-private val CHUNK_FILENAME = Regex("""chunk-(\d+)\.(mov|jsonl|depth)""")
+private val CHUNK_FILENAME = Regex("""(?:chunk-|photo-)(\d+)\.(mov|jsonl|depth|jpg)""")
 
 /** One bookable orphan chunk artifact: a file on disk with no matching
  *  (chunkIndex, kind) row in [CaptureChunkStore]. */
@@ -277,6 +284,7 @@ fun planOrphanChunkBooking(
             "mov" -> "video"
             "jsonl" -> "sidecar"
             "depth" -> "depth"
+            "jpg" -> "photo"
             else -> return@mapNotNull null
         }
         if (index to kind in alreadyBooked) return@mapNotNull null
@@ -320,7 +328,10 @@ internal suspend fun bookOrphanCaptureSessions(captureChunkStore: CaptureChunkSt
     for (sessionDir in listFilesInDir(root)) {
         val sessionId = sessionDir.substringAfterLast('/')
         if (sessionId.isBlank()) continue
-        val files = listFilesInDir(sessionDir)
+        val directFiles = listFilesInDir(sessionDir)
+        val files = directFiles + directFiles
+            .filter { it.substringAfterLast('/') == "photos" }
+            .flatMap(::listFilesInDir)
         if (files.isEmpty()) continue
         try {
             val existing = captureChunkStore.chunksForSession(sessionId)

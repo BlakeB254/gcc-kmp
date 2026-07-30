@@ -25,12 +25,16 @@ import com.gcc.app.platform.ScanSessionTelemetry
 import com.gcc.app.platform.capture.CaptureChunkUploader
 import com.gcc.app.platform.deleteLocalFile
 import com.gcc.app.platform.readLocalFileBytes
+import com.gcc.app.platform.sessionPhotoPath
+import com.gcc.app.platform.writeLocalFileBytes
 import com.gcc.app.platform.runOrphanRecoverySweepOnce
+import com.gcc.app.platform.scheduleBackgroundScanUpload
 import com.gcc.app.platform.sessionEventLogPath
 import com.gcc.app.platform.sessionJournalPath
 import com.gcc.app.platform.getDeviceModel
 import com.gcc.app.platform.getOsVersion
 import com.gcc.shared.cache.CaptureChunkStore
+import com.gcc.shared.cache.CaptureChunkRecord
 import com.gcc.shared.serialization.GccJson
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -57,6 +61,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -191,6 +196,14 @@ class SpotViewModel(
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /** Completion uploads must survive navigation away from the scan screen.
+     * Each detached job owns and cancels its short-lived scope. */
+    private fun launchDetached(block: suspend () -> Unit) {
+        val detached = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        detached.launch { block() }.invokeOnCompletion { detached.cancel() }
+    }
+
     private val _uiState = MutableStateFlow(SpotUiState())
     val uiState: StateFlow<SpotUiState> = _uiState.asStateFlow()
 
@@ -224,12 +237,13 @@ class SpotViewModel(
     private val multiItemPhotoIndices = mutableSetOf<Int>()
 
     init {
-        // Catch up any session manifests that couldn't reach R2 last time
-        // (offline, or storage not provisioned yet).
-        scope.launch { sessionUploader.flushPending() }
-        // Same catch-up for background capture chunks (Pillar 1) — opportunistic,
-        // policy-gated (Wi-Fi/charging/cellular-opt-in); see CaptureChunkUploader.
-        scope.launch { captureUploader.flushPending() }
+        // Artifact bytes first, then the manifests that reference their
+        // deterministic keys. One coroutine prevents a reconnect race where
+        // a manifest lands before its previously-offline JPEG.
+        scope.launch {
+            captureUploader.flushPending()
+            sessionUploader.flushPending()
+        }
         // Pillar 6 orphan recovery: an app kill mid-scan can leave a session
         // journal (GPS/gate-event track) and/or unbooked capture-chunk files
         // on disk with no manifest ever built for them. Guarded to at most
@@ -921,7 +935,17 @@ class SpotViewModel(
             "one-tap Complete Scan with ${state.capturedPhotos.size} photo(s) + litter evidence — filing report",
         )
         applyAiDescription()
-        submitReport()
+        // The session summary is local UI and should never wait on multipart
+        // photo upload + report creation. Archive the durable session now,
+        // show the summary immediately, and let report sync finish behind it.
+        sessionDraft?.let { uploadEnvScanSession(it, reportId = null, captureHealthJson = captureHealthJson) }
+        _uiState.value = _uiState.value.copy(
+            phase = SpotPhase.RESULT,
+            completedSession = sessionDraft,
+            isSubmitting = true,
+            error = null,
+        )
+        submitReport(background = true)
     }
 
     /**
@@ -951,37 +975,78 @@ class SpotViewModel(
         // and this coroutine may not run until after that. The reference
         // stays snapshottable regardless of registry state.
         val sessionEventLog = ScanSessionTelemetry.forSession(draft.sessionId)
-        scope.launch {
+        val anchorLat = state.spotLat ?: state.currentLat
+        val anchorLng = state.spotLng ?: state.currentLng
+        val cell = SessionPointsEstimator.gridCell10m(anchorLat, anchorLng)
+        val cellId = "${cell.first}:${cell.second}"
+
+        // Move every completion photo out of RAM before any network work.
+        // The CaptureChunkStore row is inserted by the detached job below;
+        // the journal remains on disk until that job queues/delivers the
+        // manifest, so an app kill in this tiny hand-off window is still
+        // recoverable by the launch-time orphan sweep.
+        val queuedPhotoRecords = state.capturedPhotos.mapIndexedNotNull { index, photo ->
+            val path = sessionPhotoPath(draft.sessionId, index) ?: return@mapIndexedNotNull null
             try {
-                val anchorLat = state.spotLat ?: state.currentLat
-                val anchorLng = state.spotLng ?: state.currentLng
-                val cell = SessionPointsEstimator.gridCell10m(anchorLat, anchorLng)
-                val cellId = "${cell.first}:${cell.second}"
+                writeLocalFileBytes(path, photo.bytes)
+                CaptureChunkRecord(
+                    sessionId = draft.sessionId,
+                    chunkIndex = index.toLong(),
+                    kind = "photo",
+                    filePath = path,
+                    sizeBytes = photo.bytes.size.toLong(),
+                    locationCellId = cellId,
+                    r2Key = null,
+                    uploadedAtMs = null,
+                    createdAtMs = Clock.System.now().toEpochMilliseconds() + index,
+                )
+            } catch (e: Exception) {
+                DiagnosticsLog.error("env-capture", "could not persist completion photo $index", e)
+                null
+            }
+        }
+        _uiState.value = _uiState.value.copy(
+            uploadStatus = SessionUploadStatus(
+                sessionId = draft.sessionId,
+                doneSteps = 0,
+                totalSteps = queuedPhotoRecords.size + 1,
+                state = SessionUploadStatus.State.QUEUED,
+            ),
+        )
+        scheduleBackgroundScanUpload()
+
+        launchDetached {
+            try {
                 val deviceId = CoverageDeviceId.value
-                val stamp = "${draft.sessionId}"
+
+                queuedPhotoRecords.forEach { captureChunkStore.insertChunk(it) }
+                // One serialized flush uploads the just-booked JPEGs and any
+                // video/depth/pose files already finalized for this session.
+                // Failures stay pending in SQLDelight and are retried by the
+                // foreground and iOS background hooks.
+                try {
+                    captureUploader.flushPending()
+                } catch (e: Exception) {
+                    DiagnosticsLog.error("env-capture", "initial artifact flush failed (kept queued)", e)
+                }
 
                 // Upload-progress card (Scan Session Complete screen): one
-                // step per photo, per capture-chunk file, plus one for the
-                // manifest+event-log bundle. Chunk uploads run concurrently
-                // in CaptureChunkUploader (kicked at scan completion and by
-                // the activation flush) — their progress is polled from the
-                // store, everything else is updated inline below.
+                // step per durable artifact row plus one for the
+                // manifest+event-log bundle.
                 val initialChunks = try {
                     captureChunkStore.chunksForSession(draft.sessionId)
                 } catch (e: Exception) {
                     emptyList()
                 }
-                val chunkTotal = initialChunks.size
-                var chunksDone = initialChunks.count { it.uploadedAtMs != null }
-                val photoTotal = state.capturedPhotos.size
-                val totalSteps = photoTotal + chunkTotal + 1
-                var photosDone = 0
+                val artifactTotal = initialChunks.size
+                var artifactsDone = initialChunks.count { it.uploadedAtMs != null }
+                val totalSteps = artifactTotal + 1
                 var manifestDelivered = false
                 fun publishProgress(uploadState: SessionUploadStatus.State) {
                     _uiState.value = _uiState.value.copy(
                         uploadStatus = SessionUploadStatus(
                             sessionId = draft.sessionId,
-                            doneSteps = photosDone + chunksDone + (if (manifestDelivered) 1 else 0),
+                            doneSteps = artifactsDone + (if (manifestDelivered) 1 else 0),
                             totalSteps = totalSteps,
                             state = uploadState,
                         ),
@@ -989,49 +1054,36 @@ class SpotViewModel(
                 }
                 publishProgress(SessionUploadStatus.State.UPLOADING)
 
-                // Photos upload inline (their bytes only exist in memory now);
-                // a 501/offline here just means the manifest ships photoless —
-                // the photos are already durable on the community report.
-                val photoKeys = mutableListOf<String>()
-                try {
-                    state.capturedPhotos.forEachIndexed { index, photo ->
-                        val ticket = apiClient.createCaptureUploadUrl(
-                            CaptureUploadUrlRequest(
-                                locationCellId = cellId,
-                                deviceId = deviceId,
-                                capturedAt = "$stamp-photo$index",
-                                ext = "jpg",
-                            )
+                // Use the server's deterministic session-artifact key even
+                // while a photo is pending. That preserves photo↔GPS↔item
+                // relationships in the queued manifest; the SQLDelight row
+                // later uploads bytes to this exact key.
+                val photoRecords = initialChunks.filter { it.kind == "photo" }
+                val photoKeysByIndex = photoRecords.associate { record ->
+                    record.chunkIndex.toInt() to (
+                        record.r2Key
+                            ?: CaptureChunkUploader.expectedR2Key(record)
                         )
-                        apiClient.uploadToPresignedUrl(ticket.uploadUrl, photo.bytes, "image/jpeg")
-                        photoKeys.add(ticket.r2Key)
-                        photosDone++
-                        publishProgress(SessionUploadStatus.State.UPLOADING)
-                    }
-                } catch (e: CaptureStorageNotConfiguredException) {
-                    DiagnosticsLog.info("env-capture", "R2 not provisioned — photos skipped, manifest will queue")
-                } catch (e: Exception) {
-                    DiagnosticsLog.error("env-capture", "photo upload to R2 failed — manifest continues without", e)
                 }
+                val sortedPhotoEntries = photoKeysByIndex.entries.sortedBy { it.key }
+                val photoKeys = sortedPhotoEntries.map { it.value }
 
                 // Task 17 best-shot tagging: multiItemPhotoIndices (indices
-                // into state.capturedPhotos) resolved against photoKeys, which
-                // the forEachIndexed loop above populated in the same order —
-                // an index only resolves if its upload actually succeeded
-                // (photoKeys is shorter than capturedPhotos when the loop
-                // above threw partway through).
+                // into state.capturedPhotos) resolve against durable keys, so
+                // connectivity no longer changes which photos are tagged.
                 val multiItemPhotoKeys = multiItemPhotoIndicesSnapshot
-                    .filter { it < photoKeys.size }
                     .sorted()
-                    .map { photoKeys[it] }
+                    .mapNotNull { photoKeysByIndex[it] }
                     .ifEmpty { null }
 
                 // Uploaded-so-far capture-chunk R2 keys (Pillar 1): late
-                // uploads (still-pending chunks, or ones the policy gate
-                // hasn't cleared yet) are keyed by sessionId in R2 regardless
-                // of whether they made it into this manifest snapshot.
+                // uploads use deterministic session keys too, so the DGX
+                // manifest retains its complete intended artifact set while
+                // SQLDelight is still retrying bytes.
                 val captureChunkKeys = try {
-                    captureChunkStore.chunksForSession(draft.sessionId).mapNotNull { it.r2Key }
+                    initialChunks
+                        .filter { it.kind != "photo" && it.uploadedAtMs != -1L }
+                        .map { it.r2Key ?: CaptureChunkUploader.expectedR2Key(it) }
                 } catch (e: Exception) {
                     DiagnosticsLog.error("env-capture", "captureChunks lookup failed (manifest continues without)", e)
                     emptyList()
@@ -1059,8 +1111,10 @@ class SpotViewModel(
                     state.observedItems,
                     state.litterEvidence,
                 )
-                val photoRefs = photoKeys.mapIndexedNotNull { index, r2Key ->
-                    val atMs = photoStampsSnapshot.getOrNull(index) ?: return@mapIndexedNotNull null
+                val photoRefs = sortedPhotoEntries.mapNotNull { entry ->
+                    val index = entry.key
+                    val r2Key = entry.value
+                    val atMs = photoStampsSnapshot.getOrNull(index) ?: return@mapNotNull null
                     val nearestPath = draft.path.minByOrNull { sample ->
                         kotlin.math.abs(sample.atMs - atMs)
                     }
@@ -1137,7 +1191,7 @@ class SpotViewModel(
                 val watchDeadline = Clock.System.now().toEpochMilliseconds() + CHUNK_WATCH_TIMEOUT_MS
                 var lastRetryKickMs = Clock.System.now().toEpochMilliseconds()
                 var retryKick: Job? = null
-                while (chunksDone < chunkTotal && Clock.System.now().toEpochMilliseconds() < watchDeadline) {
+                while (artifactsDone < artifactTotal && Clock.System.now().toEpochMilliseconds() < watchDeadline) {
                     delay(CHUNK_WATCH_POLL_MS)
                     // Active retry (TestFlight 162 "stuck at 10 of 11"): a
                     // chunk whose PUT timed out sits pending until SOMETHING
@@ -1148,7 +1202,7 @@ class SpotViewModel(
                     val nowMs = Clock.System.now().toEpochMilliseconds()
                     if (nowMs - lastRetryKickMs >= CHUNK_RETRY_KICK_MS && retryKick?.isActive != true) {
                         lastRetryKickMs = nowMs
-                        retryKick = scope.launch {
+                        retryKick = CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
                             try {
                                 captureUploader.flushPending()
                             } catch (e: Exception) {
@@ -1161,11 +1215,11 @@ class SpotViewModel(
                     } catch (e: Exception) {
                         break
                     }
-                    chunksDone = records.count { it.uploadedAtMs != null }
+                    artifactsDone = records.count { it.uploadedAtMs != null }
                     publishProgress(SessionUploadStatus.State.UPLOADING)
                 }
                 publishProgress(
-                    if (manifestDelivered && chunksDone >= chunkTotal) SessionUploadStatus.State.DONE
+                    if (manifestDelivered && artifactsDone >= artifactTotal) SessionUploadStatus.State.DONE
                     else SessionUploadStatus.State.QUEUED
                 )
             } catch (e: Exception) {
@@ -1253,10 +1307,10 @@ class SpotViewModel(
         }
     }
 
-    fun submitReport() {
+    fun submitReport(background: Boolean = false) {
         scope.launch {
             _uiState.value = _uiState.value.copy(
-                phase = SpotPhase.SUBMITTING,
+                phase = if (background) SpotPhase.RESULT else SpotPhase.SUBMITTING,
                 isSubmitting = true,
                 error = null,
             )
@@ -1389,8 +1443,8 @@ class SpotViewModel(
                     // the legacy manual-details forms.
                     _uiState.value = _uiState.value.copy(
                         isSubmitting = false,
-                        phase = SpotPhase.CAMERA,
-                        error = "A report already exists within 15m — area already logged",
+                        phase = if (background) SpotPhase.RESULT else SpotPhase.CAMERA,
+                        error = "This area was already logged; your scan data is still saved.",
                     )
                     return@launch
                 }
@@ -1431,12 +1485,14 @@ class SpotViewModel(
                 pendingSessionDraft?.let { draft ->
                     uploadEnvScanSession(draft, reportId = null, captureHealthJson = pendingCaptureHealthJson)
                 }
-                // Back to the camera with the error surfaced as a popup —
-                // Complete Scan can simply be tapped again.
                 _uiState.value = _uiState.value.copy(
                     isSubmitting = false,
-                    phase = SpotPhase.CAMERA,
-                    error = e.message ?: "Submission failed — tap Complete Scan to retry",
+                    phase = if (background) SpotPhase.RESULT else SpotPhase.CAMERA,
+                    error = if (background) {
+                        "The scan is saved on this phone, but its report has not synced yet: ${e.message ?: "network unavailable"}"
+                    } else {
+                        e.message ?: "Submission failed — tap Complete Scan to retry"
+                    },
                 )
             }
         }

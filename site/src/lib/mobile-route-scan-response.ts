@@ -41,6 +41,27 @@ export function isValidScanPhaseTransition(from: unknown, to: unknown): boolean 
   return toIndex === fromIndex || toIndex === fromIndex + 1
 }
 
+/**
+ * Validates the additive proof emitted by guided-route clients at the
+ * scouting → review boundary. `null` means this is an older client that did
+ * not send either proof field; the phase endpoint keeps that deploy-order
+ * path compatible until the new TestFlight build has rolled out.
+ */
+export function validateLapOneProof(
+  body: Record<string, unknown> | null,
+  requiresCloseCoverage: boolean,
+): boolean | null {
+  if (!body || (body.closeCoveragePercent === undefined && body.loopClosed === undefined)) {
+    return null
+  }
+  const coverage = Number(body.coveragePercent)
+  const closeCoverage = Number(body.closeCoveragePercent)
+  return Number.isFinite(coverage) &&
+    coverage >= 95 &&
+    body.loopClosed === true &&
+    (!requiresCloseCoverage || (Number.isFinite(closeCoverage) && closeCoverage >= 80))
+}
+
 export function normalizeDeviceType(deviceType: unknown): string {
   return String(deviceType ?? '').toLowerCase() === 'ar' ? 'ar' : 'gps'
 }

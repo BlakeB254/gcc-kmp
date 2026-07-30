@@ -28,6 +28,12 @@ actual fun ObjectCaptureHostView(controller: ObjectCaptureController, modifier: 
 actual fun readLocalFileBytes(path: String): ByteArray? =
     runCatching { File(path).takeIf { it.exists() }?.readBytes() }.getOrNull()
 
+actual fun writeLocalFileBytes(path: String, bytes: ByteArray) {
+    val file = File(path)
+    file.parentFile?.mkdirs()
+    file.writeBytes(bytes)
+}
+
 actual fun deleteLocalFile(path: String) {
     runCatching { File(path).delete() }
 }

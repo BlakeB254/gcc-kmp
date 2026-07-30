@@ -168,6 +168,17 @@ actual fun readLocalFileBytes(path: String): ByteArray? {
 }
 
 @OptIn(ExperimentalForeignApi::class)
+actual fun writeLocalFileBytes(path: String, bytes: ByteArray) {
+    ensureParentDirExists(path)
+    val data = memScoped {
+        NSData.create(bytes = allocArrayOf(bytes), length = bytes.size.toULong())
+    }
+    if (!data.writeToFile(path, atomically = true)) {
+        throw IllegalStateException("binary write failed: $path")
+    }
+}
+
+@OptIn(ExperimentalForeignApi::class)
 actual fun deleteLocalFile(path: String) {
     runCatching { platform.Foundation.NSFileManager.defaultManager.removeItemAtPath(path, error = null) }
 }

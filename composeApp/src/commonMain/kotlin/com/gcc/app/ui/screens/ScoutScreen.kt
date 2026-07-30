@@ -12,11 +12,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.components.*
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
+import com.gcc.app.ui.map.mapOverlayZoomBias
 import com.gcc.app.ui.map.authoredInnerRings
 import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.RouteScanSectionStatus
@@ -28,6 +31,9 @@ import com.gcc.shared.geo.routeStartCoordinates
 import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.DeviceType
 import com.gcc.shared.model.RouteStatus
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.log2
 
 /**
  * Scout lap screen — shown during the SCOUTING phase.
@@ -43,21 +49,38 @@ import com.gcc.shared.model.RouteStatus
  */
 @Composable
 fun ScoutScreen(
+    viewModel: RouteScanViewModel,
     uiState: RouteScanUiState,
     allowUnpublished: Boolean = false,
     isOutsideBoundary: Boolean = false,
     onStartScout: () -> Unit,
     onCompleteScout: () -> Unit,
-    onForceCompleteScout: () -> Unit = {},
     onCaptureHotspot: () -> Unit,
     onBeginRoute: () -> Unit = {},
     onBack: () -> Unit,
 ) {
-    // Force-complete confirm: the scout lap must never strand a worker (see
-    // completeScout(force=…)); when the normal gate isn't met, the primary
-    // button routes through this confirm instead of being disabled.
-    var showForceConfirm by remember { mutableStateOf(false) }
-
+    val scannedCells by viewModel.scannedCells.collectAsState()
+    val creditedCells by viewModel.creditedCells.collectAsState()
+    val seenCells by viewModel.seenCells.collectAsState()
+    val staleCellCenters by viewModel.staleCellCenters.collectAsState()
+    val freshCellCenters by viewModel.freshCellCenters.collectAsState()
+    val minimapBoundaries by viewModel.minimapBoundaries.collectAsState()
+    val visibilityBeam by viewModel.visibilityBeam.collectAsState()
+    val gpsHeading by viewModel.headingDegrees.collectAsState()
+    val (outerRing, innerRings) = minimapBoundaries
+    val corridorCenters = remember(outerRing, innerRings) { viewModel.corridorCellCenters() }
+    val scanCellCenters = remember(scannedCells) {
+        scannedCells.map { (row, col) -> viewModel.cellCenterLatLng(row, col) }
+    }
+    val closeCellCenters = remember(creditedCells) {
+        creditedCells
+            .filterValues { it.quality == com.gcc.app.platform.CoverageQuality.CLOSE }
+            .keys
+            .map { (row, col) -> viewModel.cellCenterLatLng(row, col) }
+    }
+    val seenCellCenters = remember(seenCells) {
+        seenCells.map { (row, col) -> viewModel.cellCenterLatLng(row, col) }
+    }
     // Build Coordinates from flat lat/lng in uiState
     val currentLocation = if (uiState.currentLat != 0.0 || uiState.currentLng != 0.0) {
         Coordinates(lat = uiState.currentLat, lng = uiState.currentLng)
@@ -107,6 +130,85 @@ fun ScoutScreen(
             showControls = true,
             statusBarPadding = true,
         )
+
+        // Assignment-focused minimap: unlike the full-screen map (which
+        // follows the worker), this camera stays fitted to the complete outer
+        // boundary so unseen corridor and excluded inner islands remain
+        // visible throughout Lap 1.
+        if (outerRing.size >= 3 && uiState.scanId != null) {
+            val density = LocalDensity.current
+            val miniMapWidth: Dp = 196.dp
+            val miniMapHeight: Dp = 150.dp
+            val blockFrame = remember(outerRing, density) {
+                val minLat = outerRing.minOf { it.first }
+                val maxLat = outerRing.maxOf { it.first }
+                val minLng = outerRing.minOf { it.second }
+                val maxLng = outerRing.maxOf { it.second }
+                val centerLat = (minLat + maxLat) / 2.0
+                val centerLng = (minLng + maxLng) / 2.0
+                val spanNorthMeters = (maxLat - minLat) * 111_320.0
+                val spanEastMeters = (maxLng - minLng) * 111_320.0 * cos(centerLat * PI / 180.0)
+                val boxPx = with(density) { minOf(miniMapWidth.toPx(), miniMapHeight.toPx()) }
+                val spanMeters = maxOf(spanNorthMeters, spanEastMeters).coerceAtLeast(12.0) * 1.2
+                val zoom = log2(156543.03392 * cos(centerLat * PI / 180.0) * boxPx / spanMeters) -
+                    mapOverlayZoomBias(density.density)
+                Triple(centerLat, centerLng, zoom)
+            }
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .statusBarsPadding()
+                    .padding(top = 94.dp, end = 12.dp),
+                horizontalAlignment = Alignment.End,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(width = miniMapWidth, height = miniMapHeight)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.Black.copy(alpha = 0.32f)),
+                ) {
+                    GccMap(
+                        modifier = Modifier.fillMaxSize(),
+                        centerLat = blockFrame.first,
+                        centerLng = blockFrame.second,
+                        zoom = blockFrame.third,
+                        currentLocation = null,
+                        gpsHeading = null,
+                        enableGestures = false,
+                        showControls = false,
+                    )
+                    ScanMinimapOverlay(
+                        centerLat = blockFrame.first,
+                        centerLng = blockFrame.second,
+                        zoom = blockFrame.third,
+                        userLat = uiState.currentLat,
+                        userLng = uiState.currentLng,
+                        scanCellCenters = scanCellCenters,
+                        closeCellCenters = closeCellCenters,
+                        seenCellCenters = seenCellCenters,
+                        cellSizeMeters = com.gcc.app.platform.CoverageTracker.cellSizeMeters,
+                        trashItems = hotspotLocations,
+                        staleCellCenters = staleCellCenters,
+                        freshCellCenters = freshCellCenters,
+                        outerBoundary = outerRing,
+                        innerBoundaries = innerRings,
+                        corridorCellCenters = corridorCenters,
+                        visibilityBeam = visibilityBeam,
+                        headingDegrees = gpsHeading,
+                    )
+                }
+                Text(
+                    text = "DARK = NEEDS SCAN · GREEN = SCANNED",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    color = Color.White,
+                    modifier = Modifier
+                        .padding(top = 4.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color.Black.copy(alpha = 0.68f))
+                        .padding(horizontal = 7.dp, vertical = 3.dp),
+                )
+            }
+        }
 
         // ── AI direction banner (top, slides in) ─────────────────────
         AiDirectionBanner(
@@ -228,9 +330,16 @@ fun ScoutScreen(
             // Coverage bar
             CoverageBar(
                 percent = uiState.coveragePercent,
-                label = "COVERAGE",
+                label = "BLOCK COVERAGE · ${RouteScanViewModel.LAP_COMPLETE_PERCENT.toInt()}% REQUIRED",
                 modifier = Modifier.fillMaxWidth(),
             )
+            if (uiState.deviceType == DeviceType.AR) {
+                CoverageBar(
+                    percent = uiState.closeCoveragePercent,
+                    label = "CLOSE DETAIL · ${RouteScanViewModel.LAP_CLOSE_COMPLETE_PERCENT.toInt()}% REQUIRED",
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
 
             if (uiState.scanId != null) {
                 SectionScanPromptCard(
@@ -304,25 +413,27 @@ fun ScoutScreen(
                     )
                 }
                 else -> {
-                    val allSectionsRecorded = uiState.routeSections.isNotEmpty() &&
-                        uiState.routeSections.none { it.status == RouteScanSectionStatus.PENDING }
-                    // Mirror RouteScanViewModel.canCompleteScout() exactly (incl.
-                    // the >=95% escape the button previously dropped).
-                    val canComplete = uiState.coveragePercent >= RouteScanViewModel.LAP_COMPLETE_PERCENT ||
-                        (uiState.coveragePercent >= 85.0 && uiState.isLoopClosed) ||
-                        allSectionsRecorded
-                    // Always tappable \u2014 a worker must never be stranded in the
-                    // scout lap. When the gate is met it completes normally; when
-                    // not, it routes through a force-complete confirm.
+                    val closeReady = uiState.deviceType != DeviceType.AR ||
+                        uiState.closeCoveragePercent >= RouteScanViewModel.LAP_CLOSE_COMPLETE_PERCENT
+                    val canComplete =
+                        uiState.coveragePercent >= RouteScanViewModel.LAP_COMPLETE_PERCENT &&
+                            closeReady &&
+                            uiState.isLoopClosed
                     GccButton(
-                        text = if (canComplete) "Complete Scout" else "Complete Scout anyway",
-                        onClick = { if (canComplete) onCompleteScout() else showForceConfirm = true },
+                        text = if (canComplete) "Review Lap 1" else "Finish the full scan to continue",
+                        onClick = onCompleteScout,
                         variant = GccButtonVariant.PRIMARY,
-                        enabled = true,
+                        enabled = canComplete,
                     )
                     if (!canComplete) {
                         Text(
-                            text = "Scouting\u2026 ${uiState.coveragePercent.toInt()}% covered",
+                            text = when {
+                                uiState.coveragePercent < RouteScanViewModel.LAP_COMPLETE_PERCENT ->
+                                    "Scan the remaining shaded ground · ${uiState.coveragePercent.toInt()}% covered"
+                                !closeReady ->
+                                    "Move closer to light-green areas · ${uiState.closeCoveragePercent.toInt()}% close detail"
+                                else -> "Return to your starting point to close the loop"
+                            },
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 4.dp),
@@ -388,31 +499,6 @@ fun ScoutScreen(
 
     // ScoutCaptureDialog is now managed by RouteScanScreen — no stub needed here.
 
-    // Force-complete confirm: lets the worker leave the scout lap even when
-    // coverage stalled below the thresholds and sections couldn't be recorded,
-    // so a route can always be finished. Coverage collected so far still uploads.
-    if (showForceConfirm) {
-        AlertDialog(
-            onDismissRequest = { showForceConfirm = false },
-            title = { Text("Complete scout anyway?") },
-            text = {
-                Text(
-                    "You haven't fully covered the block (${uiState.coveragePercent.toInt()}%). " +
-                        "You can still finish scouting and move on to cleaning — the coverage " +
-                        "you've captured is saved.",
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    showForceConfirm = false
-                    onForceCompleteScout()
-                }) { Text("Complete anyway") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showForceConfirm = false }) { Text("Keep scouting") }
-            },
-        )
-    }
 }
 
 @Composable

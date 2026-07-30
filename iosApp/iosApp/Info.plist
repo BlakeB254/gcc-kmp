@@ -38,7 +38,7 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>178</string>
+	<string>179</string>
 	<key>GIDClientID</key>
 	<string>674514823110-mebr2cehucmac7u4dorkeh4alm2hs80g.apps.googleusercontent.com</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
@@ -68,6 +68,11 @@
 	<array>
 		<string>remote-notification</string>
 		<string>location</string>
+		<string>processing</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.globalcommunitycleaners.worker.scan-upload</string>
 	</array>
 	<key>UIFileSharingEnabled</key>
 	<true/>

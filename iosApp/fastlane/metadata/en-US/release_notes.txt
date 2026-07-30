@@ -1,9 +1,5 @@
-• Park coverage restored: scanned park paths and open areas now receive the same color-coded map feedback as roads, sidewalks, and lots.
-• Scan photos stay with their finds: completion photos are linked individually to nearby timestamped observations and remain available from the map.
-• More reliable 3D capture: camera frames are retained safely while they are processed, reducing missing evidence during longer environment scans.
-• Smarter litter detection: the environment scan now finds items on the ground with LiDAR — bottles, cans, bags, and larger dumping — and asks you to confirm with one tap.
-• Tap or draw: tap any item to identify it instantly, or drag a box over a messy area to mark it all at once. Made a mistake? Undo it on the spot.
-• Trash spots stay visible: confirmed finds get an AR marker at the exact spot, and returning scans show pulsing markers where litter was previously reported — walk right to it and verify it's still there or now clean.
-• Truthful maps: tap any problem area to see its photos, item summary, and estimated weight for the whole area; marking an area clean now happens through an on-site verification scan.
-• Ground awareness: scans recognize grass, pavement, and street surfaces, improving both detection and the community 3D world model.
-• Reliability round: accurate tap placement, no duplicate spots from repeat taps, better session diagnostics, and many stability fixes.
+• Faster scan completion: the local summary opens immediately while report and capture uploads continue behind it.
+• Durable evidence: completion photos are saved on the iPhone first, retain stable scan/GPS links while offline, and retry through iOS Background App Refresh.
+• Guided route minimap: Lap 1 stays framed on the assigned block and clearly distinguishes ground that is scanned from ground that still needs scanning.
+• Guarded two-lap flow: cleaning remains locked until Lap 1 reaches 95% block coverage, 80% close-detail coverage on AR devices, and returns to the start to close the loop.
+• Reconstruction-ready sessions: photos, video, depth, poses, observations, and manifests share stable session keys for the DGX world-recreation pipeline.

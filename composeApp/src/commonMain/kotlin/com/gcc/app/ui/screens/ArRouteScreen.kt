@@ -361,7 +361,11 @@ fun ArRouteScreen(
             // Lap progress: the required block area's fill percentage. Turns
             // celebratory at LAP_COMPLETE_PERCENT (the lap-1 → lap-2 shift).
             val fillFraction = (ui.coveragePercent / 100.0).toFloat().coerceIn(0f, 1f)
-            val lapDone = ui.coveragePercent >= RouteScanViewModel.LAP_COMPLETE_PERCENT
+            val closeReady = ui.deviceType != com.gcc.shared.model.DeviceType.AR ||
+                ui.closeCoveragePercent >= RouteScanViewModel.LAP_CLOSE_COMPLETE_PERCENT
+            val lapDone = ui.coveragePercent >= RouteScanViewModel.LAP_COMPLETE_PERCENT &&
+                closeReady &&
+                ui.isLoopClosed
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -373,7 +377,11 @@ fun ArRouteScreen(
                     text = when {
                         ui.lapNumber >= 2 -> "Lap 2 · clear the problem areas"
                         lapDone -> "Lap 1 complete!"
-                        else -> "Lap 1 · ${ui.coveragePercent.toInt()}% of block scanned"
+                        ui.coveragePercent < RouteScanViewModel.LAP_COMPLETE_PERCENT ->
+                            "Lap 1 · ${ui.coveragePercent.toInt()}% of block scanned"
+                        !closeReady ->
+                            "Lap 1 · ${ui.closeCoveragePercent.toInt()}% close detail"
+                        else -> "Lap 1 · return to start to close the loop"
                     },
                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                     color = Color.White,
@@ -578,6 +586,8 @@ fun ArRouteScreen(
                     centerLat = mapCenterLat,
                     centerLng = mapCenterLng,
                     zoom = mapZoom,
+                    userLat = ui.currentLat,
+                    userLng = ui.currentLng,
                     scanCellCenters = scannedCells.map { (row, col) -> viewModel.cellCenterLatLng(row, col) },
                     cellSizeMeters = CoverageTracker.cellSizeMeters,
                     trashItems = ui.hotspots.map { Coordinates(lat = it.lat, lng = it.lng) },
