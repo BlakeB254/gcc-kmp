@@ -22,6 +22,7 @@ ExecStart=/home/codex450/cdx/dev-projects/gcc/scripts/reconstruction/.venv/bin/p
 # don't let a runaway drain (or a pile of queued jobs) take it down, and
 # don't make this the OOM killer's pet.
 MemoryMax=64G
-# gsplat training runs up to 3h/job and a drain may work through several
-# queued jobs back to back before the queue is empty.
-TimeoutStartSec=8h
+# Each gsplat subprocess has its own 3h timeout. The drain itself must not be
+# killed between that exception and fail_job's bookkeeping, or the row stays
+# leased and the exact same work restarts after lease expiry.
+TimeoutStartSec=infinity

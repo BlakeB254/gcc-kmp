@@ -109,6 +109,7 @@ def download_bytes(key: str) -> bytes:
 
 SCRUBBED_PREFIX = "scrubbed/"
 _RAW_PREFIX = "raw/"
+_UNREADABLE_MARKER_SUFFIX = ".unreadable.json"
 
 
 def scrubbed_key_for(raw_key: str) -> str:
@@ -121,6 +122,15 @@ def scrubbed_key_for(raw_key: str) -> str:
     return SCRUBBED_PREFIX + raw_key[len(_RAW_PREFIX):]
 
 
+def unreadable_marker_key_for(raw_key: str) -> str:
+    """Permanent tombstone written by the privacy scrubber when a capture
+    video is structurally undecodable (for example, an interrupted AV writer
+    uploaded ftyp+mdat without a moov atom). It lives beside the would-be
+    scrubbed rendition and is checked by both scrub and reconstruction
+    workers, so the same poisoned object cannot block every future sweep."""
+    return scrubbed_key_for(raw_key) + _UNREADABLE_MARKER_SUFFIX
+
+
 def object_exists(key: str) -> bool:
     c = client()
     try:
@@ -128,6 +138,14 @@ def object_exists(key: str) -> bool:
         return True
     except c.exceptions.ClientError:
         return False
+
+
+def capture_video_is_terminal(raw_key: str) -> bool:
+    """True once a video has either a usable scrubbed rendition or an
+    auditable permanent-unreadable tombstone."""
+    return object_exists(scrubbed_key_for(raw_key)) or object_exists(
+        unreadable_marker_key_for(raw_key)
+    )
 
 
 def download_video_bytes(raw_key: str) -> bytes:

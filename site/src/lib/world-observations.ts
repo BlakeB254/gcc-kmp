@@ -1,6 +1,6 @@
 import { db } from '@/db'
 import { worldObservations, blockExclusionZones, communityReports } from '@/db/schema'
-import { eq, and, isNull, inArray, ne } from 'drizzle-orm'
+import { eq, and, isNull, inArray, ne, desc, sql } from 'drizzle-orm'
 import { pointInPolygon, METERS_PER_DEG_LAT, METERS_PER_DEG_LNG } from '@/lib/geo-utils'
 
 const CELL_SIZE_METERS = 10
@@ -86,6 +86,22 @@ export function mergeObservationMediaUrl(
   incoming: string | null | undefined
 ): string | undefined {
   return incoming ?? prior ?? undefined
+}
+
+/**
+ * Select media for a submitted observation. Once any item carries an exact
+ * per-item URL, unlinked siblings must stay photoless instead of inheriting
+ * the report's first photo. The shared fallback remains for legacy clients
+ * that cannot send per-item media yet.
+ */
+export function selectSubmittedObservationMedia(
+  itemMediaUrl: string | null | undefined,
+  sharedMediaUrls: string[] | null | undefined,
+  hasPerItemMedia: boolean,
+): string | undefined {
+  if (itemMediaUrl) return itemMediaUrl
+  if (hasPerItemMedia) return undefined
+  return sharedMediaUrls?.[0]
 }
 
 /**
@@ -180,6 +196,15 @@ export async function recordWorldObservation(input: RecordObservationInput) {
         itemTypeCondition,
         eq(worldObservations.isCurrent, true)
       ))
+      // Marker uploads can race: two same-cell items may both read "no
+      // current row" and become current before the final scan submission
+      // collapses them. Prefer whichever candidate actually has evidence,
+      // then the newest row. An unordered LIMIT 1 could pick a photoless
+      // sibling and still erase the photo despite the merge policy below.
+      .orderBy(
+        desc(sql`${worldObservations.mediaUrl} IS NOT NULL`),
+        desc(worldObservations.capturedAt)
+      )
       .limit(1)
     input = {
       ...input,

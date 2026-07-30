@@ -2,6 +2,7 @@ package com.gcc.app.platform
 
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.toCPointer
+import platform.CoreFoundation.CFRelease
 import platform.UIKit.UIView
 
 /**
@@ -50,6 +51,13 @@ interface ArNativeSurface {
      * the pointer stays valid for the duration of one Vision tick.
      */
     fun currentPixelBufferAddress(): Long
+
+    /**
+     * Latest camera frame's CVPixelBuffer as a RETAINED raw address (0 =
+     * none yet). Callers own one release and must use this when work can
+     * escape the Swift frame lock / current render tick.
+     */
+    fun currentRetainedPixelBufferAddress(): Long
 
     /** Camera AR-world position as [x, y, z], or null before the first frame. */
     fun cameraPosition(): List<Double>?
@@ -335,6 +343,18 @@ internal fun ArNativeSurface.pixelBufferOrNull(): platform.CoreVideo.CVPixelBuff
     if (address == 0L) return null
     return address.toCPointer()
 }
+
+@OptIn(ExperimentalForeignApi::class)
+internal inline fun <T> ArNativeSurface.useRetainedPixelBuffer(
+    block: (platform.CoreVideo.CVPixelBufferRef) -> T,
+): T? = useRetainedResourceOrNull(
+    acquire = {
+        val address = currentRetainedPixelBufferAddress()
+        if (address == 0L) null else address.toCPointer()
+    },
+    release = { CFRelease(it) },
+    block = block,
+)
 
 /** Parses Swift's `"identifier|confidence"` scene-label packets (see
  *  [ArNativeSurface.classifySceneLabels]) into the shared [ClassificationObservation]

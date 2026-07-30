@@ -51,6 +51,10 @@ from fuse_cell import FusionResult, ProducedAsset
 # shorter than the run means a second worker double-claims mid-train.
 LEASE_MINUTES = 240
 MAX_ATTEMPTS = 3
+# A deterministic 3-hour trainer timeout must not be reclaimed immediately by
+# the same --drain process. Back off to a later timer tick so one bad cell
+# cannot monopolize the GPU for two consecutive attempts.
+RETRY_BACKOFF_MINUTES = 30
 DEFAULT_WORLD_MIRROR_URL = "http://127.0.0.1:7027"
 # How long a job waits before re-checking that the privacy scrub pass has
 # produced renditions for its chunks (scripts/privacy_scrub/ runs on a
@@ -95,13 +99,17 @@ def fail_job(conn, job: Job, err: BaseException) -> None:
     Failed jobs need a manual requeue (no automatic retry storm on a
     deterministic crash); the raw R2 data is untouched either way."""
     message = "".join(traceback.format_exception_only(type(err), err)).strip()[:2000]
-    status = "failed" if job.attempts >= MAX_ATTEMPTS else "queued"
+    terminal = job.attempts >= MAX_ATTEMPTS
+    status = "failed" if terminal else "leased"
     with conn.cursor() as cur:
         cur.execute(
             """UPDATE reconstruction_jobs
-               SET status=%s, leased_until=NULL, last_error=%s, updated_at=now()
+               SET status=%s,
+                   leased_until=CASE WHEN %s THEN NULL
+                     ELSE now() + make_interval(mins => %s) END,
+                   last_error=%s, updated_at=now()
                WHERE id=%s""",
-            (status, message, job.id),
+            (status, terminal, RETRY_BACKOFF_MINUTES, message, job.id),
         )
     conn.commit()
 
@@ -147,7 +155,7 @@ def unscrubbed_video_chunks(conn, cell: str) -> list[str]:
     with conn.cursor() as cur:
         cur.execute(UNSCRUBBED_SQL, (cell,))
         keys = [row[0] for row in cur.fetchall()]
-    return [k for k in keys if not r2_store.object_exists(r2_store.scrubbed_key_for(k))]
+    return [k for k in keys if not r2_store.capture_video_is_terminal(k)]
 
 
 def defer_job(conn, job: Job, reason: str) -> None:

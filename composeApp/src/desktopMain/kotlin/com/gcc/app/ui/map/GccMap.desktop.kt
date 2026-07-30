@@ -79,6 +79,7 @@ actual fun GccMap(
     onAffectedBlockTap: ((blockId: Int) -> Unit)?,
     onCoverageCellTap: ((String) -> Unit)?,
     onZoomChanged: ((Double) -> Unit)?,
+    onCenterChanged: ((Coordinates) -> Unit)?,
     observationFootprints: List<com.gcc.shared.model.WorldObservation>,
     // Canvas fallback doesn't render the coverage-tile system at all — no
     // MapLibre FillLayer stack to add the priority lens to.
@@ -92,6 +93,9 @@ actual fun GccMap(
 
     // Canvas fallback has no live camera; report the static zoom param.
     LaunchedEffect(zoom, onZoomChanged) { onZoomChanged?.invoke(zoom) }
+    LaunchedEffect(centerLat, centerLng, onCenterChanged) {
+        onCenterChanged?.invoke(Coordinates(lng = centerLng, lat = centerLat))
+    }
     val coroutineScope = rememberCoroutineScope()
 
     // --- Gesture state ---

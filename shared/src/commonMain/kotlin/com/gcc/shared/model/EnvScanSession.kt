@@ -24,6 +24,22 @@ data class EnvScanPathSample(
 data class EnvScanCell(val lat: Double, val lng: Double)
 
 /**
+ * Durable identity for one session photo. Legacy manifests only carried a
+ * bare [EnvScanManifest.photoKeys] list, which preserved the JPEG but lost
+ * when and where it was captured. Current clients keep the compatibility
+ * list and add these timestamped/geotagged references so reconstruction,
+ * review, and map recovery can associate each individual image without
+ * guessing from list order.
+ */
+@Serializable
+data class EnvScanPhotoRef(
+    val r2Key: String,
+    val atMs: Long,
+    val lat: Double? = null,
+    val lng: Double? = null,
+)
+
+/**
  * One AR↔world registration pairing: the AR camera's local position at the
  * instant a usable GPS fix arrived, with BOTH clocks. This is the record
  * that lets the DGX splat pipeline place an AR-local reconstruction into the
@@ -122,6 +138,9 @@ data class EnvScanManifest(
     val observedItems: List<ObservedSpotItem>,
     /** R2 keys of the photos uploaded alongside this manifest. */
     val photoKeys: List<String>,
+    /** Timestamped/geotagged form of [photoKeys]. Additive and null for
+     * legacy sessions whose individual photo capture stamps are unknown. */
+    val photos: List<EnvScanPhotoRef>? = null,
     /** The community report this session produced, when submission succeeded. */
     val communityReportId: Int? = null,
     /** Guided 3D capture (measured USDZ model), when performed — rides the

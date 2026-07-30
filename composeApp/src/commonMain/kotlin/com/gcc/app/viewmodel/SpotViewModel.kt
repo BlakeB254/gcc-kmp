@@ -125,6 +125,37 @@ data class LitterEvidenceShot(
     val atMs: Long,
 )
 
+/**
+ * Assign each session-summary photo to one distinct litter observation using
+ * capture time as the join key. Exact confirm-time evidence is already present
+ * in [ObservedSpotItem.mediaUrl] and therefore wins; landmarks are excluded
+ * because public litter photos should never be attached to a fence/bush row.
+ */
+internal fun assignSummaryPhotoUrls(
+    items: List<ObservedSpotItem>,
+    timestampedUrls: List<Pair<Long, String>>,
+): Map<Long, String> {
+    val remaining = items.mapNotNull { item ->
+        val stamp = item.atMs ?: return@mapNotNull null
+        val isLitter = item.domain == null || item.domain == "litter"
+        if (!isLitter || item.mediaUrl != null) null else stamp
+    }.toMutableList()
+    val assignments = mutableMapOf<Long, String>()
+
+    timestampedUrls
+        .filter { (_, url) -> url.isNotBlank() }
+        .sortedBy { (photoAtMs, _) -> photoAtMs }
+        .forEach { (photoAtMs, url) ->
+            val match = remaining.minWithOrNull(
+                compareBy<Long> { kotlin.math.abs(it - photoAtMs) }.thenBy { it },
+            ) ?: return@forEach
+            assignments[match] = url
+            remaining.remove(match)
+        }
+
+    return assignments
+}
+
 data class DuplicateMatch(
     val existingSpot: CommunityReport,
     val visualSimilarity: Float,
@@ -480,10 +511,11 @@ class SpotViewModel(
     private suspend fun withItemMediaUrls(
         items: List<ObservedSpotItem>,
         evidence: List<LitterEvidenceShot>,
+        summaryPhotos: List<Pair<Long, String>> = emptyList(),
     ): List<ObservedSpotItem> {
         val evidenceByStamp = evidence.associateBy { it.atMs }
         var lateUploadAttempts = 0
-        return items.map { item ->
+        val exactEvidenceItems = items.map { item ->
             val stamp = item.atMs ?: return@map item
             var url = itemMediaUrls[stamp]
             if (url == null && lateUploadAttempts < MAX_LATE_ITEM_PHOTO_UPLOADS) {
@@ -495,6 +527,14 @@ class SpotViewModel(
                 }
             }
             if (url != null) item.copy(mediaUrl = url) else item
+        }
+        val summaryAssignments = assignSummaryPhotoUrls(exactEvidenceItems, summaryPhotos)
+        return exactEvidenceItems.map { item ->
+            if (item.mediaUrl != null) return@map item
+            val stamp = item.atMs ?: return@map item
+            val url = summaryAssignments[stamp] ?: return@map item
+            itemMediaUrls[stamp] = url
+            item.copy(mediaUrl = url)
         }
     }
 
@@ -903,6 +943,9 @@ class SpotViewModel(
         // observe (or cause) a torn read.
         val rejectedSnapshot = rejectedItems.toList()
         val multiItemPhotoIndicesSnapshot = multiItemPhotoIndices.toSet()
+        // Parallel to state.capturedPhotos. Snapshot now because this upload
+        // runs after navigation and the next session may clear/reuse the VM.
+        val photoStampsSnapshot = photoStamps.toList()
         // Flight recorder: capture the session's event log SYNCHRONOUSLY —
         // the screen's dispose (navigation away) deactivates the registry,
         // and this coroutine may not run until after that. The reference
@@ -1008,6 +1051,26 @@ class SpotViewModel(
                         .getOrNull()
                         ?.copy(sessionSeconds = (completedAtMs - draft.startedAtMs) / 1000.0)
                 }
+                // Every map observation and the R2 manifest retain the exact
+                // item evidence URL. The report submission already populated
+                // itemMediaUrls on its path; coverage-only sessions get the
+                // same bounded best-effort catch-up here.
+                val manifestObservedItems = withItemMediaUrls(
+                    state.observedItems,
+                    state.litterEvidence,
+                )
+                val photoRefs = photoKeys.mapIndexedNotNull { index, r2Key ->
+                    val atMs = photoStampsSnapshot.getOrNull(index) ?: return@mapIndexedNotNull null
+                    val nearestPath = draft.path.minByOrNull { sample ->
+                        kotlin.math.abs(sample.atMs - atMs)
+                    }
+                    com.gcc.shared.model.EnvScanPhotoRef(
+                        r2Key = r2Key,
+                        atMs = atMs,
+                        lat = nearestPath?.lat,
+                        lng = nearestPath?.lng,
+                    )
+                }.ifEmpty { null }
 
                 val manifest = EnvScanManifest(
                     sessionId = draft.sessionId,
@@ -1019,8 +1082,9 @@ class SpotViewModel(
                     path = draft.path,
                     scannedCells = draft.scannedCells,
                     scannedCellSizeMeters = 3.0,
-                    observedItems = state.observedItems,
+                    observedItems = manifestObservedItems,
                     photoKeys = photoKeys,
+                    photos = photoRefs,
                     communityReportId = reportId,
                     objectCapture = state.objectCapture,
                     gateEvents = draft.gateEvents,
@@ -1279,7 +1343,11 @@ class SpotViewModel(
                 // Per-item map photos: each item's world_observations row keeps
                 // ITS evidence frame (marker-path URL, or a late upload from the
                 // evidence strip) instead of every item sharing mediaUrls[0].
-                val itemsWithMedia = withItemMediaUrls(state.observedItems, state.litterEvidence)
+                val itemsWithMedia = withItemMediaUrls(
+                    state.observedItems,
+                    state.litterEvidence,
+                    photoStamps.toList().zip(uploadedUrls),
+                )
 
                 val request = CreateSpotRequest(
                     type = CommunityReportType.SIGHTING,

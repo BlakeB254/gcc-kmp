@@ -82,6 +82,12 @@ def main() -> None:
     parser.add_argument("--sh-degree", type=int, default=3)
     parser.add_argument("--out", default="splat_gsplat.ply")
     parser.add_argument("--max-init", type=int, default=400_000)
+    parser.add_argument(
+        "--max-gaussians",
+        type=int,
+        default=5_000_000,
+        help="stop densification once the live Gaussian count reaches this ceiling",
+    )
     parser.add_argument("--depth-weight", type=float, default=0.3,
                         help="LiDAR depth-loss weight (0 disables)")
     parser.add_argument("--depth-ds", type=int, default=8,
@@ -202,6 +208,22 @@ def main() -> None:
         M = eye3 + exposure[i, :9].reshape(3, 3)
         return img @ M.T + exposure[i, 9:]
     for it in range(args.iters):
+        # DefaultStrategy has iteration bounds but no population bound. Its
+        # depth-supervised growth can make each later iteration progressively
+        # slower (production reached 18.8M and timed out at 17.5k/30k).
+        # Stop future refine passes as soon as the previous pass crosses the
+        # ceiling; optimization continues on the population already learned.
+        if (
+            len(params["means"]) >= args.max_gaussians
+            and it < strategy.refine_stop_iter
+        ):
+            strategy.refine_stop_iter = it
+            print(
+                f"gaussian cap reached at iter {it}: "
+                f"{len(params['means']):,} >= {args.max_gaussians:,}; "
+                "densification stopped",
+                flush=True,
+            )
         i = int(torch.randint(0, n_frames, ()))
         # Progressive SH: unlock a degree every 1000 iters (standard recipe).
         sh_deg = min(it // 1000, args.sh_degree)

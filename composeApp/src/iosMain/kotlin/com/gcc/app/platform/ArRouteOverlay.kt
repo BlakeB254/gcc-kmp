@@ -123,10 +123,11 @@ actual class ArRouteOverlay actual constructor() {
     actual fun dismissTapCandidate() = tapEngine.dismiss()
 
     actual suspend fun captureTapEvidencePhoto(): ByteArray? {
-        val pixelBuffer = nativeSurface?.pixelBufferOrNull()
-            ?: sceneView?.session?.currentFrame?.capturedImage
-            ?: return null
-        return cvPixelBufferToMarkerPhotoJpeg(pixelBuffer)
+        return nativeSurface?.useRetainedPixelBuffer(::cvPixelBufferToMarkerPhotoJpeg)
+            ?: useRetainedPixelBufferOrNull(
+                sceneView?.session?.currentFrame?.capturedImage,
+                ::cvPixelBufferToMarkerPhotoJpeg,
+            )
     }
 
     // Latest GPS fix <-> AR camera position pairing (see class KDoc).

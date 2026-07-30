@@ -8,6 +8,7 @@ import {
   resolveByCoveredCells,
   mergeObservationAttributes,
   mergeObservationMediaUrl,
+  selectSubmittedObservationMedia,
   computeDiagnosticStatus,
 } from './world-observations'
 
@@ -265,4 +266,25 @@ test('mergeObservationMediaUrl: no photo anywhere stays undefined (not null)', (
 
 test('mergeObservationMediaUrl: first photo lands on a previously photoless row', () => {
   assert.equal(mergeObservationMediaUrl(null, 'https://r2/new.jpg'), 'https://r2/new.jpg')
+})
+
+test('selectSubmittedObservationMedia: exact item evidence wins', () => {
+  assert.equal(
+    selectSubmittedObservationMedia('https://blob/item.jpg', ['https://blob/shared.jpg'], true),
+    'https://blob/item.jpg',
+  )
+})
+
+test('selectSubmittedObservationMedia: per-item payload does not smear the first shared photo across siblings', () => {
+  assert.equal(
+    selectSubmittedObservationMedia(undefined, ['https://blob/shared.jpg'], true),
+    undefined,
+  )
+})
+
+test('selectSubmittedObservationMedia: legacy payload retains the shared-photo fallback', () => {
+  assert.equal(
+    selectSubmittedObservationMedia(undefined, ['https://blob/shared.jpg'], false),
+    'https://blob/shared.jpg',
+  )
 })

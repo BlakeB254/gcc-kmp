@@ -2117,9 +2117,11 @@ actual class ArEnvScanOverlay actual constructor() {
             var photo: CapturedPhoto? = null
             var attempts = 0
             while (photo == null && attempts < 10) {
-                val buffer = nativeSurface?.pixelBufferOrNull()
-                    ?: sceneView?.session?.currentFrame?.capturedImage
-                photo = buffer?.let { cvPixelBufferToPortraitPhoto(it) }
+                photo = nativeSurface?.useRetainedPixelBuffer(::cvPixelBufferToPortraitPhoto)
+                    ?: useRetainedPixelBufferOrNull(
+                        sceneView?.session?.currentFrame?.capturedImage,
+                        ::cvPixelBufferToPortraitPhoto,
+                    )
                 attempts++
                 if (photo == null) delay(300L)
             }
