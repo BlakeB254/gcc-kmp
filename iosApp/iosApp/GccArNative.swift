@@ -279,6 +279,16 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         return Int64(Int(bitPattern: pointer))
     }
 
+    func currentRetainedPixelBufferAddress() -> Int64 {
+        frameLock.lock()
+        defer { frameLock.unlock() }
+        guard let frame = lastFrame else { return 0 }
+        // Photo conversion can outlive this lock and the current render tick,
+        // so the buffer must cross the bridge with an owned retain.
+        let pointer = Unmanaged.passRetained(frame.capturedImage).toOpaque()
+        return Int64(Int(bitPattern: pointer))
+    }
+
     func cameraPosition() -> [KotlinDouble]? {
         frameLock.lock()
         defer { frameLock.unlock() }

@@ -249,8 +249,11 @@ internal class ArFrameFeedback(
             // that triggered it (Fix: AR auto-detect markers used to enqueue
             // with no photo at all). Never blocks the marker — a conversion
             // failure just yields a null photo below.
-            val photoBytes = (native?.pixelBufferOrNull() ?: frame?.capturedImage)
-                ?.let { cvPixelBufferToMarkerPhotoJpeg(it) }
+            val photoBytes = native?.useRetainedPixelBuffer(::cvPixelBufferToMarkerPhotoJpeg)
+                ?: useRetainedPixelBufferOrNull(
+                    frame?.capturedImage,
+                    ::cvPixelBufferToMarkerPhotoJpeg,
+                )
             addMarkerAt(hitWorld[0], hitWorld[1], hitWorld[2], WorldMarkerKind.CONFIRMED_TRASH, trashLabel, photoBytes)
         }
         return false

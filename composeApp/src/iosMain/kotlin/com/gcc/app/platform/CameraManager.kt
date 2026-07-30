@@ -27,6 +27,8 @@ import platform.CoreMedia.CMSampleBufferGetImageBuffer
 import platform.CoreMedia.CMSampleBufferRef
 import platform.CoreGraphics.CGImageRefVar
 import platform.CoreGraphics.CGImageRelease
+import platform.CoreFoundation.CFRelease
+import platform.CoreFoundation.CFRetain
 import platform.CoreVideo.CVPixelBufferGetHeight
 import platform.CoreVideo.CVPixelBufferGetWidth
 import platform.Foundation.NSDate
@@ -818,6 +820,20 @@ internal fun cvPixelBufferToPortraitPhoto(pixelBuffer: platform.CoreVideo.CVPixe
         DiagnosticsLog.error("camera", "frame → JPEG conversion failed", e)
         null
     }
+}
+
+@OptIn(ExperimentalForeignApi::class)
+internal inline fun <T> useRetainedPixelBufferOrNull(
+    pixelBuffer: platform.CoreVideo.CVPixelBufferRef?,
+    block: (platform.CoreVideo.CVPixelBufferRef) -> T,
+): T? {
+    val buffer = pixelBuffer ?: return null
+    CFRetain(buffer)
+    return useRetainedResourceOrNull(
+        acquire = { buffer },
+        release = { CFRelease(it) },
+        block = block,
+    )
 }
 
 /**
