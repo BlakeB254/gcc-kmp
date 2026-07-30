@@ -17,7 +17,13 @@ import {
   buildSyntheticScanReport,
 } from '@/lib/spot-utils'
 import { reverseGeocode } from '@/lib/geo-lookup'
-import { recordWorldObservation, gridCell, parseCoveredCellIds, resolveByCoveredCells } from '@/lib/world-observations'
+import {
+  recordWorldObservation,
+  gridCell,
+  parseCoveredCellIds,
+  resolveByCoveredCells,
+  selectSubmittedObservationMedia,
+} from '@/lib/world-observations'
 
 export const dynamic = 'force-dynamic'
 
@@ -406,6 +412,7 @@ export async function POST(request: NextRequest) {
     // detectedItems fallback loop below guarantees at least one
     // recordWorldObservation call even when clientItems is empty.
     let anchorObservationId: number | undefined
+    const hasPerItemMedia = clientItems.some((item) => item.mediaUrl !== undefined)
 
     for (const item of clientItems) {
       const observation = await recordWorldObservation({
@@ -425,9 +432,15 @@ export async function POST(request: NextRequest) {
             }
           : undefined,
         confidence: item.confidence,
-        // The item's OWN evidence photo when the client sent one; the shared
-        // session photo is only a fallback (pre-per-item-photo clients).
-        mediaUrl: item.mediaUrl ?? (Array.isArray(mediaUrls) && mediaUrls.length > 0 ? mediaUrls[0] : undefined),
+        // The item's OWN evidence photo when the client sent one. Once the
+        // payload demonstrates per-item support, unlinked siblings stay
+        // photoless instead of every row sharing mediaUrls[0]. The shared
+        // fallback remains only for pre-per-item-photo clients.
+        mediaUrl: selectSubmittedObservationMedia(
+          item.mediaUrl,
+          Array.isArray(mediaUrls) ? mediaUrls : undefined,
+          hasPerItemMedia,
+        ),
         capturedAt: observationsAt,
       })
       if (anchorObservationId === undefined) anchorObservationId = observation?.id

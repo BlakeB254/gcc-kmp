@@ -401,6 +401,14 @@ def _session_fusion_input_from_manifest(manifest_obj: r2_store.ManifestObject) -
         kinds = chunks[index]
         if "jsonl" not in kinds or "depth" not in kinds:
             continue  # no pose or no depth for this chunk -- nothing to fuse
+        if "mov" in kinds and r2_store.object_exists(
+            r2_store.unreadable_marker_key_for(kinds["mov"])
+        ):
+            print(
+                f"session {manifest.get('sessionId', manifest_obj.key)}: "
+                f"skipping permanently unreadable video {kinds['mov']}"
+            )
+            continue
         video_bytes = r2_store.download_video_bytes(kinds["mov"]) if "mov" in kinds else None
         sidecar_bytes = r2_store.download_bytes(kinds["jsonl"])
         depth_bytes = r2_store.download_bytes(kinds["depth"])

@@ -85,6 +85,7 @@ actual fun GccMap(
     onAffectedBlockTap: ((blockId: Int) -> Unit)?,
     onCoverageCellTap: ((String) -> Unit)?,
     onZoomChanged: ((Double) -> Unit)?,
+    @Suppress("UNUSED_PARAMETER") onCenterChanged: ((Coordinates) -> Unit)?,
     observationFootprints: List<com.gcc.shared.model.WorldObservation>,
     // Unused on this platform: Android's GccMap actual doesn't render the
     // coverage-tile FillLayer stack at all yet (pre-existing gap, out of

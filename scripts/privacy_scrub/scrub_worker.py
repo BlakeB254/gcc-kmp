@@ -81,7 +81,7 @@ def main() -> None:
 
     todo: list[tuple[str, str, str]] = []
     for raw_key, session_id, cell in rows:
-        if not args.force and r2_store.object_exists(r2_store.scrubbed_key_for(raw_key)):
+        if not args.force and r2_store.capture_video_is_terminal(raw_key):
             continue
         todo.append((raw_key, session_id, cell))
         if args.limit and len(todo) >= args.limit:
@@ -134,12 +134,28 @@ def main() -> None:
             )
         except av.error.InvalidDataError as exc:
             # Permanent: the object in R2 is not a decodable video. Record it
-            # so the damage is visible and auditable, and keep going.
+            # beside the would-be scrubbed rendition so later sweeps and the
+            # reconstruction gate can distinguish "permanently unreadable"
+            # from "still waiting to be scrubbed".
             print(f"  !! UNREADABLE video, skipping: {exc}")
             unreadable.append(raw_key)
             _report_for(session_id, cell)["unreadableChunks"].append({
                 "rawKey": raw_key, "error": str(exc),
             })
+            marker = {
+                "schema": 1,
+                "rawKey": raw_key,
+                "sessionId": session_id,
+                "locationCellId": cell,
+                "markedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+                "reason": "invalid-video",
+                "errorType": type(exc).__name__,
+            }
+            r2_store.upload_bytes(
+                r2_store.unreadable_marker_key_for(raw_key),
+                json.dumps(marker, indent=2).encode(),
+                "application/json",
+            )
             continue
         except Exception as exc:  # noqa: BLE001 — transient/unknown, keep sweeping
             print(f"  !! FAILED ({type(exc).__name__}), skipping: {exc}")

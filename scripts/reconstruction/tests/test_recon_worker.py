@@ -136,7 +136,7 @@ def test_expired_lease_is_reclaimable(db):
     assert job.attempts == 2  # original lease counted one attempt
 
 
-def test_fail_job_requeues_then_fails_at_max_attempts(db):
+def test_fail_job_backs_off_then_fails_at_max_attempts(db):
     import recon_worker
 
     dsn, conn = db
@@ -146,13 +146,27 @@ def test_fail_job_requeues_then_fails_at_max_attempts(db):
         job = recon_worker.claim_job(conn)
     recon_worker.fail_job(conn, job, RuntimeError("boom 1"))
     with conn.cursor() as cur:
-        cur.execute("SELECT status, last_error FROM reconstruction_jobs WHERE id=%s", (job.id,))
-        status, last_error = cur.fetchone()
-    assert status == "queued"
+        cur.execute(
+            "SELECT status, leased_until > now(), last_error FROM reconstruction_jobs WHERE id=%s",
+            (job.id,),
+        )
+        status, lease_in_future, last_error = cur.fetchone()
+    assert status == "leased"
+    assert lease_in_future
     assert "boom 1" in last_error
+    # The same --drain process cannot immediately claim the deterministic
+    # failure again.
+    with conn.transaction():
+        assert recon_worker.claim_job(conn) is None
 
-    # Two more claim+fail cycles hit MAX_ATTEMPTS (3) -> failed for good.
+    # Two later timer ticks (simulated by expiring the backoff lease) hit
+    # MAX_ATTEMPTS (3) -> failed for good.
     for n in (2, 3):
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE reconstruction_jobs SET leased_until=now() - interval '1 minute'"
+            )
+        conn.commit()
         with conn.transaction():
             job = recon_worker.claim_job(conn)
         assert job is not None and job.attempts == n

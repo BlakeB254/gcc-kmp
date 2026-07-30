@@ -78,6 +78,14 @@ import org.koin.compose.koinInject
 // BOTH map modes so scanned tiles show on My Area from the first frame — see
 // the fetch LaunchedEffect for why a tighter My-Area box lost cells.
 private const val COVERAGE_FETCH_PAD_DEGREES = 0.02
+// Refetch after the camera moves roughly 450m. This is comfortably inside
+// the ±0.02° fetch box, so an ordinary pan loads the next area before the
+// visible viewport can outrun the current data.
+internal const val COVERAGE_REFETCH_THRESHOLD_DEGREES = 0.004
+
+internal fun shouldRefetchMapData(from: Coordinates, to: Coordinates): Boolean =
+    (from.lat - to.lat).absoluteValue >= COVERAGE_REFETCH_THRESHOLD_DEGREES ||
+        (from.lng - to.lng).absoluteValue >= COVERAGE_REFETCH_THRESHOLD_DEGREES
 
 /** "Verify clean with a scan" only opens the scanner when the tapped area
  *  is walkably close — the scan's geofenced credit and the 5m proximity
@@ -245,34 +253,43 @@ fun MapFullScreen(
     // fall behind the artificially-advanced cursor and never return).
     var coverageSinceCursor by remember { mutableStateOf<String?>(null) }
     var observationSinceCursor by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(centerLat, centerLng, mapMode) {
-        // Coverage/observations always fetch the wider (~2.2km) box in BOTH
-        // modes. The map center is a fixed service-area/GPS anchor that does
-        // not follow the camera, so a tight My-Area box (~650m) missed cells
-        // the user scanned farther out — they only appeared after toggling to
-        // Explorer's wider box (which merges + persists). Fetch wide, render
-        // clips to the viewport, so scanned data shows on My Area from the
-        // first frame.
+    // The opening camera is anchored to the service area, but data follows
+    // the LIVE camera target. Douglas Park's eastern scan cells sit just
+    // outside the old fixed North-Lawndale-centered bbox; panning there used
+    // to move the basemap while coverage remained frozen at the home center.
+    var dataViewportCenter by remember {
+        mutableStateOf(Coordinates(lng = centerLng, lat = centerLat))
+    }
+    LaunchedEffect(centerLat, centerLng) {
+        val requested = Coordinates(lng = centerLng, lat = centerLat)
+        if (shouldRefetchMapData(dataViewportCenter, requested)) {
+            dataViewportCenter = requested
+        }
+    }
+    LaunchedEffect(dataViewportCenter, mapMode) {
+        // Coverage/observations use the same viewport-following box in BOTH
+        // modes. Results merge into the accumulated state, so panning never
+        // discards cells already loaded and returning offline still has the
+        // cached picture.
         val pad = COVERAGE_FETCH_PAD_DEGREES
-        val west = centerLng - pad
-        val south = centerLat - pad
-        val east = centerLng + pad
-        val north = centerLat + pad
+        val west = dataViewportCenter.lng - pad
+        val south = dataViewportCenter.lat - pad
+        val east = dataViewportCenter.lng + pad
+        val north = dataViewportCenter.lat + pad
 
-        // Cache-first: render the last-known snapshot immediately.
-        if (coverageCells.isEmpty()) {
-            val cachedAreas = withContext(Dispatchers.Default) { scanAreaCache.getAll() }
-            val cached = cachedAreas
-                .flatMap { it.coverageCells }
-                .filter { it.lat in south..north && it.lng in west..east }
-                .distinctBy { it.locationCellId }
-            if (cached.isNotEmpty()) coverageCells = cached
-            if (mapObservations.isEmpty()) {
-                mapObservations = cachedAreas
-                    .flatMap { it.observations }
-                    .filter { it.lat in south..north && it.lng in west..east }
-                    .distinctBy { it.id }
-            }
+        // Cache-first on every newly visited viewport, not just app open.
+        val cachedAreas = withContext(Dispatchers.Default) { scanAreaCache.getAll() }
+        val cached = cachedAreas
+            .flatMap { it.coverageCells }
+            .filter { it.lat in south..north && it.lng in west..east }
+            .distinctBy { it.locationCellId }
+        if (cached.isNotEmpty()) coverageCells = mergeCoverageCells(coverageCells, cached)
+        val cachedObservations = cachedAreas
+            .flatMap { it.observations }
+            .filter { it.lat in south..north && it.lng in west..east }
+            .distinctBy { it.id }
+        if (cachedObservations.isNotEmpty()) {
+            mapObservations = mergeObservations(mapObservations, cachedObservations)
         }
 
         try {
@@ -302,7 +319,7 @@ fun MapFullScreen(
             withContext(Dispatchers.Default) {
                 val now = Clock.System.now().toEpochMilliseconds()
                 scanAreaCache.put(
-                    ScanAreaCacheStore.areaKeyFor(centerLat, centerLng),
+                    ScanAreaCacheStore.areaKeyFor(dataViewportCenter.lat, dataViewportCenter.lng),
                     fetched,
                     observations,
                     now,
@@ -322,7 +339,9 @@ fun MapFullScreen(
     // keyed on Unit so it survives center/mode changes; it just reads the
     // latest viewport via rememberUpdatedState on each tick). Errors are
     // logged and the loop keeps polling — no user-facing noise.
-    val latestViewport = rememberUpdatedState(Triple(centerLat, centerLng, mapMode))
+    val latestViewport = rememberUpdatedState(
+        Triple(dataViewportCenter.lat, dataViewportCenter.lng, mapMode),
+    )
     LaunchedEffect(Unit) {
         while (true) {
             delay(20_000L)
@@ -679,6 +698,11 @@ fun MapFullScreen(
             spots = visibleSpots,
             mapMode = mapMode,
             onZoomChanged = { currentMapZoom = it },
+            onCenterChanged = { cameraCenter ->
+                if (shouldRefetchMapData(dataViewportCenter, cameraCenter)) {
+                    dataViewportCenter = cameraCenter
+                }
+            },
             onCoverageCellTap = { cellId ->
                 selectedCoverageCell = coverageCells.find { it.locationCellId == cellId }
                 if (selectedCoverageCell != null) {

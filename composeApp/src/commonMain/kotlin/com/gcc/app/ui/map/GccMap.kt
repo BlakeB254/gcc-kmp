@@ -131,6 +131,10 @@ expect fun GccMap(
     /** Reports live camera zoom (throttled to actual changes) so callers can
      *  zoom-gate chrome like the heat legend to when the layer is on screen. */
     onZoomChanged: ((Double) -> Unit)? = null,
+    /** Reports the live camera target while the user pans. Map data fetches
+     *  must follow this viewport target rather than remaining anchored to the
+     *  worker's service-area home center. */
+    onCenterChanged: ((Coordinates) -> Unit)? = null,
     /** World observations carrying widthMeters/yawDegrees (Pillar 3) — driven
      *  into true-scale oriented footprint polygons at close zoom (>=17),
      *  rendered under the pin/glyph layers. Empty → no footprint layer. */

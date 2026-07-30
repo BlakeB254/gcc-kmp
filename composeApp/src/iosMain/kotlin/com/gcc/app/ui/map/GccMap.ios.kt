@@ -102,6 +102,7 @@ actual fun GccMap(
     onAffectedBlockTap: ((blockId: Int) -> Unit)?,
     onCoverageCellTap: ((String) -> Unit)?,
     onZoomChanged: ((Double) -> Unit)?,
+    onCenterChanged: ((Coordinates) -> Unit)?,
     observationFootprints: List<com.gcc.shared.model.WorldObservation>,
     showNeedsScanningLens: Boolean,
     onObservationTap: ((observationId: Int) -> Unit)?,
@@ -319,6 +320,23 @@ actual fun GccMap(
         LaunchedEffect(onZoomChanged) {
             snapshotFlow { camera.position.zoom }
                 .collect { onZoomChanged(it) }
+        }
+    }
+    // Coverage/observation reads follow the map target, not the service-area
+    // center used only to choose the opening camera. The caller applies a
+    // distance threshold before refetching, so this lightweight stream may
+    // safely report every native camera change without causing request churn.
+    if (onCenterChanged != null) {
+        LaunchedEffect(onCenterChanged) {
+            snapshotFlow { camera.position.target }
+                .collect { target ->
+                    onCenterChanged(
+                        Coordinates(
+                            lng = target.longitude,
+                            lat = target.latitude,
+                        ),
+                    )
+                }
         }
     }
 

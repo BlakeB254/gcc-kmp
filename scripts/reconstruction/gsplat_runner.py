@@ -56,6 +56,9 @@ def _export_session_frames(manifest: dict, T_cell: np.ndarray, frames_dir: str,
     for kinds in chunks.values():
         if n - start_index >= budget:
             break
+        if r2_store.object_exists(r2_store.unreadable_marker_key_for(kinds["mov"])):
+            print(f"gsplat_runner: skipping permanently unreadable video {kinds['mov']}")
+            continue
         video = r2_store.download_bytes(kinds["mov"])
         _header, sidecar = chunk_io.parse_sidecar(r2_store.download_bytes(kinds["jsonl"]))
         if not sidecar:
@@ -137,11 +140,17 @@ def train_gsplat_for_cell(
         # ~2x the old 15k wall-clock (~95min/cell on the GB10). Set
         # GSPLAT_ITERS=15000 to trade quality for turnaround.
         iters = os.environ.get("GSPLAT_ITERS", "30000")
-        print(f"gsplat_runner: cell {cell_id}: training on {n} frames, {iters} iters...")
+        max_gaussians = os.environ.get("GSPLAT_MAX_GAUSSIANS", "5000000")
+        print(
+            f"gsplat_runner: cell {cell_id}: training on {n} frames, "
+            f"{iters} iters, cap {max_gaussians} gaussians..."
+        )
         env = dict(os.environ, TORCH_CUDA_ARCH_LIST="12.0;12.1")
         proc = subprocess.run(
             [GSPLAT_PYTHON, os.path.join(GSPLAT_DIR, "train_gsplat.py"),
-             "--data", tmp, "--iters", iters, "--out", "splat_gsplat.ply"],
+             "--data", tmp, "--iters", iters,
+             "--max-gaussians", max_gaussians,
+             "--out", "splat_gsplat.ply"],
             env=env, timeout=3 * 3600,
         )
         out_ply = os.path.join(tmp, "splat_gsplat.ply")
