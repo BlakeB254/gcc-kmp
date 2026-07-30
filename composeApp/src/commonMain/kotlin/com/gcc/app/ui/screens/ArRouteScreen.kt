@@ -172,6 +172,7 @@ fun ArRouteScreen(
             if (overlay.startCapture(lapId)) {
                 captureSessionStarted = lapId
                 captureRecState = "rec"
+                viewModel.onLapCaptureStarted(lapId)
             }
         } catch (e: Throwable) {
             DiagnosticsLog.error("capture", "route startCapture failed — capture disabled for this lap", e)
@@ -365,6 +366,7 @@ fun ArRouteScreen(
                 ui.closeCoveragePercent >= RouteScanViewModel.LAP_CLOSE_COMPLETE_PERCENT
             val lapDone = ui.coveragePercent >= RouteScanViewModel.LAP_COMPLETE_PERCENT &&
                 closeReady &&
+                (ui.deviceType != com.gcc.shared.model.DeviceType.AR || ui.reconstructionCaptureReady) &&
                 ui.isLoopClosed
             Column(
                 modifier = Modifier
@@ -381,6 +383,9 @@ fun ArRouteScreen(
                             "Lap 1 · ${ui.coveragePercent.toInt()}% of block scanned"
                         !closeReady ->
                             "Lap 1 · ${ui.closeCoveragePercent.toInt()}% close detail"
+                        ui.deviceType == com.gcc.shared.model.DeviceType.AR &&
+                            !ui.reconstructionCaptureReady ->
+                            "Lap 1 · starting 3D capture"
                         else -> "Lap 1 · return to start to close the loop"
                     },
                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),

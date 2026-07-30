@@ -45,6 +45,7 @@ import com.gcc.app.platform.sessionJournalPath
 import com.gcc.app.platform.scheduleBackgroundScanUpload
 import com.gcc.app.platform.wireQualityForSegment
 import com.gcc.shared.api.GccApiClient
+import com.gcc.shared.cache.CaptureChunkRecord
 import com.gcc.shared.cache.CaptureChunkStore
 import com.gcc.shared.geo.GeofenceVerification
 import com.gcc.shared.geo.gridCell10m
@@ -105,11 +106,23 @@ internal fun routeLapOneReady(
     closeCoveragePercent: Double,
     loopClosed: Boolean,
     requiresCloseCoverage: Boolean,
+    reconstructionCaptureReady: Boolean,
+    requiresReconstructionCapture: Boolean,
 ): Boolean =
     coveragePercent >= RouteScanViewModel.LAP_COMPLETE_PERCENT &&
         (!requiresCloseCoverage ||
             closeCoveragePercent >= RouteScanViewModel.LAP_CLOSE_COMPLETE_PERCENT) &&
+        (!requiresReconstructionCapture || reconstructionCaptureReady) &&
         loopClosed
+
+internal fun List<CaptureChunkRecord>.hasReconstructionCaptureSet(): Boolean {
+    val availableByIndex = asSequence()
+        .filter { it.uploadedAtMs != -1L }
+        .groupBy({ it.chunkIndex }, { it.kind })
+    return availableByIndex.values.any { kinds ->
+        kinds.containsAll(setOf("video", "sidecar", "depth"))
+    }
+}
 
 data class RouteScanUiState(
     val scanId: Int? = null,
@@ -122,6 +135,10 @@ data class RouteScanUiState(
      * tracking). AR routes use this as the detail gate for Lap 1; GPS-only
      * devices cannot produce CLOSE raycasts and therefore omit that gate. */
     val closeCoveragePercent: Double = 0.0,
+    /** True only after the current AR lap has both a real AR↔GPS pairing and
+     * the native reconstruction recorder has started. An AR route cannot
+     * finish Lap 1 without this because coverage alone cannot feed 3DGS. */
+    val reconstructionCaptureReady: Boolean = false,
     val hotspots: List<ScanHotspot> = emptyList(),
     /** True while the worker is walking too fast for good scan coverage. */
     val movingTooFast: Boolean = false,
@@ -192,6 +209,12 @@ class RouteScanViewModel(
          * for DGX reconstruction instead of merely GPS-grazed.
          */
         const val LAP_CLOSE_COMPLETE_PERCENT = 80.0
+
+        /** Native stop/drain books artifacts asynchronously into SQLDelight.
+         * Give the durable queue a short window to become visible before the
+         * background finalizer freezes the manifest's chunk inventory. */
+        const val CAPTURE_BOOKING_WAIT_MS = 5_000L
+        const val CAPTURE_BOOKING_POLL_MS = 100L
 
         /** Landmarks within this distance cluster into one problem area. */
         const val PROBLEM_CLUSTER_METERS = 30.0
@@ -277,6 +300,8 @@ class RouteScanViewModel(
     // each lap uploads its own events.jsonl.gz. Declared before
     // lapSessionRecorder: newLapSessionRecorder() assigns it, and a later
     // property initializer would silently null it back out.
+    private var lapCaptureStartedSessionId: String? = null
+    private var lapGeoRefSessionId: String? = null
     private var lapEventLog: SessionEventLog? = null
     private var lapSessionRecorder = newLapSessionRecorder("baseline")
     private var lapTransitionFired = false
@@ -512,6 +537,25 @@ class RouteScanViewModel(
      *  onto the lap manifest for the DGX world-splat registration. */
     fun recordGeoRefEvent(event: com.gcc.shared.model.GeoRefEvent) {
         lapSessionRecorder.addGeoRefEvent(event)
+        lapGeoRefSessionId = lapSessionRecorder.sessionId
+        refreshReconstructionCaptureReadiness()
+    }
+
+    /** Called only after [com.gcc.app.platform.ArRouteOverlay.startCapture]
+     * honestly returns true. A stale callback from the prior lap is ignored. */
+    fun onLapCaptureStarted(sessionId: String) {
+        if (sessionId != lapSessionRecorder.sessionId) return
+        lapCaptureStartedSessionId = sessionId
+        refreshReconstructionCaptureReadiness()
+        DiagnosticsLog.info("capture", "route reconstruction capture ready: $sessionId")
+    }
+
+    private fun refreshReconstructionCaptureReadiness() {
+        val sessionId = lapSessionRecorder.sessionId
+        val ready = lapCaptureStartedSessionId == sessionId && lapGeoRefSessionId == sessionId
+        if (_uiState.value.reconstructionCaptureReady != ready) {
+            _uiState.value = _uiState.value.copy(reconstructionCaptureReady = ready)
+        }
     }
 
     /**
@@ -858,6 +902,8 @@ class RouteScanViewModel(
         _minimapBoundaries.value =
             outerRing.map { it.lat to it.lng } to innerRings.map { ring -> ring.map { it.lat to it.lng } }
         lapSessionRecorder = newLapSessionRecorder("baseline")
+        lapCaptureStartedSessionId = null
+        lapGeoRefSessionId = null
         lapTransitionFired = false
         lapOneValidated = false
         visitedProblemAreas.clear()
@@ -1112,6 +1158,8 @@ class RouteScanViewModel(
                 )
                 cleanPath.clear()
                 lapSessionRecorder = newLapSessionRecorder("clean") // lap 2 = its own session
+                lapCaptureStartedSessionId = null
+                lapGeoRefSessionId = null
                 val currentState = _uiState.value
                 val areas = currentState.problemAreas
                     .ifEmpty { clusterProblemAreas(currentState.hotspots) }
@@ -1122,6 +1170,7 @@ class RouteScanViewModel(
                     lapStartedAtElapsedSeconds = currentState.elapsedSeconds,
                     problemAreas = areas,
                     guidanceTarget = areas.firstOrNull(),
+                    reconstructionCaptureReady = false,
                     sectionPrompt = if (areas.isNotEmpty()) {
                         "Lap 2: head to the biggest problem area (${areas.first().landmarkCount} landmark(s))."
                     } else {
@@ -1350,6 +1399,8 @@ class RouteScanViewModel(
             closeCoveragePercent = state.closeCoveragePercent,
             loopClosed = state.isLoopClosed,
             requiresCloseCoverage = state.deviceType == DeviceType.AR,
+            reconstructionCaptureReady = state.reconstructionCaptureReady,
+            requiresReconstructionCapture = state.deviceType == DeviceType.AR,
         )
     }
 
@@ -1362,6 +1413,8 @@ class RouteScanViewModel(
             state.deviceType == DeviceType.AR &&
                 state.closeCoveragePercent < LAP_CLOSE_COMPLETE_PERCENT ->
                 "Move closer to the remaining light-green areas: ${state.closeCoveragePercent.toInt()}% of ${LAP_CLOSE_COMPLETE_PERCENT.toInt()}% close-detail captured."
+            state.deviceType == DeviceType.AR && !state.reconstructionCaptureReady ->
+                "Open the AR route view and wait for the red REC indicator so this lap can feed the 3D world-twin pipeline."
             !state.isLoopClosed ->
                 "Return to the start marker to close Lap 1."
             else -> "Lap 1 is ready for review."
@@ -1423,6 +1476,7 @@ class RouteScanViewModel(
         // baseline lap's events must not be read from (or lost to) lap 2.
         val eventLog = lapEventLog?.takeIf { it.sessionId == recorder.sessionId }
         val state = _uiState.value
+        val captureExpected = lapCaptureStartedSessionId == recorder.sessionId
         scheduleBackgroundScanUpload()
         launchDetached {
             try {
@@ -1451,14 +1505,10 @@ class RouteScanViewModel(
                 // Uploaded-so-far capture-chunk R2 keys (route-lap capture):
                 // late uploads are still keyed by sessionId in R2 regardless
                 // of whether they made it into this manifest snapshot.
-                val captureChunkKeys = try {
-                    captureChunkStore.chunksForSession(draft.sessionId)
-                        .filter { it.kind != "photo" && it.uploadedAtMs != -1L }
-                        .map { it.r2Key ?: CaptureChunkUploader.expectedR2Key(it) }
-                } catch (e: Exception) {
-                    DiagnosticsLog.error("env-capture", "lap captureChunks lookup failed (manifest continues without)", e)
-                    emptyList()
-                }
+                val captureChunkKeys = captureChunkKeysForManifest(
+                    sessionId = draft.sessionId,
+                    captureExpected = captureExpected,
+                )
                 val completedAtMs = Clock.System.now().toEpochMilliseconds()
                 // Splat-capture reliability spec, Task 5: the native health
                 // JSON carries everything except sessionSeconds, which only
@@ -1526,6 +1576,49 @@ class RouteScanViewModel(
 
     fun setError(message: String?) {
         _uiState.value = _uiState.value.copy(error = message)
+    }
+
+    /**
+     * Wait for the final native stop/drain packets to become durable queue
+     * rows, then freeze deterministic R2 keys into the manifest. This is a
+     * background wait; the user-facing phase transition is already complete.
+     * The R2 indexer's late-artifact reconciliation remains the fallback if
+     * the timeout expires.
+     */
+    private suspend fun captureChunkKeysForManifest(
+        sessionId: String,
+        captureExpected: Boolean,
+    ): List<String> {
+        var records = try {
+            captureChunkStore.chunksForSession(sessionId)
+        } catch (e: Exception) {
+            DiagnosticsLog.error("env-capture", "lap captureChunks lookup failed (manifest continues without)", e)
+            emptyList()
+        }
+        if (captureExpected) {
+            var waitedMs = 0L
+            while (!records.hasReconstructionCaptureSet() && waitedMs < CAPTURE_BOOKING_WAIT_MS) {
+                delay(CAPTURE_BOOKING_POLL_MS)
+                waitedMs += CAPTURE_BOOKING_POLL_MS
+                records = try {
+                    captureChunkStore.chunksForSession(sessionId)
+                } catch (e: Exception) {
+                    DiagnosticsLog.error("env-capture", "lap captureChunks retry failed", e)
+                    break
+                }
+            }
+            if (!records.hasReconstructionCaptureSet()) {
+                val kinds = records.filter { it.uploadedAtMs != -1L }.map { it.kind }.distinct()
+                DiagnosticsLog.error(
+                    "env-capture",
+                    "route lap $sessionId ended without a complete video/sidecar/depth set " +
+                        "after ${waitedMs}ms (found=$kinds)",
+                )
+            }
+        }
+        return records
+            .filter { it.kind != "photo" && it.uploadedAtMs != -1L }
+            .map { it.r2Key ?: CaptureChunkUploader.expectedR2Key(it) }
     }
 
     /** Raycast-fan hits from the route AR overlay (ArRouteScreen wires the listener).
