@@ -1,6 +1,7 @@
 """CPU-only contracts for deterministic reconstruction validation views."""
 from __future__ import annotations
 
+import copy
 import importlib
 import json
 import sys
@@ -15,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from render_validation import (  # noqa: E402
     aggregate_captured_metrics,
+    build_validation_metrics_report,
     build_contact_sheet,
     build_view_spec,
     captured_image_metrics,
@@ -152,32 +154,81 @@ def test_validation_metrics_serialize_identical_view_psnr_explicitly(tmp_path):
     output = tmp_path / "validation-metrics.json"
 
     image = np.full((4, 4, 3), 0.25, dtype=np.float64)
-    metrics = captured_image_metrics(image, image)
-    write_validation_metrics({"captured": [metrics]}, output)
+    report = build_validation_metrics_report([{
+        "frame_id": "recorded-0000",
+        "kind": "recorded",
+        "frame_index": 0,
+        "ground_truth": image,
+        "balanced_render": image.copy(),
+    }])
+    write_validation_metrics(report, output)
 
     assert json.loads(output.read_text()) == {
-        "captured": [{"mse": 0.0, "psnr": "Infinity", "ssim": 1.0}]
+        "aggregates": {"meanMse": 0.0, "meanPsnr": "Infinity", "meanSsim": 1.0},
+        "captured": [{
+            "frameId": "recorded-0000",
+            "frameIndex": 0,
+            "kind": "recorded",
+            "mse": 0.0,
+            "psnr": "Infinity",
+            "ssim": 1.0,
+        }],
+        "expectedCapturedCount": 1,
+        "interpolated": [],
     }
 
 
 @pytest.mark.parametrize(
-    ("document", "message"),
+    "document",
     [
-        ({"captured": [{"psnr": float("nan")}]}, "non-finite metric"),
-        ({"captured": [{"psnr": -float("inf")}]}, "non-finite metric"),
-        ({"captured": [{"psnr": float("inf")}]}, "non-finite metric"),
-        ({"captured": [{"ssim": float("inf")}]}, "non-finite metric"),
-        ({"captured": [{"psnr": [float("inf")]}]}, "non-finite metric"),
-        ({"aggregates": {"meanPsnr": float("inf")}}, "non-finite metric"),
-        ({"captured": [{"psnr": "Infinity"}]}, "reserved metric token"),
+        {"captured": [{"psnr": float("nan")}]},
+        {"captured": [{"psnr": -float("inf")}]},
+        {"captured": [{"psnr": float("inf")}]},
+        {"captured": [{"ssim": float("inf")}]},
+        {"captured": [{"psnr": [float("inf")]}]},
+        {"aggregates": {"meanPsnr": float("inf")}},
+        {"captured": [{"psnr": "Infinity"}]},
     ],
 )
-def test_validation_metrics_reject_unapproved_nonfinite_values(
-    tmp_path, document, message
-):
+def test_validation_metrics_reject_unapproved_nonfinite_values(tmp_path, document):
     """Catches arbitrary non-finite metrics being disguised as JSON strings."""
-    with pytest.raises(ValueError, match=message):
+    with pytest.raises(ValueError, match="validated metrics report"):
         write_validation_metrics(document, tmp_path / "validation-metrics.json")
+
+
+def test_metrics_writer_rejects_forged_or_transplanted_public_mappings(tmp_path):
+    """Catches a caller transplanting a perfect marker or aggregate into a report."""
+    forged = {
+        "expectedCapturedCount": 2,
+        "captured": [{"mse": 0.0, "psnr": "Infinity", "ssim": 1.0}],
+        "aggregates": {"meanMse": 0.0, "meanPsnr": "Infinity", "meanSsim": 1.0},
+    }
+
+    with pytest.raises(ValueError, match="validated metrics report"):
+        write_validation_metrics(forged, tmp_path / "validation-metrics.json")
+
+
+def test_metrics_writer_rejects_evidence_transplanted_between_sealed_reports(tmp_path):
+    """Catches copying perfect evidence into another otherwise valid report shell."""
+    image = np.zeros((4, 4, 3), dtype=np.float64)
+    perfect_rows = [
+        {
+            "frame_id": f"recorded-{index}",
+            "kind": "recorded",
+            "frame_index": index,
+            "ground_truth": image,
+            "balanced_render": image.copy(),
+        }
+        for index in range(2)
+    ]
+    mixed_rows = [dict(row) for row in perfect_rows]
+    mixed_rows[1]["balanced_render"] = np.full_like(image, 0.5)
+    perfect_report = build_validation_metrics_report(perfect_rows)
+    transplanted = copy.copy(build_validation_metrics_report(mixed_rows))
+    transplanted._captured = perfect_report._captured
+
+    with pytest.raises(ValueError, match="evidence integrity"):
+        write_validation_metrics(transplanted, tmp_path / "validation-metrics.json")
 
 
 def test_psnr_aggregate_uses_mse_so_perfect_and_imperfect_frames_stay_finite():
@@ -195,13 +246,52 @@ def test_psnr_aggregate_uses_mse_so_perfect_and_imperfect_frames_stay_finite():
 def test_all_perfect_psnr_aggregate_has_verified_infinity_provenance(tmp_path):
     """Catches aggregate infinity being accepted without all-perfect frame evidence."""
     image = np.zeros((4, 4, 3), dtype=np.float64)
-    perfect = captured_image_metrics(image, image)
-    aggregate = aggregate_captured_metrics([perfect, perfect])
-
+    rows = [
+        {
+            "frame_id": f"recorded-{index:04d}",
+            "kind": "recorded",
+            "frame_index": index,
+            "ground_truth": image,
+            "balanced_render": image.copy(),
+        }
+        for index in range(2)
+    ]
+    report = build_validation_metrics_report(rows)
     output = tmp_path / "validation-metrics.json"
-    write_validation_metrics({"aggregates": aggregate}, output)
+    write_validation_metrics(report, output)
 
     assert json.loads(output.read_text())["aggregates"]["meanPsnr"] == "Infinity"
+
+
+def test_validated_report_recomputes_mixed_aggregate_from_actual_pixels(tmp_path):
+    """Catches transplanted per-frame infinity contaminating a mixed report aggregate."""
+    reference = np.zeros((4, 4, 3), dtype=np.float64)
+    rows = [
+        {
+            "frame_id": "withheld-0004",
+            "kind": "withheld",
+            "frame_index": 4,
+            "ground_truth": reference,
+            "balanced_render": reference.copy(),
+        },
+        {
+            "frame_id": "withheld-0009",
+            "kind": "withheld",
+            "frame_index": 9,
+            "ground_truth": reference,
+            "balanced_render": np.full_like(reference, 0.5),
+            "psnr": float("inf"),
+        },
+    ]
+    report = build_validation_metrics_report(rows)
+    output = tmp_path / "validation-metrics.json"
+
+    write_validation_metrics(report, output)
+
+    document = json.loads(output.read_text())
+    assert document["captured"][0]["psnr"] == "Infinity"
+    assert document["captured"][1]["psnr"] == pytest.approx(6.0205999133)
+    assert document["aggregates"]["meanPsnr"] == pytest.approx(9.0308998699)
 
 
 def test_pose_validation_rejects_a_non_homogeneous_last_row():

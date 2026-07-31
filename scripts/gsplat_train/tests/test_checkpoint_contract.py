@@ -234,6 +234,19 @@ def test_trainer_rejects_tiny_or_empty_holdout_splits_before_torch(
     assert "torch" not in sys.modules
 
 
+def test_trainer_rejects_empty_holdout_even_when_dataset_has_eight_frames(tmp_path):
+    """Catches direct training treating an eight-frame recorded-only split as valid."""
+    trainer = _load_trainer_without_torch()
+    (tmp_path / "validation-view-spec.json").write_text(json.dumps({
+        "recorded": list(range(8)),
+        "withheld": [],
+    }))
+
+    with pytest.raises(ValueError, match="nonempty withheld partition"):
+        trainer.load_training_frame_indices(tmp_path, frame_count=8)
+    assert "torch" not in sys.modules
+
+
 def test_standalone_export_rejects_tiny_dataset_before_writing_a_split(tmp_path):
     """Catches standalone export bypassing the runner's eight-frame gate."""
     spec = importlib.util.spec_from_file_location("standalone_export_contract", EXPORT_PATH)
@@ -252,6 +265,34 @@ def test_standalone_export_rejects_tiny_dataset_before_writing_a_split(tmp_path)
 
     assert not (tmp_path / "validation-view-spec.json").exists()
     assert "torch" not in sys.modules
+
+
+def test_failed_tiny_standalone_export_invalidates_stale_completion_artifacts(tmp_path):
+    """Catches a failed rebuild leaving an older target looking trainable."""
+    for name in (
+        "validation-view-spec.json",
+        "meta.json",
+        "poses.npy",
+        "intrinsics.npy",
+    ):
+        (tmp_path / name).write_bytes(b"stale-valid-artifact")
+    spec = importlib.util.spec_from_file_location("stale_export_contract", EXPORT_PATH)
+    assert spec is not None and spec.loader is not None
+    exporter = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = exporter
+    try:
+        spec.loader.exec_module(exporter)
+    finally:
+        sys.modules.pop(spec.name, None)
+
+    with pytest.raises(ValueError, match="at least 8 frames"):
+        exporter.persist_validation_split(
+            np.repeat(np.eye(4)[None], 7, axis=0), tmp_path
+        )
+
+    assert not (tmp_path / "validation-view-spec.json").exists()
+    assert not (tmp_path / "meta.json").exists()
+    assert (tmp_path / "poses.npy").read_bytes() == b"stale-valid-artifact"
 
 
 def test_training_config_fingerprint_covers_recipe_and_exposure_optimizer_mode():

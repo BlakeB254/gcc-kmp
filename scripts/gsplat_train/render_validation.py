@@ -86,13 +86,6 @@ class ValidationViewSpec:
         }
 
 
-class PerfectMatchPsnr(float):
-    """Positive infinity carrying proof that captured pixels were identical."""
-
-    def __new__(cls):
-        return super().__new__(cls, float("inf"))
-
-
 def _validated_poses(camera_poses: Any) -> np.ndarray:
     poses = np.asarray(camera_poses, dtype=np.float64)
     if poses.ndim != 3 or poses.shape[1:] != (4, 4) or len(poses) == 0:
@@ -413,7 +406,7 @@ def captured_image_metrics(ground_truth: Any, rendered: Any) -> dict[str, float]
     if reference.shape != candidate.shape:
         raise ValueError("ground_truth and rendered images must have the same shape")
     mse = float(np.mean(np.square(reference - candidate)))
-    psnr = PerfectMatchPsnr() if mse == 0.0 else -10.0 * math.log10(mse)
+    psnr = float("inf") if mse == 0.0 else -10.0 * math.log10(mse)
     if reference.ndim == 2:
         reference = reference[:, :, None]
         candidate = candidate[:, :, None]
@@ -476,22 +469,25 @@ def aggregate_captured_metrics(
             or not math.isfinite(float(ssim))
         ):
             raise ValueError("captured metric is invalid")
-        if float(mse) == 0.0:
-            if not isinstance(psnr, PerfectMatchPsnr):
-                raise ValueError("perfect PSNR lacks pixel-match provenance")
-        elif (
+        expected_psnr = float("inf") if float(mse) == 0.0 else -10.0 * math.log10(float(mse))
+        if (
             isinstance(psnr, bool)
             or not isinstance(psnr, Real)
-            or not math.isfinite(float(psnr))
+            or (
+                math.isfinite(expected_psnr)
+                and (
+                    not math.isfinite(float(psnr))
+                    or not math.isclose(float(psnr), expected_psnr, abs_tol=1e-9)
+                )
+            )
+            or (math.isinf(expected_psnr) and float(psnr) != expected_psnr)
         ):
             raise ValueError("captured PSNR is invalid")
         mean_squared_errors.append(float(mse))
         similarities.append(float(ssim))
     aggregate_mse = float(np.mean(mean_squared_errors))
     aggregate_psnr = (
-        PerfectMatchPsnr()
-        if aggregate_mse == 0.0
-        else -10.0 * math.log10(aggregate_mse)
+        float("inf") if aggregate_mse == 0.0 else -10.0 * math.log10(aggregate_mse)
     )
     return {
         "meanMse": aggregate_mse,
@@ -594,41 +590,200 @@ def build_contact_sheet(
     return column_labels + tuple(row_labels)
 
 
-def _json_safe_metric(
-    value: Any, *, key: str | None = None, in_sequence: bool = False
-) -> Any:
-    if isinstance(value, Mapping):
-        return {
-            str(child_key): _json_safe_metric(item, key=str(child_key))
-            for child_key, item in value.items()
-        }
-    if isinstance(value, (list, tuple)):
-        return [
-            _json_safe_metric(item, key=key, in_sequence=True) for item in value
-        ]
-    if isinstance(value, PerfectMatchPsnr):
-        if not in_sequence and key in ("psnr", "meanPsnr"):
-            return "Infinity"
-        raise ValueError(f"non-finite metric is not permitted: {key or '<root>'}")
-    if isinstance(value, (float, np.floating)) and not math.isfinite(float(value)):
-        raise ValueError(f"non-finite metric is not permitted: {key or '<root>'}")
-    if isinstance(value, str) and value in (
-        "Infinity", "+Infinity", "-Infinity", "NaN"
+_METRICS_REPORT_PROVENANCE = object()
+
+
+@dataclass(frozen=True)
+class _CapturedMetricEvidence:
+    frame_id: str
+    kind: str
+    frame_index: int
+    mse: float
+    ssim: float
+
+
+class ValidationMetricsReport:
+    """Sealed evidence produced only from captured pixel comparisons."""
+
+    __slots__ = (
+        "_captured",
+        "_evidence_sha256",
+        "_expected_captured_count",
+        "_interpolated",
+        "_provenance",
+        "_view_spec_json",
+    )
+
+    def __init__(self, *_args, **_kwargs):
+        raise TypeError("use build_validation_metrics_report")
+
+
+def _metrics_report_evidence_sha256(report: ValidationMetricsReport) -> str:
+    payload = {
+        "expectedCapturedCount": report._expected_captured_count,
+        "captured": [
+            {
+                "frameId": item.frame_id,
+                "kind": item.kind,
+                "frameIndex": item.frame_index,
+                "mse": item.mse,
+                "ssim": item.ssim,
+            }
+            for item in report._captured
+        ],
+        "interpolated": [dict(item) for item in report._interpolated],
+        "viewSpec": report._view_spec_json,
+    }
+    encoded = json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), allow_nan=False
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _finite_metric_mapping(value: Any, *, name: str) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{name} must be a metric mapping")
+    copied: dict[str, Any] = {}
+    for key, item in value.items():
+        if not isinstance(key, str):
+            raise ValueError(f"{name} metric keys must be strings")
+        if isinstance(item, bool) or not isinstance(item, Real):
+            raise ValueError(f"{name} metric {key} must be numeric")
+        numeric = float(item)
+        if not math.isfinite(numeric):
+            raise ValueError(f"{name} metric {key} must be finite")
+        if key in ("startIndex", "endIndex"):
+            if not isinstance(item, Integral):
+                raise ValueError(f"{name} metric {key} must be an integer")
+            copied[key] = int(item)
+        else:
+            copied[key] = numeric
+    return copied
+
+
+def build_validation_metrics_report(
+    captured_rows: Sequence[Mapping[str, Any]],
+    *,
+    interpolated_metrics: Sequence[Mapping[str, Any]] = (),
+    view_spec: ValidationViewSpec | None = None,
+) -> ValidationMetricsReport:
+    """Build sealed metrics evidence by comparing the supplied captured pixels."""
+    if not captured_rows:
+        raise ValueError("validation metrics require at least one captured comparison")
+    captured: list[_CapturedMetricEvidence] = []
+    frame_ids: set[str] = set()
+    for row in captured_rows:
+        if not isinstance(row, Mapping):
+            raise ValueError("captured comparison must be a mapping")
+        frame_id = row.get("frame_id")
+        kind = row.get("kind")
+        frame_index = row.get("frame_index")
+        if not isinstance(frame_id, str) or not frame_id or frame_id in frame_ids:
+            raise ValueError("captured comparison frame IDs must be unique")
+        if not isinstance(kind, str) or not kind:
+            raise ValueError("captured comparison kind is invalid")
+        if isinstance(frame_index, bool) or not isinstance(frame_index, Integral):
+            raise ValueError("captured comparison frame index is invalid")
+        frame_ids.add(frame_id)
+        metrics = captured_image_metrics(
+            row.get("ground_truth"), row.get("balanced_render")
+        )
+        captured.append(_CapturedMetricEvidence(
+            frame_id=frame_id,
+            kind=kind,
+            frame_index=int(frame_index),
+            mse=float(metrics["mse"]),
+            ssim=float(metrics["ssim"]),
+        ))
+
+    report = object.__new__(ValidationMetricsReport)
+    report._captured = tuple(captured)
+    report._expected_captured_count = len(captured)
+    report._interpolated = tuple(
+        tuple(sorted(_finite_metric_mapping(metrics, name="interpolated").items()))
+        for metrics in interpolated_metrics
+    )
+    report._view_spec_json = (
+        json.dumps(
+            view_spec.to_dict(), sort_keys=True, separators=(",", ":"), allow_nan=False
+        )
+        if view_spec is not None
+        else None
+    )
+    report._provenance = _METRICS_REPORT_PROVENANCE
+    report._evidence_sha256 = _metrics_report_evidence_sha256(report)
+    return report
+
+
+def _validation_metrics_document(report: ValidationMetricsReport) -> dict[str, Any]:
+    if (
+        type(report) is not ValidationMetricsReport
+        or report._provenance is not _METRICS_REPORT_PROVENANCE
     ):
-        raise ValueError(f"reserved metric token is not permitted: {key or '<root>'}")
-    if isinstance(value, np.generic):
-        return value.item()
-    return value
+        raise ValueError("write_validation_metrics requires a validated metrics report")
+    if report._evidence_sha256 != _metrics_report_evidence_sha256(report):
+        raise ValueError("validated metrics report evidence integrity check failed")
+    if (
+        report._expected_captured_count < 1
+        or len(report._captured) != report._expected_captured_count
+    ):
+        raise ValueError("validated metrics report frame count is inconsistent")
+
+    serialized_captured: list[dict[str, Any]] = []
+    mses: list[float] = []
+    similarities: list[float] = []
+    for metrics in report._captured:
+        mse = float(metrics.mse)
+        ssim = float(metrics.ssim)
+        if not math.isfinite(mse) or mse < 0.0 or not math.isfinite(ssim):
+            raise ValueError("validated metrics report contains invalid captured metrics")
+        psnr: float | str = "Infinity" if mse == 0.0 else -10.0 * math.log10(mse)
+        serialized_captured.append({
+            "frameId": metrics.frame_id,
+            "kind": metrics.kind,
+            "frameIndex": metrics.frame_index,
+            "mse": mse,
+            "psnr": psnr,
+            "ssim": ssim,
+        })
+        mses.append(mse)
+        similarities.append(ssim)
+
+    mean_mse = float(np.mean(mses))
+    aggregates: dict[str, float | str] = {
+        "meanMse": mean_mse,
+        "meanPsnr": "Infinity" if mean_mse == 0.0 else -10.0 * math.log10(mean_mse),
+        "meanSsim": float(np.mean(similarities)),
+    }
+    if report._interpolated:
+        interpolation_documents = [dict(item) for item in report._interpolated]
+        color = [item["color_flicker"] for item in interpolation_documents]
+        depth = [item["depth_flicker"] for item in interpolation_documents]
+        aggregates["meanColorFlicker"] = float(np.mean(color))
+        aggregates["meanDepthFlicker"] = float(np.mean(depth))
+    else:
+        interpolation_documents = []
+    document: dict[str, Any] = {
+        "expectedCapturedCount": report._expected_captured_count,
+        "captured": serialized_captured,
+        "interpolated": interpolation_documents,
+        "aggregates": aggregates,
+    }
+    if report._view_spec_json is not None:
+        document["viewSpec"] = json.loads(report._view_spec_json)
+    return document
 
 
-def write_validation_metrics(document: Mapping[str, Any], output_path: str | Path) -> None:
-    """Persist strict JSON, spelling mathematically infinite PSNR explicitly."""
-    safe_document = _json_safe_metric(document)
+def write_validation_metrics(
+    report: ValidationMetricsReport, output_path: str | Path
+) -> None:
+    """Serialize only sealed, internally recomputed validation evidence."""
+    document = _validation_metrics_document(report)
     output = Path(output_path).expanduser()
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w", encoding="utf-8") as stream:
         json.dump(
-            safe_document,
+            document,
             stream,
             sort_keys=True,
             indent=2,
@@ -742,7 +897,6 @@ def main(argv: Sequence[str] | None = None) -> None:
         return np.clip(values[..., :3], 0.0, 1.0), values[..., 3]
 
     captured_rows: list[dict[str, Any]] = []
-    captured_metrics: list[dict[str, Any]] = []
     captured_groups: list[tuple[str, tuple[int, ...]]] = [
         ("recorded", spec.recorded),
         ("withheld", spec.withheld),
@@ -765,9 +919,10 @@ def main(argv: Sequence[str] | None = None) -> None:
             metrics = captured_image_metrics(ground_truth, color)
             frame_id = f"{kind}-{index:04d}"
             Image.fromarray(_uint8_rgb(color)).save(output_dir / f"{frame_id}.png")
-            captured_metrics.append({"kind": kind, "frameIndex": index, **metrics})
             captured_rows.append({
                 "frame_id": frame_id,
+                "kind": kind,
+                "frame_index": index,
                 "ground_truth": ground_truth,
                 "balanced_render": color,
                 **metrics,
@@ -810,28 +965,12 @@ def main(argv: Sequence[str] | None = None) -> None:
             **metrics,
         })
 
-    captured_aggregates = aggregate_captured_metrics(captured_metrics)
-    metrics_document = {
-        "viewSpec": spec.to_dict(),
-        "captured": captured_metrics,
-        "interpolated": interpolation_metrics,
-        "aggregates": {
-            **captured_aggregates,
-            "meanColorFlicker": (
-                float(np.mean([
-                    entry["color_flicker"] for entry in interpolation_metrics
-                ]))
-                if interpolation_metrics else None
-            ),
-            "meanDepthFlicker": (
-                float(np.mean([
-                    entry["depth_flicker"] for entry in interpolation_metrics
-                ]))
-                if interpolation_metrics else None
-            ),
-        },
-    }
-    write_validation_metrics(metrics_document, output_dir / "validation-metrics.json")
+    metrics_report = build_validation_metrics_report(
+        captured_rows,
+        interpolated_metrics=interpolation_metrics,
+        view_spec=spec,
+    )
+    write_validation_metrics(metrics_report, output_dir / "validation-metrics.json")
     build_contact_sheet(captured_rows, output_dir / "validation-contact-sheet.jpg")
 
 

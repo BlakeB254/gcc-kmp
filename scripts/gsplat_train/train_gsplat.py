@@ -494,6 +494,8 @@ def load_training_frame_indices(
     )
     if not recorded:
         raise ValueError("validation split leaves no training frames")
+    if not withheld:
+        raise ValueError("validation requires a nonempty withheld partition")
     if set(recorded).intersection(withheld) or set(recorded).union(withheld) != set(
         range(frame_count)
     ):

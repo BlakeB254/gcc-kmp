@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from pathlib import Path
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "reconstruction"))
@@ -40,8 +41,16 @@ MAX_FRAMES = 160
 MIN_VALIDATION_EXPORT_FRAMES = 8
 
 
+def invalidate_export_completion(output_dir: str | os.PathLike[str]) -> None:
+    """Remove completion evidence before mutating a reusable export target."""
+    output = Path(output_dir)
+    for name in ("validation-view-spec.json", "meta.json"):
+        (output / name).unlink(missing_ok=True)
+
+
 def persist_validation_split(poses: np.ndarray, output_dir: str | os.PathLike[str]):
     """Persist a real holdout or reject a standalone export too small to train."""
+    invalidate_export_completion(output_dir)
     if len(poses) < MIN_VALIDATION_EXPORT_FRAMES:
         raise ValueError("validation-enabled export requires at least 8 frames")
     return write_validation_view_spec(
@@ -75,6 +84,7 @@ def main() -> None:
     T_north[:3, :3] = R_north
 
     out = os.path.expanduser(args.out)
+    invalidate_export_completion(out)
     os.makedirs(os.path.join(out, "frames"), exist_ok=True)
 
     chunks = _group_chunks_by_index(manifest.manifest.get("captureChunks") or [])
