@@ -1,3 +1,7 @@
+import io
+from fractions import Fraction
+
+import av
 import numpy as np
 
 import chunk_io
@@ -75,13 +79,16 @@ def test_audit_fills_empty_route_bins_with_unique_best_remaining_candidates():
     assert len(result.selected_indices) == len(set(result.selected_indices))
 
 
-def test_export_records_the_frame_audit_for_the_training_dataset(tmp_path, monkeypatch):
-    """Catches frame-quality decisions becoming invisible to later verification."""
+def test_export_audits_the_full_sidecar_route_before_bounded_rgb_decode(tmp_path, monkeypatch):
+    """Catches unsampled camera evidence changing the route audit or selection."""
     intrinsics = Intrinsics(10.0, 10.0, 5.0, 5.0, 16, 16)
     frames = []
-    for index, tracking in enumerate([0, 1, 0, 0]):
+    for index, (x_position, tracking) in enumerate(zip(
+        [0, .1, .2, .3, .4, .5, .6, .7, .8, 10],
+        [1, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+    )):
         transform = np.eye(4)
-        transform[0, 3] = index
+        transform[0, 3] = x_position
         frames.append(chunk_io.SidecarFrame(
             t=float(index),
             t_video=float(index),
@@ -92,7 +99,6 @@ def test_export_records_the_frame_audit_for_the_training_dataset(tmp_path, monke
         ))
     checkerboard = np.indices((16, 16)).sum(axis=0) % 2
     sharp = np.repeat((checkerboard * 255).astype(np.uint8)[..., None], 3, axis=2)
-    images = [sharp, sharp, sharp, sharp]
 
     monkeypatch.setattr(gsplat_runner.r2_store, "is_configured", lambda: False)
     monkeypatch.setattr(gsplat_runner.r2_store, "download_bytes", lambda _key: b"source")
@@ -100,7 +106,13 @@ def test_export_records_the_frame_audit_for_the_training_dataset(tmp_path, monke
     monkeypatch.setattr(
         gsplat_runner.chunk_io,
         "extract_video_frames_at",
-        lambda _video, _times: images,
+        lambda _video, _times: [sharp for _ in _times],
+    )
+    monkeypatch.setattr(
+        gsplat_runner,
+        "_frame_sharpness_by_sidecar_index",
+        lambda _video, _sidecar: {index: 1.0 for index in range(len(_sidecar))},
+        raising=False,
     )
 
     poses, matrices, next_index, audits = gsplat_runner._export_session_frames(
@@ -114,4 +126,43 @@ def test_export_records_the_frame_audit_for_the_training_dataset(tmp_path, monke
     assert next_index == 2
     assert len(poses) == len(matrices) == 2
     assert audits[0]["chunk"] == 0
-    assert audits[0]["rejections"]["1"] == ["limited-tracking"]
+    assert audits[0]["selectedIndices"] == [1, 9]
+    assert audits[0]["rejections"]["4"] == ["limited-tracking"]
+
+
+def test_frame_sharpness_map_covers_every_sidecar_frame_from_one_video_decode():
+    """Catches full-path auditing reintroducing one decode or RGB array per pose."""
+    checkerboard = np.indices((32, 32)).sum(axis=0) % 2
+    image = np.repeat((checkerboard * 255).astype(np.uint8)[..., None], 3, axis=2)
+    buffer = io.BytesIO()
+    container = av.open(buffer, mode="w", format="mp4")
+    stream = container.add_stream("h264", rate=30)
+    stream.width, stream.height = 32, 32
+    stream.pix_fmt = "yuv420p"
+    stream.codec_context.time_base = Fraction(1, 90000)
+    for timestamp in (0.0, 1.0):
+        frame = av.VideoFrame.from_ndarray(image, format="rgb24").reformat(format="yuv420p")
+        frame.pts = int(timestamp * 90000)
+        for packet in stream.encode(frame):
+            container.mux(packet)
+    for packet in stream.encode():
+        container.mux(packet)
+    container.close()
+
+    intrinsics = Intrinsics(10.0, 10.0, 5.0, 5.0, 32, 32)
+    sidecar = [
+        chunk_io.SidecarFrame(
+            t=timestamp,
+            t_video=timestamp,
+            camera_transform=np.eye(4),
+            intrinsics=intrinsics,
+            tracking=0,
+            thermal=0,
+        )
+        for timestamp in (0.0, .25, .5, .75, 1.0)
+    ]
+
+    sharpness = gsplat_runner._frame_sharpness_by_sidecar_index(buffer.getvalue(), sidecar)
+
+    assert set(sharpness) == {0, 1, 2, 3, 4}
+    assert all(score > 0 for score in sharpness.values())

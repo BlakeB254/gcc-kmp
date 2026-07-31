@@ -18,12 +18,14 @@ dataset and shuttles bytes. Env:
 """
 from __future__ import annotations
 
+import io
 import json
 import os
 import subprocess
 import sys
 import tempfile
 
+import av
 import numpy as np
 from PIL import Image
 
@@ -73,6 +75,56 @@ def _frame_sharpness(image: np.ndarray) -> float:
         + gray[1:-1, 2:]
     )
     return float(np.var(laplacian))
+
+
+def _frame_sharpness_by_sidecar_index(
+    video_bytes: bytes,
+    sidecar: list[chunk_io.SidecarFrame],
+) -> dict[int, float]:
+    """Map every pose sample to its nearest decoded RGB frame's sharpness.
+
+    A chunk is decoded once and retains only timestamp/metric pairs, rather
+    than one RGB array per sidecar sample. This lets the audit cover the full
+    captured path without multiplying decoder work or holding the video in
+    memory, while final image extraction remains bounded by the frame budget.
+    """
+    if not sidecar:
+        return {}
+    container = av.open(io.BytesIO(video_bytes))
+    try:
+        stream = next((stream for stream in container.streams if stream.type == "video"), None)
+        if stream is None:
+            return {}
+        video_times: list[float] = []
+        sharpness: list[float] = []
+        pts0: float | None = None
+        for frame in container.decode(stream):
+            if frame.pts is None:
+                continue
+            timestamp = float(frame.pts * stream.time_base)
+            if pts0 is None:
+                pts0 = timestamp
+            video_times.append(timestamp - pts0)
+            sharpness.append(_frame_sharpness(frame.to_ndarray(format="rgb24")))
+    finally:
+        container.close()
+    if not video_times:
+        return {}
+
+    decoded_times = np.asarray(video_times)
+    targets = np.asarray([frame.t_video for frame in sidecar])
+    right = np.searchsorted(decoded_times, targets, side="left")
+    right = np.clip(right, 0, len(decoded_times) - 1)
+    left = np.clip(right - 1, 0, len(decoded_times) - 1)
+    nearest = np.where(
+        np.abs(decoded_times[left] - targets) <= np.abs(decoded_times[right] - targets),
+        left,
+        right,
+    )
+    return {
+        index: sharpness[int(decoded_index)]
+        for index, decoded_index in enumerate(nearest)
+    }
 
 
 def select_training_frame_indices(images: list[np.ndarray], budget: int) -> list[int]:
@@ -131,18 +183,9 @@ def _export_session_frames(manifest: dict, T_cell: np.ndarray, frames_dir: str,
             if "confidence" in kinds
             else []
         )
-        candidate_count = min(len(sidecar), max(per_chunk, per_chunk * 2))
-        idxs = [
-            j
-            for j in np.unique(
-                np.linspace(0, len(sidecar) - 1, candidate_count, dtype=int)
-            )
-        ]
-        imgs = chunk_io.extract_video_frames_at(video, [sidecar[i].t_video for i in idxs])
-        valid = [(i, img) for i, img in zip(idxs, imgs) if img is not None]
+        sharpness_by_index = _frame_sharpness_by_sidecar_index(video, sidecar)
         records: list[FrameRecord] = []
-        for i, img in valid:
-            frame = sidecar[i]
+        for i, frame in enumerate(sidecar):
             depth_confidence_fraction = None
             if confidence_records:
                 confidence_record = min(
@@ -166,7 +209,7 @@ def _export_session_frames(manifest: dict, T_cell: np.ndarray, frames_dir: str,
                 index=i,
                 position=frame.camera_transform[:3, 3],
                 tracking=frame.tracking,
-                sharpness=_frame_sharpness(img),
+                sharpness=sharpness_by_index.get(i, float("nan")),
                 exposure_ev=exposure_ev,
                 depth_confidence_fraction=depth_confidence_fraction,
             ))
@@ -180,8 +223,12 @@ def _export_session_frames(manifest: dict, T_cell: np.ndarray, frames_dir: str,
             "depthCoverageFraction": audit.depth_coverage_fraction,
         })
         selected = set(audit.selected_indices)
-        for i, img in valid:
-            if i not in selected:
+        selected_indices = sorted(selected)
+        imgs = chunk_io.extract_video_frames_at(
+            video, [sidecar[i].t_video for i in selected_indices]
+        )
+        for i, img in zip(selected_indices, imgs):
+            if img is None:
                 continue
             f = sidecar[i]
             poses.append(T_cell @ f.camera_transform @ GL_TO_CV)
