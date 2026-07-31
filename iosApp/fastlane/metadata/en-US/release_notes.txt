@@ -1,3 +1,4 @@
+• Build 181: Live guidance helps capture reconstruction-ready camera motion, tracking, and LiDAR depth without interrupting scans.
 • Faster scan completion: the local summary opens immediately while report and capture uploads continue behind it.
 • Durable evidence: completion photos are saved on the iPhone first, retain stable scan/GPS links while offline, and retry through iOS Background App Refresh.
 • Guided route minimap: Lap 1 stays framed on the assigned block and clearly distinguishes ground that is scanned from ground that still needs scanning.

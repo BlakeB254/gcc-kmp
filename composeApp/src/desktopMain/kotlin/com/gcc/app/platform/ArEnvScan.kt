@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 actual class ArEnvScanOverlay actual constructor() {
     actual val trackingState: StateFlow<TrackingState> = MutableStateFlow(TrackingState.NOT_AVAILABLE)
+    actual val reconstructionReadiness: StateFlow<ReconstructionReadiness?> = MutableStateFlow(null)
     actual val groundDetected: StateFlow<Boolean> = MutableStateFlow(false)
     actual val captureVideoDegraded: StateFlow<Boolean> = MutableStateFlow(false)
     actual val trashCandidate: StateFlow<TrashCandidate?> = MutableStateFlow(null)

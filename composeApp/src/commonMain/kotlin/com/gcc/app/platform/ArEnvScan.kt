@@ -76,6 +76,12 @@ expect class ArEnvScanOverlay() {
     /** AR tracking quality; LIMITED should surface a "hold steady" prompt. */
     val trackingState: StateFlow<TrackingState>
 
+    /**
+     * Live advisory quality for downstream 3D reconstruction. Null off-iOS
+     * and before the first AR camera sample. This never gates scan progress.
+     */
+    val reconstructionReadiness: StateFlow<ReconstructionReadiness?>
+
     /** True once ARKit has recognized ground and the grid effect is live. */
     val groundDetected: StateFlow<Boolean>
 
