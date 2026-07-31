@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -71,6 +72,23 @@ class VerifiedEvidenceArtifact:
     result: EvidenceResult
 
 
+@dataclass(frozen=True)
+class FileSnapshot:
+    path: Path
+    data: bytes
+    sha256: str
+
+
+@dataclass(frozen=True)
+class PlySnapshot(FileSnapshot):
+    ply: PlyData
+    vertex_order_sha256: str
+
+    @property
+    def vertices(self) -> np.ndarray:
+        return self.ply["vertex"].data
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -79,11 +97,25 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def ply_fingerprints(path: str | os.PathLike[str]) -> tuple[str, str]:
-    """Return full-source and ordered vertex-record SHA-256 identities."""
+def read_file_snapshot(path: str | os.PathLike[str]) -> FileSnapshot:
     source = Path(path).expanduser().resolve()
-    raw_sha256 = _sha256(source)
-    vertices = PlyData.read(source)["vertex"].data
+    try:
+        with source.open("rb") as stream:
+            data = stream.read()
+    except OSError as error:
+        raise EvidenceArtifactError("evidence-incomplete", f"source is unreadable: {source}") from error
+    return FileSnapshot(source, data, hashlib.sha256(data).hexdigest())
+
+
+def read_ply_snapshot(path: str | os.PathLike[str]) -> PlySnapshot:
+    file_snapshot = read_file_snapshot(path)
+    try:
+        ply = PlyData.read(io.BytesIO(file_snapshot.data))
+        vertices = ply["vertex"].data
+    except (OSError, ValueError, KeyError) as error:
+        raise EvidenceArtifactError(
+            "evidence-source-mismatch", "raw PLY is unreadable or lacks vertices"
+        ) from error
     digest = hashlib.sha256()
     descriptor = json.dumps(
         {"count": len(vertices), "dtype": vertices.dtype.descr},
@@ -92,22 +124,65 @@ def ply_fingerprints(path: str | os.PathLike[str]) -> tuple[str, str]:
     digest.update(len(descriptor).to_bytes(8, "big"))
     digest.update(descriptor)
     digest.update(np.ascontiguousarray(vertices).tobytes(order="C"))
-    return raw_sha256, digest.hexdigest()
+    return PlySnapshot(
+        file_snapshot.path,
+        file_snapshot.data,
+        file_snapshot.sha256,
+        ply,
+        digest.hexdigest(),
+    )
+
+
+def ply_fingerprints(path: str | os.PathLike[str]) -> tuple[str, str]:
+    """Return full-source and ordered vertex-record SHA-256 identities."""
+    snapshot = read_ply_snapshot(path)
+    return snapshot.sha256, snapshot.vertex_order_sha256
 
 
 def candidate_source_checksums(
     staging_dir: str | os.PathLike[str],
+    *,
+    source_snapshots: dict[str, FileSnapshot] | None = None,
 ) -> dict[str, str]:
     staging = Path(staging_dir).expanduser().resolve()
     checksums: dict[str, str] = {}
     for name, relative in _SOURCE_FILES.items():
         path = staging / relative
-        if not path.is_file():
-            raise EvidenceArtifactError(
-                "evidence-incomplete", f"candidate source is missing: {path}"
-            )
-        checksums[name] = _sha256(path)
+        if source_snapshots is not None:
+            snapshot = source_snapshots.get(name)
+            if snapshot is None or snapshot.path != path:
+                raise EvidenceArtifactError(
+                    "evidence-incomplete", f"candidate source snapshot is missing: {path}"
+                )
+            checksums[name] = snapshot.sha256
+        else:
+            if not path.is_file():
+                raise EvidenceArtifactError(
+                    "evidence-incomplete", f"candidate source is missing: {path}"
+                )
+            checksums[name] = _sha256(path)
     return checksums
+
+
+def candidate_source_snapshots(
+    staging_dir: str | os.PathLike[str],
+    *,
+    raw_ply_snapshot: PlySnapshot | None = None,
+) -> dict[str, FileSnapshot]:
+    staging = Path(staging_dir).expanduser().resolve()
+    snapshots: dict[str, FileSnapshot] = {}
+    for name, relative in _SOURCE_FILES.items():
+        path = staging / relative
+        if name == "rawPly":
+            snapshot = raw_ply_snapshot or read_ply_snapshot(path)
+            if snapshot.path != path:
+                raise EvidenceArtifactError(
+                    "evidence-source-mismatch", "raw PLY snapshot path is invalid"
+                )
+            snapshots[name] = snapshot
+        else:
+            snapshots[name] = read_file_snapshot(path)
+    return snapshots
 
 
 def evidence_generation_id(source_checksums: dict[str, str]) -> str:
@@ -145,9 +220,9 @@ def _validate_result(inputs: EvidenceInputs, result: EvidenceResult) -> None:
             )
 
 
-def _validate_inputs_match_ply(raw: Path, inputs: EvidenceInputs) -> None:
+def _validate_inputs_match_ply(raw: PlySnapshot, inputs: EvidenceInputs) -> None:
     try:
-        vertices = PlyData.read(raw)["vertex"].data
+        vertices = raw.vertices
         positions = np.stack(
             [vertices[name] for name in ("x", "y", "z")], axis=1
         ).astype(np.float64)
@@ -171,11 +246,31 @@ def _validate_inputs_match_ply(raw: Path, inputs: EvidenceInputs) -> None:
         )
 
 
-def _validate_inputs_match_generation(staging: Path, inputs: EvidenceInputs) -> None:
+def _load_numpy_snapshot(snapshot: FileSnapshot) -> np.ndarray:
+    return np.load(io.BytesIO(snapshot.data), allow_pickle=False)
+
+
+def _validate_inputs_match_generation(
+    staging: Path,
+    inputs: EvidenceInputs,
+    source_snapshots: dict[str, FileSnapshot] | None = None,
+) -> None:
     try:
-        poses = np.load(staging / "poses.npy")
-        intrinsics = np.load(staging / "intrinsics.npy")
-        lidar_points = np.load(staging / "init_points.npy")
+        poses = (
+            _load_numpy_snapshot(source_snapshots["poses"])
+            if source_snapshots is not None
+            else np.load(staging / "poses.npy")
+        )
+        intrinsics = (
+            _load_numpy_snapshot(source_snapshots["intrinsics"])
+            if source_snapshots is not None
+            else np.load(staging / "intrinsics.npy")
+        )
+        lidar_points = (
+            _load_numpy_snapshot(source_snapshots["initializationPoints"])
+            if source_snapshots is not None
+            else np.load(staging / "init_points.npy")
+        )
     except (OSError, ValueError) as error:
         raise EvidenceArtifactError(
             "evidence-generation-mismatch", "staged evidence sources are unreadable"
@@ -216,7 +311,9 @@ def write_verified_evidence_artifact(
 ) -> VerifiedEvidenceArtifact:
     destination = Path(path).expanduser().resolve()
     raw = Path(raw_ply_path).expanduser().resolve()
-    raw_sha256, vertex_sha256 = ply_fingerprints(raw)
+    raw_snapshot = read_ply_snapshot(raw)
+    raw_sha256 = raw_snapshot.sha256
+    vertex_sha256 = raw_snapshot.vertex_order_sha256
     if inputs.lidar_confidence is None:
         raise EvidenceArtifactError(
             "evidence-incomplete", "verified evidence requires captured LiDAR confidence"
@@ -225,7 +322,7 @@ def write_verified_evidence_artifact(
         raise EvidenceArtifactError(
             "evidence-source-mismatch", "inputs are not bound to the raw PLY vertex order"
         )
-    _validate_inputs_match_ply(raw, inputs)
+    _validate_inputs_match_ply(raw_snapshot, inputs)
     _validate_inputs_match_generation(raw.parent, inputs)
     if source_checksums.get("rawPly") != raw_sha256:
         raise EvidenceArtifactError(
@@ -279,6 +376,7 @@ def write_verified_evidence_artifact(
         destination,
         raw_ply_path=raw,
         expected_source_checksums=source_checksums,
+        raw_ply_snapshot=raw_snapshot,
     )
 
 
@@ -290,6 +388,8 @@ def _read_metadata(archive: Any) -> dict[str, Any]:
         metadata = json.loads(str(value.item()))
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
         raise EvidenceArtifactError("evidence-malformed", "artifact metadata is invalid") from error
+    if not isinstance(metadata, dict):
+        raise EvidenceArtifactError("evidence-malformed", "artifact metadata is invalid")
     if metadata.get("schemaVersion") != SCHEMA_VERSION:
         raise EvidenceArtifactError("evidence-malformed", "unsupported evidence schema version")
     return metadata
@@ -300,14 +400,21 @@ def load_verified_evidence_artifact(
     *,
     raw_ply_path: str | os.PathLike[str],
     expected_source_checksums: dict[str, str],
+    raw_ply_snapshot: PlySnapshot | None = None,
+    source_snapshots: dict[str, FileSnapshot] | None = None,
 ) -> VerifiedEvidenceArtifact:
     artifact_path = Path(path).expanduser().resolve()
     raw = Path(raw_ply_path).expanduser().resolve()
     if not artifact_path.is_file():
         raise EvidenceArtifactError("evidence-missing", f"evidence artifact is missing: {artifact_path}")
-    raw_sha256, vertex_sha256 = ply_fingerprints(raw)
+    raw_snapshot = raw_ply_snapshot or read_ply_snapshot(raw)
+    if raw_snapshot.path != raw:
+        raise EvidenceArtifactError("evidence-source-mismatch", "raw PLY snapshot path is invalid")
+    raw_sha256 = raw_snapshot.sha256
+    vertex_sha256 = raw_snapshot.vertex_order_sha256
     try:
-        with np.load(artifact_path, allow_pickle=False) as archive:
+        artifact_snapshot = read_file_snapshot(artifact_path)
+        with np.load(io.BytesIO(artifact_snapshot.data), allow_pickle=False) as archive:
             metadata = _read_metadata(archive)
             if (
                 metadata.get("rawPlySha256") != raw_sha256
@@ -367,14 +474,14 @@ def load_verified_evidence_artifact(
             )
     except EvidenceArtifactError:
         raise
-    except (OSError, ValueError, KeyError, TypeError) as error:
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError, OverflowError) as error:
         raise EvidenceArtifactError("evidence-malformed", "evidence artifact is unreadable") from error
-    _validate_inputs_match_ply(raw, inputs)
-    _validate_inputs_match_generation(raw.parent, inputs)
+    _validate_inputs_match_ply(raw_snapshot, inputs)
+    _validate_inputs_match_generation(raw.parent, inputs, source_snapshots)
     _validate_result(inputs, result)
     return VerifiedEvidenceArtifact(
         path=artifact_path,
-        sha256=_sha256(artifact_path),
+        sha256=artifact_snapshot.sha256,
         schema_version=SCHEMA_VERSION,
         generation_id=generation_id,
         raw_ply_sha256=raw_sha256,

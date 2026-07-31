@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -380,6 +381,9 @@ def test_verified_candidate_names_all_durable_artifacts_and_only_balanced_is_pub
         "output-path",
         "output-count",
         "publishable",
+        "string-threshold",
+        "negative-reason-count",
+        "changed-histogram",
         "missing-section",
     ),
 )
@@ -400,6 +404,16 @@ def test_verified_candidate_rejects_incoherent_cleanup_report(
         report["outputs"]["balanced"]["count"] += 1
     elif mutation == "publishable":
         report["outputs"]["diagnostic"]["publishable"] = True
+    elif mutation == "string-threshold":
+        report["policyThresholds"]["balanced"]["camHeight"] = "1.5"
+    elif mutation == "negative-reason-count":
+        report["removedReasonCounts"]["balanced"]["policy-mask-rejected"] = -1
+    elif mutation == "changed-histogram":
+        counts = report["componentScoreHistograms"]["lidar_proximity"]["counts"]
+        source_index = next(index for index, count in enumerate(counts) if count)
+        target_index = (source_index + 1) % len(counts)
+        counts[source_index] -= 1
+        counts[target_index] += 1
     else:
         del report["componentScoreHistograms"]
     report_path.write_text(json.dumps(report))
@@ -417,6 +431,102 @@ def test_verified_candidate_balanced_accessor_rechecks_bytes(tmp_path: Path):
 
     with pytest.raises(ValueError, match="balanced checksum"):
         _ = candidate.balanced_bytes
+
+
+def test_verified_candidate_balanced_accessor_hashes_the_returned_open_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Catches a path replacement between checksum validation and byte delivery."""
+    candidate = gsplat_runner.VerifiedCandidate.from_staging(
+        _valid_candidate_staging(tmp_path)
+    )
+    expected = candidate.balanced.read_bytes()
+    replacement = tmp_path / "replacement.ply"
+    replacement.write_bytes(b"unchecked replacement")
+    original_open = Path.open
+    replaced = False
+
+    def replacing_open(path: Path, *args, **kwargs):
+        nonlocal replaced
+        stream = original_open(path, *args, **kwargs)
+        mode = args[0] if args else kwargs.get("mode", "r")
+        if path == candidate.balanced and mode == "rb" and not replaced:
+            os.replace(replacement, path)
+            replaced = True
+        return stream
+
+    monkeypatch.setattr(Path, "open", replacing_open)
+
+    assert candidate.balanced_bytes == expected
+    assert candidate.balanced.read_bytes() == b"unchecked replacement"
+
+
+def test_verified_candidate_rejects_same_count_wrong_ordered_vertices(tmp_path: Path):
+    """Catches checksums/counts being coherent while a policy selects wrong records."""
+    staging = _valid_candidate_staging(tmp_path)
+    conservative = staging / "splat_conservative.ply"
+    ply = PlyData.read(conservative)
+    reversed_vertices = ply["vertex"].data[::-1].copy()
+    PlyData(
+        [PlyElement.describe(reversed_vertices, "vertex")],
+        text=ply.text,
+        byte_order=ply.byte_order,
+        comments=list(ply.comments),
+        obj_info=list(ply.obj_info),
+    ).write(conservative)
+    report_path = staging / "cleanup-report.json"
+    report = json.loads(report_path.read_text())
+    report["outputs"]["conservative"]["sha256"] = _sha256(conservative)
+    report_path.write_text(json.dumps(report))
+
+    with pytest.raises(ValueError, match="cleanup report"):
+        gsplat_runner.VerifiedCandidate.from_staging(staging)
+
+
+def test_cleanup_uses_one_raw_ply_snapshot_during_path_replacement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Catches hashing one raw inode while filtering another same-path inode."""
+    source = tmp_path / "raw.ply"
+    _write_splat(source)
+    evidence = _evidence(source)
+    original_bytes = source.read_bytes()
+    replacement = tmp_path / "replacement.ply"
+    ply = PlyData.read(source)
+    PlyData([PlyElement.describe(ply["vertex"].data[::-1].copy(), "vertex")]).write(
+        replacement
+    )
+    original_open = Path.open
+    replaced = False
+
+    def replacing_open(path: Path, *args, **kwargs):
+        nonlocal replaced
+        stream = original_open(path, *args, **kwargs)
+        mode = args[0] if args else kwargs.get("mode", "r")
+        if path == source and mode == "rb" and not replaced:
+            os.replace(replacement, path)
+            replaced = True
+        return stream
+
+    monkeypatch.setattr(Path, "open", replacing_open)
+
+    report = clean_variants(source, evidence, tmp_path / "candidate")
+
+    assert report.source_sha256 == hashlib.sha256(original_bytes).hexdigest()
+    assert PlyData.read(tmp_path / "candidate" / "splat_balanced.ply")[
+        "vertex"
+    ].data["x"].tolist() == [10.0, 20.0]
+
+
+def test_runner_fails_closed_for_non_object_evidence_metadata(tmp_path: Path):
+    """Catches malformed JSON metadata escaping the runner's closed gate."""
+    staging = _valid_candidate_staging(tmp_path)
+    np.savez(staging / "verified-evidence.npz", metadata_json=np.asarray("[]"))
+
+    candidate, reason = gsplat_runner.verified_candidate_result(staging)
+
+    assert candidate is None
+    assert reason == "cleanup-incomplete"
 
 
 def test_verified_candidate_paths_survive_cwd_change(tmp_path: Path, monkeypatch):

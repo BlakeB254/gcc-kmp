@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import hashlib
+import os
 from pathlib import Path
 
 import numpy as np
 from plyfile import PlyData, PlyElement
 import pytest
 
+import verified_evidence
 from evidence_score import EvidenceInputs, score_gaussians
 from verified_evidence import (
     EvidenceArtifactError,
@@ -258,6 +261,70 @@ def test_artifact_rejects_malformed_and_other_generation_files(tmp_path: Path):
             expected_source_checksums=candidate_source_checksums(staging),
         )
     assert generation_error.value.reason == "evidence-generation-mismatch"
+
+
+def test_artifact_normalizes_non_object_json_metadata_to_malformed(tmp_path: Path):
+    """Catches JSON arrays escaping the evidence error boundary via AttributeError."""
+    staging, raw = _staging(tmp_path)
+    artifact_path = staging / "array-metadata.npz"
+    np.savez(artifact_path, metadata_json=np.asarray("[]"))
+
+    with pytest.raises(EvidenceArtifactError) as error:
+        load_verified_evidence_artifact(
+            artifact_path,
+            raw_ply_path=raw,
+            expected_source_checksums=candidate_source_checksums(staging),
+        )
+
+    assert error.value.reason == "evidence-malformed"
+
+
+def test_artifact_hash_describes_the_exact_bytes_that_were_parsed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Catches artifact parsing and identity hashing separate path snapshots."""
+    staging, raw = _staging(tmp_path)
+    inputs = _inputs(raw)
+    artifact_path = staging / "verified-evidence.npz"
+    source_checksums = candidate_source_checksums(staging)
+    write_verified_evidence_artifact(
+        artifact_path,
+        inputs,
+        score_gaussians(inputs),
+        raw_ply_path=raw,
+        source_checksums=source_checksums,
+        provenance={"producer": "original"},
+    )
+    original_bytes = artifact_path.read_bytes()
+    replacement = staging / "replacement-evidence.npz"
+    write_verified_evidence_artifact(
+        replacement,
+        inputs,
+        score_gaussians(inputs),
+        raw_ply_path=raw,
+        source_checksums=source_checksums,
+        provenance={"producer": "replacement"},
+    )
+    original_sha256 = verified_evidence._sha256
+    replaced = False
+
+    def replacing_sha256(path: Path) -> str:
+        nonlocal replaced
+        if path == artifact_path and not replaced:
+            os.replace(replacement, artifact_path)
+            replaced = True
+        return original_sha256(path)
+
+    monkeypatch.setattr(verified_evidence, "_sha256", replacing_sha256)
+
+    loaded = load_verified_evidence_artifact(
+        artifact_path,
+        raw_ply_path=raw,
+        expected_source_checksums=source_checksums,
+    )
+
+    assert loaded.provenance["producer"] == "original"
+    assert loaded.sha256 == hashlib.sha256(original_bytes).hexdigest()
 
 
 def test_artifact_generation_includes_recoverable_checkpoint(tmp_path: Path):

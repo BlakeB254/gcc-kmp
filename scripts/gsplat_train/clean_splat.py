@@ -39,32 +39,22 @@ if str(_RECONSTRUCTION_DIR) not in sys.path:
     sys.path.insert(0, str(_RECONSTRUCTION_DIR))
 
 from verified_evidence import (
+    PlySnapshot,
     candidate_source_checksums,
     load_verified_evidence_artifact,
-    ply_fingerprints,
+    read_ply_snapshot,
+)
+from cleanup_policy import (
+    POLICY_NAMES as _POLICY_NAMES,
+    POLICY_THRESHOLDS,
+    build_policy_thresholds,
+    evaluate_cleanup,
+    validate_policy_thresholds,
 )
 
 if TYPE_CHECKING:
     from evidence_score import EvidenceResult
     from verified_evidence import VerifiedEvidenceArtifact
-
-
-POLICY_THRESHOLDS = {
-    "conservative": {
-        "totalScore": 0.45,
-        "directSupport": "verified-two-view-rgb-or-lidar-proximity>=0.5",
-    },
-    "balanced": {
-        "totalScore": 0.60,
-        "directSupport": "verified-two-view-rgb-or-lidar-proximity>=0.5",
-    },
-    "diagnostic": {
-        "totalScore": 0.75,
-        "directSupport": "verified-two-view-rgb-or-lidar-proximity>=0.8",
-    },
-}
-_POLICY_NAMES = ("conservative", "balanced", "diagnostic")
-_HISTOGRAM_EDGES = np.linspace(0.0, 1.0, 6)
 
 
 @dataclass(frozen=True)
@@ -85,36 +75,6 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _validated_evidence(evidence: "EvidenceResult", count: int) -> dict[str, np.ndarray]:
-    total = np.asarray(evidence.total, dtype=np.float64)
-    if total.shape != (count,) or not np.isfinite(total).all():
-        raise ValueError("evidence total must be finite and match the PLY vertex count")
-    if np.any((total < 0.0) | (total > 1.0)):
-        raise ValueError("evidence total must be normalized to [0, 1]")
-    components: dict[str, np.ndarray] = {}
-    for name, values in evidence.components.items():
-        if name in {"total", *_POLICY_NAMES}:
-            raise ValueError(f"evidence component name {name!r} is reserved")
-        component = np.asarray(values, dtype=np.float64)
-        if component.shape != (count,) or not np.isfinite(component).all():
-            raise ValueError(f"evidence component {name!r} must match the PLY vertex count")
-        if np.any((component < 0.0) | (component > 1.0)):
-            raise ValueError(f"evidence component {name!r} must be normalized to [0, 1]")
-        components[name] = component
-    masks = {
-        "conservative": np.asarray(evidence.conservative_mask, dtype=bool),
-        "balanced": np.asarray(evidence.balanced_mask, dtype=bool),
-        "diagnostic": np.asarray(evidence.diagnostic_mask, dtype=bool),
-    }
-    if any(mask.shape != (count,) for mask in masks.values()):
-        raise ValueError("evidence masks must match the PLY vertex count")
-    if np.any(masks["balanced"] & ~masks["conservative"]):
-        raise ValueError("balanced evidence mask must be nested inside conservative")
-    if np.any(masks["diagnostic"] & ~masks["balanced"]):
-        raise ValueError("diagnostic evidence mask must be nested inside balanced")
-    return {"total": total, **components, **masks}
-
-
 def _write_filtered_ply(ply: PlyData, mask: np.ndarray, destination: Path) -> None:
     vertices = ply["vertex"].data[mask]
     filtered = PlyData(
@@ -125,44 +85,6 @@ def _write_filtered_ply(ply: PlyData, mask: np.ndarray, destination: Path) -> No
         obj_info=list(ply.obj_info),
     )
     filtered.write(destination)
-
-
-def _histograms(components: dict[str, np.ndarray]) -> dict[str, dict[str, list]]:
-    result = {}
-    for name, values in sorted(components.items()):
-        counts, edges = np.histogram(values, bins=_HISTOGRAM_EDGES)
-        result[name] = {
-            "edges": [float(value) for value in edges],
-            "counts": [int(value) for value in counts],
-        }
-    return result
-
-
-def _removed_reasons(
-    policy: str,
-    mask: np.ndarray,
-    total: np.ndarray,
-    components: dict[str, np.ndarray],
-    policy_thresholds: dict[str, dict],
-    spatial_reasons: dict[str, np.ndarray],
-) -> dict[str, int]:
-    removed = ~mask
-    reasons = {"policy-mask-rejected": int(removed.sum())}
-    total_threshold = policy_thresholds[policy].get("totalScore")
-    if total_threshold is not None:
-        reasons["below-total-score"] = int(np.sum(removed & (total < total_threshold)))
-    view_support = components.get("view_support")
-    lidar_proximity = components.get("lidar_proximity")
-    if view_support is not None and lidar_proximity is not None:
-        lidar_threshold = 0.8 if policy == "diagnostic" else 0.5
-        reasons["insufficient-direct-support"] = int(
-            np.sum(removed & (view_support < 1.0) & (lidar_proximity < lidar_threshold))
-        )
-    for name, values in sorted(components.items()):
-        reasons[f"component-below-0.5:{name}"] = int(np.sum(removed & (values < 0.5)))
-    for name, values in spatial_reasons.items():
-        reasons[name] = int(np.sum(removed & values))
-    return reasons
 
 
 def _publish_immutable(staged: Path, destination: Path) -> None:
@@ -192,6 +114,7 @@ def clean_variants(
     above_cap: float = 0.0,
     corridor: float = 15.0,
     verified_evidence: "VerifiedEvidenceArtifact | None" = None,
+    source_snapshot: PlySnapshot | None = None,
 ) -> CleanupReport:
     """Write three nested keep-mask variants without modifying the raw PLY.
 
@@ -210,11 +133,14 @@ def clean_variants(
     if source in protected_destinations:
         raise ValueError("source PLY cannot be a cleanup output")
 
-    source_sha256 = _sha256(source)
-    ply = PlyData.read(source)
-    vertices = ply["vertex"].data
+    snapshot = source_snapshot or read_ply_snapshot(source)
+    if snapshot.path != source:
+        raise ValueError("source PLY snapshot path does not match cleanup source")
+    source_sha256 = snapshot.sha256
+    ply = snapshot.ply
+    vertices = snapshot.vertices
     count = len(vertices)
-    _raw_sha256, vertex_order_sha256 = ply_fingerprints(source)
+    vertex_order_sha256 = snapshot.vertex_order_sha256
     if evidence.source_vertex_sha256 != vertex_order_sha256:
         raise ValueError("evidence vertex order fingerprint does not match source PLY")
     if verified_evidence is not None:
@@ -229,48 +155,25 @@ def clean_variants(
                 getattr(verified_evidence.result, f"{name}_mask"),
             ):
                 raise ValueError("cleanup evidence differs from verified evidence artifact")
-    validated = _validated_evidence(evidence, count)
     base_thresholds = getattr(evidence, "policy_thresholds", POLICY_THRESHOLDS)
-    policy_thresholds = {
-        policy: {
-            **base_thresholds[policy],
-            "camHeight": cam_height,
-            "belowMargin": below_margin,
-            "aboveCap": above_cap,
-            "corridor": corridor,
-        }
-        for policy in _POLICY_NAMES
-    }
-    if set(policy_thresholds) != set(_POLICY_NAMES):
-        raise ValueError("policy thresholds must describe all three cleanup policies")
-    total = validated.pop("total")
-    masks = {policy: validated.pop(policy) for policy in _POLICY_NAMES}
-    components = validated
-    spatial_reasons = {
-        "below-ground": np.zeros(count, dtype=bool),
-        "above-cap": np.zeros(count, dtype=bool),
-        "outside-corridor": np.zeros(count, dtype=bool),
-    }
-    if poses_path is not None:
-        poses = np.load(poses_path)
-        if poses.ndim != 3 or poses.shape[1:] != (4, 4) or len(poses) == 0:
-            raise ValueError("poses must contain at least one camera-to-world 4x4 matrix")
-        if not np.isfinite(poses).all():
-            raise ValueError("poses contain non-finite values")
-        xyz = np.stack([vertices["x"], vertices["y"], vertices["z"]], axis=1)
-        cameras = poses[:, :3, 3]
-        ground = float(np.median(cameras[:, 1]) - cam_height)
-        spatial_reasons["below-ground"] = xyz[:, 1] < (ground - below_margin)
-        if above_cap > 0:
-            spatial_reasons["above-cap"] = xyz[:, 1] > (ground + above_cap)
-        horizontal_distance_squared = np.full(count, np.inf)
-        for camera in cameras[::4]:
-            distance = (xyz[:, 0] - camera[0]) ** 2 + (xyz[:, 2] - camera[2]) ** 2
-            np.minimum(horizontal_distance_squared, distance, out=horizontal_distance_squared)
-        spatial_reasons["outside-corridor"] = horizontal_distance_squared > corridor**2
-        spatial_rejected = np.logical_or.reduce(tuple(spatial_reasons.values()))
-        masks = {policy: mask & ~spatial_rejected for policy, mask in masks.items()}
-    counts = {"source": count, **{policy: int(mask.sum()) for policy, mask in masks.items()}}
+    policy_thresholds = validate_policy_thresholds(
+        build_policy_thresholds(
+            base_thresholds,
+            cam_height=cam_height,
+            below_margin=below_margin,
+            above_cap=above_cap,
+            corridor=corridor,
+        ),
+        require_verified_base=False,
+    )
+    evaluation = evaluate_cleanup(
+        vertices,
+        evidence,
+        policy_thresholds,
+        poses=np.load(poses_path) if poses_path is not None else None,
+    )
+    masks = evaluation.masks
+    counts = evaluation.counts
 
     destination_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".cleanup-", dir=destination_dir) as temporary:
@@ -301,18 +204,8 @@ def clean_variants(
             "provenance": provenance,
             "policyThresholds": policy_thresholds,
             "counts": counts,
-            "componentScoreHistograms": _histograms(components),
-            "removedReasonCounts": {
-                policy: _removed_reasons(
-                    policy,
-                    masks[policy],
-                    total,
-                    components,
-                    policy_thresholds,
-                    spatial_reasons,
-                )
-                for policy in _POLICY_NAMES
-            },
+            "componentScoreHistograms": evaluation.histograms,
+            "removedReasonCounts": evaluation.removed_reason_counts,
             "outputs": {
                 policy: {
                     "path": str(outputs[policy]),
@@ -353,8 +246,6 @@ def clean_variants(
             _publish_immutable(staged_outputs[policy], destination)
         _publish_immutable(staged_report, report_path)
 
-    if _sha256(source) != source_sha256:
-        raise RuntimeError("source PLY changed during cleanup")
     return CleanupReport(
         path=report_path,
         counts=counts,
@@ -376,10 +267,11 @@ def _legacy_evidence(
     below_margin: float,
     above_cap: float,
     corridor: float,
+    source_snapshot: PlySnapshot | None = None,
 ) -> SimpleNamespace:
     """Adapt the captured-point legacy CLI to the evidence-mask interface."""
-    ply = PlyData.read(ply_path)
-    v = ply["vertex"].data
+    snapshot = source_snapshot or read_ply_snapshot(ply_path)
+    v = snapshot.vertices
     n0 = len(v)
     xyz = np.stack([v["x"], v["y"], v["z"]], 1)
     opacity = 1 / (1 + np.exp(-np.asarray(v["opacity"])))
@@ -448,7 +340,7 @@ def _legacy_evidence(
         conservative_mask=conservative,
         balanced_mask=balanced,
         diagnostic_mask=diagnostic,
-        source_vertex_sha256=ply_fingerprints(ply_path)[1],
+        source_vertex_sha256=snapshot.vertex_order_sha256,
         policy_thresholds={
             "conservative": {
                 "minOpacity": min_opacity / 2.0,
@@ -492,6 +384,7 @@ def clean(ply_path: str, points_path: str, out_path: str, *,
         raise ValueError("legacy output cannot replace a named cleanup policy")
     if legacy_output == legacy_output.parent / "cleanup-report.json":
         raise ValueError("legacy output cannot replace the cleanup report")
+    source_snapshot = read_ply_snapshot(source)
     evidence = _legacy_evidence(
         source,
         points_path,
@@ -504,6 +397,7 @@ def clean(ply_path: str, points_path: str, out_path: str, *,
         below_margin=below_margin,
         above_cap=above_cap,
         corridor=corridor,
+        source_snapshot=source_snapshot,
     )
     report = clean_variants(
         source,
@@ -515,6 +409,7 @@ def clean(ply_path: str, points_path: str, out_path: str, *,
         below_margin=below_margin,
         above_cap=above_cap,
         corridor=corridor,
+        source_snapshot=source_snapshot,
     )
     balanced = legacy_output.parent / "splat_balanced.ply"
     if legacy_output != balanced:
@@ -546,11 +441,13 @@ def main() -> None:
     if args.evidence_artifact:
         if not args.out_dir:
             p.error("--out-dir is required with --evidence-artifact")
+        source_snapshot = read_ply_snapshot(args.ply)
         source_checksums = candidate_source_checksums(Path(args.ply).resolve().parent)
         artifact = load_verified_evidence_artifact(
             args.evidence_artifact,
             raw_ply_path=args.ply,
             expected_source_checksums=source_checksums,
+            raw_ply_snapshot=source_snapshot,
         )
         clean_variants(
             args.ply,
@@ -563,6 +460,7 @@ def main() -> None:
             above_cap=args.above_cap,
             corridor=args.corridor,
             verified_evidence=artifact,
+            source_snapshot=source_snapshot,
         )
     else:
         if not args.out:
