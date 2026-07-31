@@ -15,7 +15,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Mapping
 
-from verified_quality import PublicationDecision, QualityMetrics
+from verified_quality import PublicationDecision, QualityMetrics, metric_schema_reasons
 
 
 SCHEMA_VERSION = 1
@@ -76,6 +76,22 @@ def _serializable_metrics(values: Mapping[str, Any] | None) -> Mapping[str, Any]
     if invalid_values:
         serialized["invalidValues"] = invalid_values
     return serialized
+
+
+def _decision_reflecting_metric_schema(
+    decision: Mapping[str, Any], metrics: Mapping[str, Any] | None
+) -> Mapping[str, Any]:
+    """Do not serialize non-canonical metric aliases as a passing decision."""
+    schema_reasons = metric_schema_reasons(metrics)
+    if not schema_reasons:
+        return decision
+    supplied_reasons = decision.get("reasons") if isinstance(decision, Mapping) else None
+    retained_reasons = (
+        [reason for reason in supplied_reasons if isinstance(reason, str) and reason not in schema_reasons]
+        if isinstance(supplied_reasons, (list, tuple))
+        else []
+    )
+    return {"publish": False, "reasons": [*schema_reasons, *retained_reasons]}
 
 
 def _candidate_file(candidate: Any, name: str) -> Path:
@@ -217,6 +233,7 @@ def build_manifest(
         decision_values = {"publish": False, "reasons": ["decision-missing"]}
     else:
         decision_values = decision
+    decision_values = _decision_reflecting_metric_schema(decision_values, metric_values)
     try:
         return VerifiedManifest(
             asset_id=asset_id,

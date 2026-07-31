@@ -65,6 +65,7 @@ _METRIC_RULES = (
     ("retained_coverage", "retainedCoverage", "retained-coverage", "min_retained_coverage", "min", 0.0, 1.0),
     ("asset_size_bytes", "assetSizeBytes", "asset-size", "max_asset_size_bytes", "max", 0.0, None),
 )
+CANONICAL_METRIC_KEYS = frozenset(rule[1] for rule in _METRIC_RULES)
 
 
 def _attribute_or_key(values: Any, name: str) -> Any:
@@ -77,6 +78,21 @@ def _metric_value(metrics: Any, attribute_name: str, json_name: str) -> Any:
     if isinstance(metrics, Mapping):
         return metrics.get(json_name)
     return getattr(metrics, attribute_name, None)
+
+
+def metric_schema_reasons(metrics: Any) -> list[str]:
+    """Return stable rejection reasons for non-canonical metric mappings.
+
+    A serialized mapping is accepted only when its keys exactly use the
+    camelCase schema returned by ``QualityMetrics.to_dict()``.  Typed metric
+    objects use their snake_case attributes and have no mapping schema.
+    """
+    if not isinstance(metrics, Mapping):
+        return []
+    unknown_keys = sorted(
+        str(key) for key in metrics if not isinstance(key, str) or key not in CANONICAL_METRIC_KEYS
+    )
+    return [f"metric-schema:{key}" for key in unknown_keys]
 
 
 def _valid_number(value: Any, *, minimum: float, maximum: float | None) -> bool:
@@ -107,7 +123,7 @@ def publication_decision(metrics: QualityMetrics | Mapping[str, Any] | Any,
     are configuration errors and are rejected before examining candidate data.
     """
     validated_thresholds = _validated_thresholds(thresholds)
-    reasons: list[str] = []
+    reasons = metric_schema_reasons(metrics)
     for metric_name, json_name, reason, threshold_name, direction, minimum, maximum in _METRIC_RULES:
         value = _metric_value(metrics, metric_name, json_name)
         if value is None:

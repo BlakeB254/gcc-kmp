@@ -180,6 +180,24 @@ def test_rejected_nonfinite_metric_round_trips_in_the_audit_manifest(
     assert document["metrics"]["invalidValues"]["depthError"] == serialized_raw
 
 
+def test_manifest_forces_rejection_when_it_records_a_conflicting_metric_alias(tmp_path):
+    """Catches an audit manifest preserving an invalid alias under a passing decision."""
+    candidate = candidate_fixture(tmp_path)
+    metric_mapping = passing_metrics().to_dict()
+    metric_mapping["depth_error"] = math.nan
+
+    document = json.loads(
+        build_manifest(
+            candidate,
+            metrics=metric_mapping,
+            decision=publication_decision(metric_mapping, thresholds()),
+        ).to_json()
+    )
+
+    assert document["decision"] == {"publish": False, "reasons": ["metric-schema:depth_error"]}
+    assert document["metrics"]["invalidValues"]["depth_error"] == "NaN"
+
+
 def test_manifest_module_stays_cpu_only():
     """Catches immutable provenance serialization importing a CUDA-owning dependency."""
     assert "torch" not in sys.modules

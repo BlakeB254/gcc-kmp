@@ -74,6 +74,52 @@ def test_serialized_metric_mapping_has_the_same_decision_as_typed_metrics():
     assert serialized_decision.reasons == ["floater-ratio", "retained-coverage"]
 
 
+def test_canonical_camel_case_mapping_can_publish():
+    """Catches persisted metric JSON being rejected despite using the documented schema."""
+    decision = publication_decision(metrics().to_dict(), thresholds())
+
+    assert decision.publish is True
+    assert decision.reasons == []
+
+
+def test_snake_case_mapping_is_rejected_as_a_schema_alias():
+    """Catches a snake_case alias or unknown key being silently ignored."""
+    serialized = metrics().to_dict()
+    serialized["depth_error"] = serialized.pop("depthError")
+    serialized["unrecordedMetric"] = 1
+
+    decision = publication_decision(serialized, thresholds())
+
+    assert decision.publish is False
+    assert decision.reasons == [
+        "metric-schema:depth_error",
+        "metric-schema:unrecordedMetric",
+        "depth-error-missing",
+    ]
+
+
+def test_duplicate_equal_alias_is_rejected_as_an_ambiguous_schema():
+    """Catches a duplicate alias looking harmless while making metric ownership ambiguous."""
+    serialized = metrics().to_dict()
+    serialized["depth_error"] = serialized["depthError"]
+
+    decision = publication_decision(serialized, thresholds())
+
+    assert decision.publish is False
+    assert decision.reasons == ["metric-schema:depth_error"]
+
+
+def test_conflicting_nonfinite_alias_is_rejected_even_when_canonical_metric_passes():
+    """Catches an invalid alias being retained while the canonical twin publishes."""
+    serialized = metrics().to_dict()
+    serialized["depth_error"] = math.nan
+
+    decision = publication_decision(serialized, thresholds())
+
+    assert decision.publish is False
+    assert decision.reasons == ["metric-schema:depth_error"]
+
+
 def test_quality_module_stays_cpu_only():
     """Catches a validation decision importing a CUDA-owning dependency."""
     assert "torch" not in sys.modules
