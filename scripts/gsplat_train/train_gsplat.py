@@ -6,9 +6,8 @@ frame it trained in.
 Quality recipe (validated on real scans 2026-07-27/28, cell 464650:-721828
 A/B/C — see docs in PR):
   - antialiased rasterization
-  - per-camera SE3 pose refinement: ARKit VIO drifts 2-5cm over a walk and
-    every cm becomes blur; frame 0 stays anchored so the geo-registered
-    frame is preserved (refined deltas are relative, cm-scale).
+  - frozen ARKit camera poses: verified publication preserves the captured,
+    calibrated metric trajectory exactly; no independent frame deltas.
   - per-frame affine exposure compensation (iPhone auto-exposure swings
     otherwise wash out ground texture); frame 0 anchored.
   - LiDAR depth supervision: the fused cloud is z-buffered into every view
@@ -26,13 +25,324 @@ Run:  .venv/bin/python train_gsplat.py --data ~/models/gcc/gsplat/<name> \
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
+import hashlib
 import json
 import math
 import os
+from pathlib import Path
+import random
+from typing import Sequence
 
 import numpy as np
-import torch
 from PIL import Image
+
+
+@dataclass(frozen=True)
+class DatasetFingerprints:
+    dataset_sha256: str
+    frozen_poses_sha256: str
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def dataset_fingerprints(data_dir: str | os.PathLike[str]) -> DatasetFingerprints:
+    """Hash exactly the exported evidence and its fixed camera trajectory."""
+    root = Path(data_dir)
+    relative_paths = [
+        Path("meta.json"),
+        Path("poses.npy"),
+        Path("intrinsics.npy"),
+        Path("init_points.npy"),
+        Path("init_colors.npy"),
+        Path("frame-audit.json"),
+        *sorted(path.relative_to(root) for path in (root / "frames").glob("*.jpg")),
+    ]
+    digest = hashlib.sha256()
+    for relative_path in relative_paths:
+        path = root / relative_path
+        if not path.is_file():
+            raise ValueError(f"verified dataset input is missing: {relative_path}")
+        encoded_name = relative_path.as_posix().encode("utf-8")
+        digest.update(len(encoded_name).to_bytes(4, "big"))
+        digest.update(encoded_name)
+        with path.open("rb") as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                digest.update(chunk)
+    return DatasetFingerprints(
+        dataset_sha256=digest.hexdigest(),
+        frozen_poses_sha256=_sha256_file(root / "poses.npy"),
+    )
+
+
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _atomic_json(path: Path, value: dict) -> None:
+    temporary = path.with_name(f"{path.name}.tmp")
+    try:
+        with temporary.open("w") as output:
+            json.dump(value, output, indent=2, sort_keys=True)
+            output.write("\n")
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, path)
+        _fsync_directory(path.parent)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def write_checkpoint(
+    output_dir: str | os.PathLike[str],
+    *,
+    iteration: int,
+    dataset_sha256: str,
+    frozen_poses_sha256: str,
+    gaussian_parameters: dict,
+    auxiliary_parameters: dict | None = None,
+    optimizer_states: dict,
+    scheduler_state: dict,
+    strategy_state: dict,
+    rng_state: dict,
+    status: str = "running",
+) -> Path:
+    """Durably write a numbered checkpoint, latest alias, and recovery metadata."""
+    import torch
+
+    root = Path(output_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    numbered = root / f"checkpoint_{iteration}.pt"
+    numbered_tmp = root / f"checkpoint_{iteration}.pt.tmp"
+    latest = root / "checkpoint_latest.pt"
+    latest_tmp = root / "checkpoint_latest.pt.tmp"
+    payload = {
+        "iteration": iteration,
+        "dataset_sha256": dataset_sha256,
+        "frozen_poses_sha256": frozen_poses_sha256,
+        "gaussian_parameters": gaussian_parameters,
+        "auxiliary_parameters": auxiliary_parameters or {},
+        "optimizer_states": optimizer_states,
+        "scheduler_state": scheduler_state,
+        "strategy_state": strategy_state,
+        "rng_state": rng_state,
+    }
+    try:
+        with numbered_tmp.open("wb") as output:
+            torch.save(payload, output)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(numbered_tmp, numbered)
+        _fsync_directory(root)
+        latest_tmp.unlink(missing_ok=True)
+        os.link(numbered, latest_tmp)
+        os.replace(latest_tmp, latest)
+        _fsync_directory(root)
+    finally:
+        numbered_tmp.unlink(missing_ok=True)
+        latest_tmp.unlink(missing_ok=True)
+    _atomic_json(root / "training-state.json", {
+        "version": 1,
+        "status": status,
+        "iteration": iteration,
+        "checkpoint": latest.name,
+        "numberedCheckpoint": numbered.name,
+        "datasetSha256": dataset_sha256,
+        "frozenPosesSha256": frozen_poses_sha256,
+        "poseMode": "frozen",
+    })
+    return latest
+
+
+def load_checkpoint(path: str | os.PathLike[str]) -> dict:
+    """Load recovery state on CPU so the caller controls GPU ownership."""
+    import torch
+
+    return torch.load(Path(path), map_location="cpu", weights_only=False)
+
+
+def checkpoint_training(
+    output_dir: str | os.PathLike[str],
+    *,
+    iteration: int,
+    dataset_sha256: str,
+    frozen_poses_sha256: str,
+    params,
+    optimizers: dict,
+    scheduler,
+    strategy_state: dict,
+    auxiliary_parameters: dict | None = None,
+    auxiliary_optimizers: dict | None = None,
+    status: str = "running",
+) -> Path:
+    """Capture every mutable training component needed for exact recovery."""
+    import torch
+
+    all_optimizers = dict(optimizers)
+    all_optimizers.update(auxiliary_optimizers or {})
+    return write_checkpoint(
+        output_dir,
+        iteration=iteration,
+        dataset_sha256=dataset_sha256,
+        frozen_poses_sha256=frozen_poses_sha256,
+        gaussian_parameters=params.state_dict(),
+        auxiliary_parameters={
+            name: value.detach()
+            for name, value in (auxiliary_parameters or {}).items()
+        },
+        optimizer_states={
+            name: optimizer.state_dict()
+            for name, optimizer in all_optimizers.items()
+            if optimizer is not None
+        },
+        scheduler_state=scheduler.state_dict(),
+        strategy_state=strategy_state,
+        rng_state={
+            "python": random.getstate(),
+            "numpy": np.random.get_state(),
+            "torch": torch.get_rng_state(),
+            "cuda": (
+                torch.cuda.get_rng_state_all()
+                if torch.cuda.is_initialized()
+                else None
+            ),
+        },
+        status=status,
+    )
+
+
+def restore_rng_state(rng_state: dict) -> None:
+    """Restore CPU RNGs without querying or initializing CUDA."""
+    import torch
+
+    random.setstate(rng_state["python"])
+    np.random.set_state(rng_state["numpy"])
+    torch.set_rng_state(rng_state["torch"])
+    cuda_state = rng_state.get("cuda")
+    if cuda_state is not None:
+        if not torch.cuda.is_initialized():
+            raise RuntimeError("cannot restore CUDA RNG before the training device exists")
+        torch.cuda.set_rng_state_all(cuda_state)
+
+
+def checkpoint_iterations(start: int, total: int, every: int) -> list[int]:
+    """Return recovery boundaries after ``start``, including the final boundary."""
+    if every <= 0:
+        raise ValueError("checkpoint interval must be positive")
+    if total <= start:
+        return []
+    first = ((start // every) + 1) * every
+    iterations = list(range(first, total + 1, every))
+    if not iterations or iterations[-1] != total:
+        iterations.append(total)
+    return iterations
+
+
+def validate_checkpoint_payload(
+    checkpoint: dict,
+    *,
+    dataset_sha256: str,
+    frozen_poses_sha256: str,
+) -> None:
+    """Reject a checkpoint whose serialized identity disagrees with its inputs."""
+    if checkpoint.get("dataset_sha256") != dataset_sha256:
+        raise ValueError("checkpoint dataset fingerprint does not match exported inputs")
+    if checkpoint.get("frozen_poses_sha256") != frozen_poses_sha256:
+        raise ValueError("checkpoint frozen poses checksum does not match exported trajectory")
+
+
+def _to_device(value, device: str):
+    """Recursively move strategy state tensors after a CPU checkpoint load."""
+    import torch
+
+    if isinstance(value, torch.Tensor):
+        return value.to(device)
+    if isinstance(value, dict):
+        return {key: _to_device(item, device) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_to_device(item, device) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_to_device(item, device) for item in value)
+    return value
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--data", required=True)
+    parser.add_argument("--iters", type=int, default=30000)
+    parser.add_argument("--sh-degree", type=int, default=3)
+    parser.add_argument("--out", default="splat_gsplat.ply")
+    parser.add_argument("--max-init", type=int, default=400_000)
+    parser.add_argument(
+        "--max-gaussians",
+        type=int,
+        default=5_000_000,
+        help="stop densification once the live Gaussian count reaches this ceiling",
+    )
+    parser.add_argument("--depth-weight", type=float, default=0.3,
+                        help="LiDAR depth-loss weight (0 disables)")
+    parser.add_argument("--depth-ds", type=int, default=8,
+                        help="depth-target grid downsample factor")
+    parser.add_argument("--pose-mode", choices=("frozen", "smooth-trajectory"), default="frozen")
+    parser.add_argument("--checkpoint-every", type=int, default=1000)
+    parser.add_argument("--resume")
+    parser.add_argument("--exposure-lr", type=float, default=1e-3,
+                        help="per-frame exposure compensation lr (0 disables)")
+    parser.add_argument("--warmup", type=int, default=1000,
+                        help="iters before exposure optimization engages")
+    return parser
+
+
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.pose_mode == "smooth-trajectory":
+        parser.error(
+            "smooth-trajectory is unavailable until an audited trajectory "
+            "representation is supplied; verified training requires frozen poses"
+        )
+    if args.checkpoint_every <= 0:
+        parser.error("--checkpoint-every must be positive")
+    return args
+
+
+def validate_resume(
+    resume: str | os.PathLike[str],
+    *,
+    dataset_sha256: str,
+    frozen_poses_sha256: str | None = None,
+) -> Path:
+    """Validate lightweight recovery metadata before importing PyTorch."""
+    resume_path = Path(resume)
+    state_path = (
+        resume_path / "training-state.json"
+        if resume_path.is_dir()
+        else resume_path.parent / "training-state.json"
+    )
+    if not state_path.is_file():
+        raise ValueError(f"resume training state is missing: {state_path}")
+    state = json.loads(state_path.read_text())
+    if state.get("datasetSha256") != dataset_sha256:
+        raise ValueError("resume dataset fingerprint does not match exported inputs")
+    if (
+        frozen_poses_sha256 is not None
+        and state.get("frozenPosesSha256") != frozen_poses_sha256
+    ):
+        raise ValueError("resume frozen poses checksum does not match exported trajectory")
+    checkpoint = resume_path if resume_path.is_file() else resume_path / state["checkpoint"]
+    if not checkpoint.is_file():
+        raise ValueError(f"resume checkpoint is missing: {checkpoint}")
+    return checkpoint
 
 
 def load_dataset(path: str):
@@ -76,53 +386,54 @@ def _ssim(img1: torch.Tensor, img2: torch.Tensor, window: int = 11) -> torch.Ten
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data", required=True)
-    parser.add_argument("--iters", type=int, default=30000)
-    parser.add_argument("--sh-degree", type=int, default=3)
-    parser.add_argument("--out", default="splat_gsplat.ply")
-    parser.add_argument("--max-init", type=int, default=400_000)
-    parser.add_argument(
-        "--max-gaussians",
-        type=int,
-        default=5_000_000,
-        help="stop densification once the live Gaussian count reaches this ceiling",
-    )
-    parser.add_argument("--depth-weight", type=float, default=0.3,
-                        help="LiDAR depth-loss weight (0 disables)")
-    parser.add_argument("--depth-ds", type=int, default=8,
-                        help="depth-target grid downsample factor")
-    parser.add_argument("--pose-lr", type=float, default=1e-4,
-                        help="per-camera pose refinement lr (0 disables)")
-    parser.add_argument("--exposure-lr", type=float, default=1e-3,
-                        help="per-frame exposure compensation lr (0 disables)")
-    parser.add_argument("--warmup", type=int, default=1000,
-                        help="iters before pose/exposure optimization engages")
-    args = parser.parse_args()
+    args = parse_args()
+
+    device = "cuda"
+    data_dir = os.path.expanduser(args.data)
+    fingerprints = dataset_fingerprints(data_dir)
+    resume_path = None
+    if args.resume:
+        resume_path = validate_resume(
+            args.resume,
+            dataset_sha256=fingerprints.dataset_sha256,
+            frozen_poses_sha256=fingerprints.frozen_poses_sha256,
+        )
+
+    global torch
+    import torch
 
     from gsplat import rasterization
     from gsplat.strategy import DefaultStrategy
 
-    device = "cuda"
-    data_dir = os.path.expanduser(args.data)
     meta, imgs, viewmats, Ks, pts, cols = load_dataset(data_dir)
     H, W = imgs.shape[1], imgs.shape[2]
     print(f"{meta['frames']} frames {W}x{H}, init {len(pts):,} LiDAR points")
 
     full_pts = pts.float()  # full cloud kept for depth targets (pre-subsample)
-    if len(pts) > args.max_init:
-        sel = torch.randperm(len(pts))[: args.max_init]
-        pts, cols = pts[sel], cols[sel]
-
-    n = len(pts)
-    params = torch.nn.ParameterDict({
-        "means": torch.nn.Parameter(pts.float().to(device)),
-        "scales": torch.nn.Parameter(torch.full((n, 3), math.log(0.03), device=device)),
-        "quats": torch.nn.Parameter(torch.cat([torch.ones(n, 1), torch.zeros(n, 3)], 1).to(device)),
-        "opacities": torch.nn.Parameter(torch.logit(torch.full((n,), 0.7)).to(device)),
-        "sh0": torch.nn.Parameter(rgb_to_sh0(cols.float()).unsqueeze(1).to(device)),
-        "shN": torch.nn.Parameter(torch.zeros(n, (args.sh_degree + 1) ** 2 - 1, 3, device=device)),
-    }).to(device)
+    checkpoint = load_checkpoint(resume_path) if resume_path is not None else None
+    if checkpoint is not None:
+        validate_checkpoint_payload(
+            checkpoint,
+            dataset_sha256=fingerprints.dataset_sha256,
+            frozen_poses_sha256=fingerprints.frozen_poses_sha256,
+        )
+        params = torch.nn.ParameterDict({
+            name: torch.nn.Parameter(value.to(device))
+            for name, value in checkpoint["gaussian_parameters"].items()
+        })
+    else:
+        if len(pts) > args.max_init:
+            sel = torch.randperm(len(pts))[: args.max_init]
+            pts, cols = pts[sel], cols[sel]
+        n = len(pts)
+        params = torch.nn.ParameterDict({
+            "means": torch.nn.Parameter(pts.float().to(device)),
+            "scales": torch.nn.Parameter(torch.full((n, 3), math.log(0.03), device=device)),
+            "quats": torch.nn.Parameter(torch.cat([torch.ones(n, 1), torch.zeros(n, 3)], 1).to(device)),
+            "opacities": torch.nn.Parameter(torch.logit(torch.full((n,), 0.7)).to(device)),
+            "sh0": torch.nn.Parameter(rgb_to_sh0(cols.float()).unsqueeze(1).to(device)),
+            "shN": torch.nn.Parameter(torch.zeros(n, (args.sh_degree + 1) ** 2 - 1, 3, device=device)),
+        }).to(device)
 
     optimizers = {
         "means": torch.optim.Adam([params["means"]], lr=1.6e-4 * 10),
@@ -141,7 +452,15 @@ def main() -> None:
         verbose=False, grow_grad2d=4e-4,
         refine_stop_iter=min(9000, max(1000, int(args.iters * 0.3))))
     strategy.check_sanity(params, optimizers)
-    state = strategy.initialize_state()
+    if checkpoint is None:
+        state = strategy.initialize_state()
+    else:
+        for name, optimizer in optimizers.items():
+            optimizer.load_state_dict(checkpoint["optimizer_states"][name])
+        means_sched.load_state_dict(checkpoint["scheduler_state"])
+        saved_strategy = checkpoint["strategy_state"]
+        state = _to_device(saved_strategy["state"], device)
+        strategy.refine_stop_iter = int(saved_strategy["refine_stop_iter"])
 
     viewmats, Ks, imgs = viewmats.to(device), Ks.to(device), imgs.to(device)
     n_frames = len(imgs)
@@ -174,40 +493,35 @@ def main() -> None:
         cover = float((depth_targets > 0).float().mean())
         print(f"depth targets: {n_frames} views at {W4}x{H4}, coverage {cover:.0%}", flush=True)
 
-    # Pose refinement (SE3 delta per camera) + exposure compensation
-    # (affine color per frame). Frame 0 anchored for both, so the session's
-    # geo-registered frame and global color balance stay fixed.
-    pose_deltas = torch.nn.Parameter(torch.zeros(n_frames, 6, device=device))
-    exposure = torch.nn.Parameter(torch.zeros(n_frames, 12, device=device))
-    pose_opt = torch.optim.Adam([pose_deltas], lr=args.pose_lr) if args.pose_lr > 0 else None
+    # ARKit view matrices are immutable. Per-frame affine exposure is the only
+    # camera-indexed learned quantity and cannot alter publication geometry.
+    if checkpoint is None:
+        exposure = torch.nn.Parameter(torch.zeros(n_frames, 12, device=device))
+    else:
+        exposure = torch.nn.Parameter(
+            checkpoint["auxiliary_parameters"]["exposure"].to(device)
+        )
     exp_opt = torch.optim.Adam([exposure], lr=args.exposure_lr) if args.exposure_lr > 0 else None
     eye3 = torch.eye(3, device=device)
-
-    def rodrigues(w):
-        theta = w.norm().clamp_min(1e-8)
-        k = w / theta
-        Kx = torch.zeros(3, 3, device=device)
-        Kx[0, 1], Kx[0, 2] = -k[2], k[1]
-        Kx[1, 0], Kx[1, 2] = k[2], -k[0]
-        Kx[2, 0], Kx[2, 1] = -k[1], k[0]
-        return eye3 + torch.sin(theta) * Kx + (1 - torch.cos(theta)) * (Kx @ Kx)
-
-    def adjusted_viewmat(i):
-        if i == 0 or pose_opt is None:
-            return viewmats[i]
-        dR = rodrigues(pose_deltas[i, :3])
-        m = viewmats[i]
-        out = torch.eye(4, device=device)
-        out[:3, :3] = dR @ m[:3, :3]
-        out[:3, 3] = dR @ m[:3, 3] + pose_deltas[i, 3:]
-        return out
 
     def apply_exposure(img, i):
         if i == 0 or exp_opt is None:
             return img
         M = eye3 + exposure[i, :9].reshape(3, 3)
         return img @ M.T + exposure[i, 9:]
-    for it in range(args.iters):
+    start_iteration = int(checkpoint["iteration"]) if checkpoint is not None else 0
+    if start_iteration > args.iters:
+        raise ValueError(
+            f"resume iteration {start_iteration} exceeds requested iterations {args.iters}"
+        )
+    if checkpoint is not None:
+        if exp_opt is not None:
+            exp_opt.load_state_dict(checkpoint["optimizer_states"]["exposure"])
+        restore_rng_state(checkpoint["rng_state"])
+    scheduled_checkpoints = set(checkpoint_iterations(
+        start_iteration, args.iters, args.checkpoint_every
+    ))
+    for it in range(start_iteration, args.iters):
         # DefaultStrategy has iteration bounds but no population bound. Its
         # depth-supervised growth can make each later iteration progressively
         # slower (production reached 18.8M and timed out at 17.5k/30k).
@@ -229,14 +543,13 @@ def main() -> None:
         sh_deg = min(it // 1000, args.sh_degree)
         colors = torch.cat([params["sh0"], params["shN"]], 1)
         refining = it >= args.warmup
-        vm = adjusted_viewmat(i)[None] if refining else viewmats[i:i + 1]
         render, alpha, info = rasterization(
             means=params["means"],
             quats=torch.nn.functional.normalize(params["quats"], dim=-1),
             scales=torch.exp(params["scales"]),
             opacities=torch.sigmoid(params["opacities"]),
             colors=colors,
-            viewmats=vm, Ks=Ks[i:i + 1],
+            viewmats=viewmats[i:i + 1], Ks=Ks[i:i + 1],
             width=W, height=H, sh_degree=sh_deg, packed=False,
             rasterize_mode="antialiased",
             render_mode="RGB+ED" if depth_targets is not None else "RGB",
@@ -271,20 +584,32 @@ def main() -> None:
             opt.step()
             opt.zero_grad(set_to_none=True)
         if refining:
-            if pose_opt is not None:
-                pose_opt.step()
-                pose_opt.zero_grad(set_to_none=True)
             if exp_opt is not None:
                 exp_opt.step()
                 exp_opt.zero_grad(set_to_none=True)
         means_sched.step()
+        completed_iteration = it + 1
+        if completed_iteration in scheduled_checkpoints and completed_iteration < args.iters:
+            checkpoint_training(
+                data_dir,
+                iteration=completed_iteration,
+                dataset_sha256=fingerprints.dataset_sha256,
+                frozen_poses_sha256=fingerprints.frozen_poses_sha256,
+                params=params,
+                optimizers=optimizers,
+                scheduler=means_sched,
+                strategy_state={
+                    "state": state,
+                    "refine_stop_iter": strategy.refine_stop_iter,
+                },
+                auxiliary_parameters={"exposure": exposure},
+                auxiliary_optimizers={"exposure": exp_opt},
+            )
         if it % 500 == 0:
-            with torch.no_grad():
-                shift = pose_deltas[:, 3:].norm(dim=1).mean().item() * 100
             dtxt = f" depth {depth_l1.item():.3f}m" if depth_l1 is not None else ""
             print(f"iter {it}: L1 {l1.item():.4f} ssim {1-ssim_loss.item():.3f}{dtxt} "
                   f"sh{sh_deg} · {len(params['means']):,} gaussians "
-                  f"· pose-shift {shift:.1f}cm", flush=True)
+                  "· poses frozen", flush=True)
 
     # Export standard 3DGS ply (same layout the pipeline consumes).
     from plyfile import PlyData, PlyElement
@@ -315,6 +640,22 @@ def main() -> None:
     rec["rot_0"], rec["rot_1"], rec["rot_2"], rec["rot_3"] = quats.T
     out_path = os.path.join(data_dir, args.out)
     PlyData([PlyElement.describe(rec, "vertex")]).write(out_path)
+    checkpoint_training(
+        data_dir,
+        iteration=args.iters,
+        dataset_sha256=fingerprints.dataset_sha256,
+        frozen_poses_sha256=fingerprints.frozen_poses_sha256,
+        params=params,
+        optimizers=optimizers,
+        scheduler=means_sched,
+        strategy_state={
+            "state": state,
+            "refine_stop_iter": strategy.refine_stop_iter,
+        },
+        auxiliary_parameters={"exposure": exposure},
+        auxiliary_optimizers={"exposure": exp_opt},
+        status="completed",
+    )
     print(f"trained splat: {out_path} ({n:,} gaussians)")
 
 

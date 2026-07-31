@@ -21,6 +21,8 @@ from __future__ import annotations
 import io
 import json
 import os
+from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -41,6 +43,32 @@ MAX_TOTAL_FRAMES = 160
 GL_TO_CV = np.diag([1.0, -1.0, -1.0, 1.0])
 MIN_NOVEL_VIEW_BASELINE_METERS = 2.0
 MAX_CELL_POSE_SPAN_METERS = 40.0
+
+
+def _build_train_command(data_dir: str, iters: str, max_gaussians: str) -> list[str]:
+    """Build the explicit verified-publication trainer contract."""
+    return [
+        GSPLAT_PYTHON,
+        os.path.join(GSPLAT_DIR, "train_gsplat.py"),
+        "--data", data_dir,
+        "--iters", iters,
+        "--max-gaussians", max_gaussians,
+        "--out", "splat_gsplat.ply",
+        "--pose-mode", "frozen",
+        "--checkpoint-every", "1000",
+    ]
+
+
+def _stage_verified_training_metadata(
+    dataset_dir: str | os.PathLike[str],
+    staging_dir: str | os.PathLike[str],
+) -> None:
+    """Copy immutable trainer evidence into the candidate-manifest staging area."""
+    source = Path(dataset_dir)
+    destination = Path(staging_dir)
+    destination.mkdir(parents=True, exist_ok=True)
+    for name in ("poses.npy", "frame-audit.json", "training-state.json"):
+        shutil.copy2(source / name, destination / name)
 
 
 def splat_quality_gate(poses: np.ndarray) -> str | None:
@@ -301,8 +329,8 @@ def train_gsplat_for_cell(
                        "northAligned": fusion_result.north_aligned,
                        "initPoints": int(fusion_result.merged_points.shape[0])}, fh)
 
-        # 30k default since the quality-recipe upgrade (antialiased + pose
-        # refinement + exposure comp + LiDAR depth loss live in the trainer):
+        # 30k default since the quality-recipe upgrade (antialiased rendering,
+        # frozen ARKit poses, exposure comp, and LiDAR depth loss in trainer):
         # ~2x the old 15k wall-clock (~95min/cell on the GB10). Set
         # GSPLAT_ITERS=15000 to trade quality for turnaround.
         iters = os.environ.get("GSPLAT_ITERS", "30000")
@@ -313,16 +341,16 @@ def train_gsplat_for_cell(
         )
         env = dict(os.environ, TORCH_CUDA_ARCH_LIST="12.0;12.1")
         proc = subprocess.run(
-            [GSPLAT_PYTHON, os.path.join(GSPLAT_DIR, "train_gsplat.py"),
-             "--data", tmp, "--iters", iters,
-             "--max-gaussians", max_gaussians,
-             "--out", "splat_gsplat.ply"],
+            _build_train_command(tmp, iters, max_gaussians),
             env=env, timeout=3 * 3600,
         )
         out_ply = os.path.join(tmp, "splat_gsplat.ply")
         if proc.returncode != 0 or not os.path.exists(out_ply):
             print(f"gsplat_runner: cell {cell_id}: training failed (rc={proc.returncode})", file=sys.stderr)
             return None, "training-failed"
+        _stage_verified_training_metadata(
+            tmp, os.path.join(tmp, "candidate-manifest")
+        )
 
         # Post-training cleanup: haze / fog-sheet / off-surface-floater
         # prune + ground and corridor crops (clean_splat.py, numpy-only).
