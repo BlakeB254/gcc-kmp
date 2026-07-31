@@ -88,6 +88,25 @@ def _staging(tmp_path: Path) -> tuple[Path, Path]:
     return staging, raw
 
 
+def _corrupt_npz_member_crc(path: Path, member_name: str) -> None:
+    """Change one central-directory CRC without changing member bytes."""
+    data = bytearray(path.read_bytes())
+    signature = b"PK\x01\x02"
+    offset = 0
+    while (offset := data.find(signature, offset)) >= 0:
+        name_length = int.from_bytes(data[offset + 28 : offset + 30], "little")
+        extra_length = int.from_bytes(data[offset + 30 : offset + 32], "little")
+        comment_length = int.from_bytes(data[offset + 32 : offset + 34], "little")
+        name_start = offset + 46
+        name = bytes(data[name_start : name_start + name_length]).decode("utf-8")
+        if name == member_name:
+            data[offset + 16] ^= 0xFF
+            path.write_bytes(data)
+            return
+        offset = name_start + name_length + extra_length + comment_length
+    raise AssertionError(f"NPZ member not found: {member_name}")
+
+
 def test_versioned_artifact_round_trips_inputs_results_and_generation(tmp_path: Path):
     """Catches cleanup accepting scores detached from their captured inputs."""
     staging, raw = _staging(tmp_path)
@@ -274,6 +293,32 @@ def test_artifact_normalizes_non_object_json_metadata_to_malformed(tmp_path: Pat
             artifact_path,
             raw_ply_path=raw,
             expected_source_checksums=candidate_source_checksums(staging),
+        )
+
+    assert error.value.reason == "evidence-malformed"
+
+
+def test_artifact_normalizes_npz_member_crc_failure_to_malformed(tmp_path: Path):
+    """Catches deferred zip CRC errors escaping the evidence error contract."""
+    staging, raw = _staging(tmp_path)
+    inputs = _inputs(raw)
+    artifact_path = staging / "verified-evidence.npz"
+    source_checksums = candidate_source_checksums(staging)
+    write_verified_evidence_artifact(
+        artifact_path,
+        inputs,
+        score_gaussians(inputs),
+        raw_ply_path=raw,
+        source_checksums=source_checksums,
+        provenance={"producer": "test"},
+    )
+    _corrupt_npz_member_crc(artifact_path, "metadata_json.npy")
+
+    with pytest.raises(EvidenceArtifactError) as error:
+        load_verified_evidence_artifact(
+            artifact_path,
+            raw_ply_path=raw,
+            expected_source_checksums=source_checksums,
         )
 
     assert error.value.reason == "evidence-malformed"

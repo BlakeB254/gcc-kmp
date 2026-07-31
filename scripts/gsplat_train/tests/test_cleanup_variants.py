@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import hashlib
+import gc
 import json
 import os
 from pathlib import Path
 import sys
+import weakref
 
 import numpy as np
 from PIL import Image
@@ -20,6 +22,7 @@ sys.path.insert(0, str(RECONSTRUCTION_DIR))
 from clean_splat import clean, clean_variants
 from evidence_score import EvidenceInputs, EvidenceResult, score_gaussians
 import gsplat_runner
+import verified_evidence
 from fuse_cell import FusionResult
 from verified_evidence import (
     candidate_source_checksums,
@@ -31,6 +34,24 @@ from verified_evidence import (
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _corrupt_npz_member_crc(path: Path, member_name: str) -> None:
+    data = bytearray(path.read_bytes())
+    signature = b"PK\x01\x02"
+    offset = 0
+    while (offset := data.find(signature, offset)) >= 0:
+        name_length = int.from_bytes(data[offset + 28 : offset + 30], "little")
+        extra_length = int.from_bytes(data[offset + 30 : offset + 32], "little")
+        comment_length = int.from_bytes(data[offset + 32 : offset + 34], "little")
+        name_start = offset + 46
+        name = bytes(data[name_start : name_start + name_length]).decode("utf-8")
+        if name == member_name:
+            data[offset + 16] ^= 0xFF
+            path.write_bytes(data)
+            return
+        offset = name_start + name_length + extra_length + comment_length
+    raise AssertionError(f"NPZ member not found: {member_name}")
 
 
 def _write_splat(path: Path) -> None:
@@ -526,7 +547,64 @@ def test_runner_fails_closed_for_non_object_evidence_metadata(tmp_path: Path):
     candidate, reason = gsplat_runner.verified_candidate_result(staging)
 
     assert candidate is None
-    assert reason == "cleanup-incomplete"
+    assert reason == "evidence-malformed"
+
+
+def test_runner_fails_closed_for_evidence_member_crc_failure(tmp_path: Path):
+    """Catches zip corruption escaping candidate validation and crashing the runner."""
+    staging = _valid_candidate_staging(tmp_path)
+    _corrupt_npz_member_crc(staging / "verified-evidence.npz", "metadata_json.npy")
+
+    candidate, reason = gsplat_runner.verified_candidate_result(staging)
+
+    assert candidate is None
+    assert reason == "evidence-malformed"
+
+
+def test_candidate_retains_only_raw_and_one_output_and_streams_checkpoint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Catches validation retaining every PLY and the checkpoint in memory."""
+    staging = _valid_candidate_staging(tmp_path)
+    original_ply_snapshot = gsplat_runner.read_ply_snapshot
+    original_file_snapshot = verified_evidence.read_file_snapshot
+    live_snapshots: list[weakref.ReferenceType] = []
+    live_file_snapshots: list[weakref.ReferenceType] = []
+    peak_live_ply_snapshots = 0
+    peak_live_file_snapshots = 0
+
+    def tracked_ply_snapshot(path):
+        nonlocal peak_live_ply_snapshots
+        gc.collect()
+        snapshot = original_ply_snapshot(path)
+        live_snapshots.append(weakref.ref(snapshot))
+        peak_live_ply_snapshots = max(
+            peak_live_ply_snapshots,
+            sum(reference() is not None for reference in live_snapshots),
+        )
+        return snapshot
+
+    def reject_checkpoint_snapshot(path):
+        nonlocal peak_live_file_snapshots
+        if Path(path).name == "checkpoint_latest.pt":
+            raise AssertionError("checkpoint content must be hashed as a stream")
+        gc.collect()
+        snapshot = original_file_snapshot(path)
+        live_file_snapshots.append(weakref.ref(snapshot))
+        peak_live_file_snapshots = max(
+            peak_live_file_snapshots,
+            sum(reference() is not None for reference in live_file_snapshots),
+        )
+        return snapshot
+
+    monkeypatch.setattr(gsplat_runner, "read_ply_snapshot", tracked_ply_snapshot)
+    monkeypatch.setattr(verified_evidence, "read_file_snapshot", reject_checkpoint_snapshot)
+
+    candidate = gsplat_runner.VerifiedCandidate.from_staging(staging)
+
+    assert candidate.publishable == staging / "splat_balanced.ply"
+    assert peak_live_ply_snapshots <= 2
+    assert peak_live_file_snapshots <= 1
 
 
 def test_verified_candidate_paths_survive_cwd_change(tmp_path: Path, monkeypatch):

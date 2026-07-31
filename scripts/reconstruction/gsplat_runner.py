@@ -42,7 +42,6 @@ from verified_evidence import (
     ARTIFACT_NAME,
     EvidenceArtifactError,
     candidate_source_checksums,
-    candidate_source_snapshots,
     load_verified_evidence_artifact,
     read_file_snapshot,
     read_ply_snapshot,
@@ -64,6 +63,26 @@ def _file_sha256(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _matches_ordered_mask(
+    raw_vertices: np.ndarray,
+    mask: np.ndarray,
+    output_vertices: np.ndarray,
+    *,
+    chunk_size: int = 65_536,
+) -> bool:
+    """Compare selected records in bounded chunks without copying the full output."""
+    if raw_vertices.dtype != output_vertices.dtype or int(mask.sum()) != len(output_vertices):
+        return False
+    output_offset = 0
+    for start in range(0, len(raw_vertices), chunk_size):
+        selected = raw_vertices[start : start + chunk_size][mask[start : start + chunk_size]]
+        stop = output_offset + len(selected)
+        if not np.array_equal(output_vertices[output_offset:stop], selected):
+            return False
+        output_offset = stop
+    return output_offset == len(output_vertices)
 
 
 @dataclass(frozen=True, init=False)
@@ -114,6 +133,7 @@ class VerifiedCandidate:
             raise ValueError("cleanup report is unreadable") from error
         if not isinstance(report, dict):
             raise ValueError("cleanup report is unreadable")
+        del report_snapshot
         if report.get("schemaVersion") != 1:
             raise ValueError("cleanup report schema version is invalid")
         required_sections = (
@@ -140,35 +160,13 @@ class VerifiedCandidate:
             "conservative", "balanced", "diagnostic"
         }:
             raise ValueError("cleanup report outputs are invalid")
-        output_checksums: dict[str, str] = {}
-        output_counts: dict[str, int] = {}
-        output_snapshots = {}
         for policy in ("conservative", "balanced", "diagnostic"):
             entry = outputs.get(policy)
             path = paths[policy]
             if not isinstance(entry, dict) or entry.get("path") != str(path):
                 raise ValueError(f"cleanup report {policy} path is invalid")
-            snapshot = read_ply_snapshot(path)
-            checksum = snapshot.sha256
-            if entry.get("sha256") != checksum:
-                raise ValueError(f"cleanup report {policy} checksum is invalid")
-            if entry.get("count") != len(snapshot.vertices):
-                raise ValueError(f"cleanup report {policy} count is invalid")
             if entry.get("publishable") is not (policy == "balanced"):
                 raise ValueError(f"cleanup report {policy} publishability is invalid")
-            output_checksums[policy] = checksum
-            output_counts[policy] = entry["count"]
-            output_snapshots[policy] = snapshot
-        expected_counts = {"source": source["count"], **output_counts}
-        if report["counts"] != expected_counts:
-            raise ValueError("cleanup report aggregate counts are invalid")
-        if not (
-            output_counts["diagnostic"]
-            <= output_counts["balanced"]
-            <= output_counts["conservative"]
-            <= source["count"]
-        ):
-            raise ValueError("cleanup report policy counts are not nested")
         thresholds = validate_policy_thresholds(
             report["policyThresholds"], require_verified_base=True
         )
@@ -181,18 +179,11 @@ class VerifiedCandidate:
                 "outside-corridor",
             } <= set(removed_reasons[policy]):
                 raise ValueError("cleanup report removal reasons are incomplete")
-        source_snapshots = candidate_source_snapshots(
-            staging, raw_ply_snapshot=raw_snapshot
-        )
-        expected_checksums = candidate_source_checksums(
-            staging, source_snapshots=source_snapshots
-        )
         artifact = load_verified_evidence_artifact(
             paths["evidence_artifact"],
             raw_ply_path=paths["raw"],
-            expected_source_checksums=expected_checksums,
+            expected_source_checksums=None,
             raw_ply_snapshot=raw_snapshot,
-            source_snapshots=source_snapshots,
         )
         evidence_report = report.get("verifiedEvidence")
         expected_evidence_report = {
@@ -208,12 +199,11 @@ class VerifiedCandidate:
             raise ValueError("cleanup report verified evidence is invalid")
         if report.get("generationId") != artifact.generation_id:
             raise ValueError("cleanup report generation does not match evidence")
-        poses = np.load(io.BytesIO(source_snapshots["poses"].data), allow_pickle=False)
         evaluation = evaluate_cleanup(
             raw_snapshot.vertices,
             artifact.result,
             thresholds,
-            poses=poses,
+            poses=np.asarray(artifact.inputs.camera_poses),
         )
         if report["counts"] != evaluation.counts:
             raise ValueError("cleanup report aggregate counts are semantically invalid")
@@ -221,29 +211,31 @@ class VerifiedCandidate:
             raise ValueError("cleanup report component histograms are invalid")
         if removed_reasons != evaluation.removed_reason_counts:
             raise ValueError("cleanup report removal reasons are invalid")
+        output_checksums: dict[str, str] = {}
         for policy in ("conservative", "balanced", "diagnostic"):
-            expected_vertices = raw_snapshot.vertices[evaluation.masks[policy]]
-            actual_vertices = output_snapshots[policy].vertices
-            if actual_vertices.dtype != expected_vertices.dtype or not np.array_equal(
-                actual_vertices, expected_vertices
+            entry = outputs[policy]
+            snapshot = read_ply_snapshot(paths[policy])
+            if entry.get("sha256") != snapshot.sha256:
+                raise ValueError(f"cleanup report {policy} checksum is invalid")
+            if entry.get("count") != len(snapshot.vertices):
+                raise ValueError(f"cleanup report {policy} count is invalid")
+            if not _matches_ordered_mask(
+                raw_snapshot.vertices,
+                evaluation.masks[policy],
+                snapshot.vertices,
             ):
                 raise ValueError(
                     f"cleanup report {policy} output does not match its validated mask"
                 )
-        for root_name, manifest_name in (
-            ("poses.npy", "poses"),
-            ("frame-audit.json", "frame_audit"),
-            ("training-state.json", "training_state"),
-            ("checkpoint_latest.pt", "checkpoint"),
+            output_checksums[policy] = snapshot.sha256
+            del snapshot
+        for source_name, manifest_name in (
+            ("poses", "poses"),
+            ("frameAudit", "frame_audit"),
+            ("trainingState", "training_state"),
+            ("checkpoint", "checkpoint"),
         ):
-            root_key = {
-                "poses.npy": "poses",
-                "frame-audit.json": "frameAudit",
-                "training-state.json": "trainingState",
-                "checkpoint_latest.pt": "checkpoint",
-            }[root_name]
-            manifest_snapshot = read_file_snapshot(paths[manifest_name])
-            if source_snapshots[root_key].sha256 != manifest_snapshot.sha256:
+            if _file_sha256(paths[manifest_name]) != artifact.source_checksums[source_name]:
                 raise ValueError("cleanup report candidate metadata spans multiple generations")
         candidate = object.__new__(cls)
         for name, path in paths.items():
@@ -271,7 +263,9 @@ def verified_candidate_result(
     """Fail closed unless the complete staged generation validates."""
     try:
         return VerifiedCandidate.from_staging(staging_dir), None
-    except (ValueError, EvidenceArtifactError):
+    except EvidenceArtifactError as error:
+        return None, error.reason
+    except ValueError:
         return None, "cleanup-incomplete"
 
 
