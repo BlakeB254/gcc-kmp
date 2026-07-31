@@ -3,6 +3,8 @@ Postgres (data-postgres, :5432) -- SKIP LOCKED / lease-expiry behavior is
 Postgres-generic, so there's no reason to hit Neon from tests. Skipped
 entirely when the local container isn't reachable."""
 import os
+import sys
+import types
 
 import numpy as np
 import pytest
@@ -345,6 +347,51 @@ def test_scrub_pending_defers_without_burning_attempts(db, monkeypatch):
     # Deferred job is invisible to the next claim until the lease expires.
     with conn.transaction():
         assert recon_worker.claim_job(conn) is None
+
+
+def test_gpu_busy_defers_without_burning_attempts(monkeypatch):
+    """Changing GPU contention into failure would consume queue attempts."""
+    import gpu_admission
+
+    # This test covers queue control flow only.  Keep the heavyweight fusion
+    # dependency outside it so it remains CPU-only on a scheduler host.
+    if "recon_worker" not in sys.modules:
+        fake_fuse_cell = types.ModuleType("fuse_cell")
+        fake_fuse_cell.FusionResult = type("FusionResult", (), {})
+        fake_fuse_cell.ProducedAsset = type("ProducedAsset", (), {})
+        fake_fuse_cell.fuse_cell = lambda *_args, **_kwargs: None
+        monkeypatch.setitem(sys.modules, "fuse_cell", fake_fuse_cell)
+        monkeypatch.setitem(sys.modules, "r2_store", types.ModuleType("r2_store"))
+    import recon_worker
+
+    job = recon_worker.Job(17, "sess-1", "1:2", 1)
+    outcomes = []
+
+    class _Connection:
+        def transaction(self):
+            from contextlib import nullcontext
+            return nullcontext()
+
+        def rollback(self):
+            pass
+
+    def busy_process(_conn, _job):
+        raise gpu_admission.GpuBusy({"owner": "enhancement", "pid": 99})
+
+    def record_defer(_conn, deferred_job, reason):
+        outcomes.append((deferred_job.id, reason))
+
+    monkeypatch.setattr(recon_worker, "claim_job", lambda _conn: job)
+    monkeypatch.setattr(recon_worker, "process_job", busy_process)
+    monkeypatch.setattr(recon_worker, "defer_job", record_defer)
+    monkeypatch.setattr(
+        recon_worker,
+        "_record_outcome",
+        lambda conn, fn, *args: fn(conn, *args),
+    )
+
+    assert recon_worker.run_once(_Connection()) is True
+    assert outcomes == [(17, "GPU busy: owner=enhancement, pid=99")]
 
 
 def test_scrub_gate_disabled_by_either_env_switch(db, monkeypatch):

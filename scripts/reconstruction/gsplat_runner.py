@@ -47,6 +47,7 @@ from verified_evidence import (
     read_ply_snapshot,
 )
 from cleanup_policy import evaluate_cleanup, validate_policy_thresholds
+from gpu_admission import GpuReservation
 
 GSPLAT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "gsplat_train"))
 GSPLAT_PYTHON = os.path.join(GSPLAT_DIR, ".venv", "bin", "python")
@@ -551,6 +552,7 @@ def train_gsplat_for_cell(
     *,
     staging_dir: str | os.PathLike[str] | None = None,
     evidence_artifact_path: str | os.PathLike[str] | None = None,
+    gpu_job_id: str | int | None = None,
 ) -> tuple[VerifiedCandidate | None, str | None]:
     """Train one splat for the whole cell: every accepted session's frames,
     posed through its fusion transform into the shared cell frame, with the
@@ -631,10 +633,13 @@ def train_gsplat_for_cell(
             and os.path.isfile(os.path.join(tmp, "training-state.json"))
             else None
         )
-        proc = subprocess.run(
-            _build_train_command(tmp, iters, max_gaussians, resume=resume),
-            env=env, timeout=3 * 3600,
-        )
+        # The child imports torch and initializes CUDA in train_gsplat.main;
+        # acquire before spawning so a busy GPU starts no CUDA process at all.
+        with GpuReservation(job_id=gpu_job_id).acquire("reconstruction"):
+            proc = subprocess.run(
+                _build_train_command(tmp, iters, max_gaussians, resume=resume),
+                env=env, timeout=3 * 3600,
+            )
         out_ply = os.path.join(tmp, "splat_gsplat.ply")
         if proc.returncode != 0 or not os.path.exists(out_ply):
             print(f"gsplat_runner: cell {cell_id}: training failed (rc={proc.returncode})", file=sys.stderr)

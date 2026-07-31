@@ -45,6 +45,7 @@ import requests
 import fuse_cell as fuse_cell_module
 import r2_store
 from fuse_cell import FusionResult, ProducedAsset
+from gpu_admission import GpuBusy
 
 # Must outlast the slowest job: gsplat training runs up to 3h (its
 # subprocess timeout in gsplat_runner) + fusion/download overhead. A lease
@@ -321,6 +322,7 @@ def process_job(conn, job: Job) -> None:
         api_base_url=None,  # provenance is written below, directly in Postgres
         train_splat=train_splat,
         require_activation_for_splat=require_activation,
+        gpu_job_id=job.id,
     )
 
     assets = list(result.assets)
@@ -392,6 +394,10 @@ def run_once(conn) -> bool:
         _safe_rollback(conn)
         print(f"job {job.id} deferred {SCRUB_DEFER_MINUTES}min: {pending}")
         _record_outcome(conn, defer_job, job, str(pending))
+    except GpuBusy as busy:
+        _safe_rollback(conn)
+        print(f"job {job.id} deferred {SCRUB_DEFER_MINUTES}min: {busy}")
+        _record_outcome(conn, defer_job, job, str(busy))
     except Exception as err:
         _safe_rollback(conn)
         traceback.print_exc()

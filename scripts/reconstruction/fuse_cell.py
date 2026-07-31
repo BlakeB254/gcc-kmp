@@ -19,6 +19,7 @@ import numpy as np
 import open3d as o3d
 import requests
 
+from gpu_admission import GpuReservation
 import chunk_index
 import chunk_io
 import frame_io
@@ -556,6 +557,7 @@ def fuse_cell(
     api_base_url: str | None = None,
     train_splat: bool = True,
     require_activation_for_splat: bool = True,
+    gpu_job_id: str | int | None = None,
 ) -> FusionResult:
     """api_base_url=None (the default, and how recon_worker calls this)
     skips the HTTP provenance write entirely -- the worker records
@@ -620,13 +622,18 @@ def fuse_cell(
             # checks out of point-cloud-only callers (e.g. the test suite).
 
             candidate, trainer_reason = gsplat_runner.train_gsplat_for_cell(
-                cell_id, result, manifests_by_session_id
+                cell_id, result, manifests_by_session_id, gpu_job_id=gpu_job_id
             )
             splat_bytes = candidate.balanced_bytes if candidate is not None else None
         else:
             import splat_train
 
-            splat_bytes, trainer_reason = splat_train.train_splat_for_cell(cell_id, result, manifests_by_session_id)
+            # The legacy world-mirror trainer is still GPU-owning.  Keep its
+            # fallback path under the same host-wide admission contract.
+            with GpuReservation(job_id=gpu_job_id).acquire("reconstruction"):
+                splat_bytes, trainer_reason = splat_train.train_splat_for_cell(
+                    cell_id, result, manifests_by_session_id
+                )
 
     result.splat_skip_reason = resolve_splat_outcome(splat_wanted, splat_bytes, trainer_reason)
     if splat_wanted:
