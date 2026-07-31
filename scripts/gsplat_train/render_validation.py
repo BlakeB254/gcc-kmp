@@ -1,0 +1,603 @@
+"""Deterministic validation views and CPU-pure reconstruction metrics.
+
+The public helpers in this module intentionally depend only on NumPy and
+Pillow.  GPU-owning imports live inside :func:`main`, which is admitted and
+launched by the reconstruction worker rather than during module import.
+"""
+from __future__ import annotations
+
+import argparse
+from dataclasses import dataclass
+import hashlib
+import json
+import math
+from pathlib import Path
+from typing import Any, Mapping, Sequence
+
+import numpy as np
+from PIL import Image, ImageDraw
+
+
+STANDARDIZED_CATEGORIES = (
+    "sidewalk",
+    "facade",
+    "vegetation",
+    "vehicle",
+    "ground",
+)
+
+_CATEGORY_TAGS = {
+    "sidewalk": frozenset(("sidewalk", "curb", "pavement")),
+    "facade": frozenset(("facade", "building", "building-facade")),
+    "vegetation": frozenset(("vegetation", "tree", "grass", "plant")),
+    "vehicle": frozenset(("vehicle", "car", "truck", "bus")),
+    "ground": frozenset(("ground", "ground-facing", "ground_facing")),
+}
+
+
+@dataclass(frozen=True)
+class InterpolatedView:
+    start_index: int
+    end_index: int
+    alpha: float
+
+
+@dataclass(frozen=True)
+class StandardizedView:
+    category: str
+    status: str
+    frame_index: int | None
+
+
+@dataclass(frozen=True)
+class ValidationViewSpec:
+    """Complete deterministic view selection for one frozen camera path."""
+
+    recorded: tuple[int, ...]
+    withheld: tuple[int, ...]
+    interpolated: tuple[InterpolatedView, ...]
+    standardized: tuple[StandardizedView, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "recorded": list(self.recorded),
+            "withheld": list(self.withheld),
+            "interpolated": [
+                {
+                    "startIndex": view.start_index,
+                    "endIndex": view.end_index,
+                    "alpha": view.alpha,
+                }
+                for view in self.interpolated
+            ],
+            "standardized": [
+                {
+                    "category": view.category,
+                    "status": view.status,
+                    "frameIndex": view.frame_index,
+                }
+                for view in self.standardized
+            ],
+        }
+
+
+def _validated_poses(camera_poses: Any) -> np.ndarray:
+    poses = np.asarray(camera_poses, dtype=np.float64)
+    if poses.ndim != 3 or poses.shape[1:] != (4, 4) or len(poses) == 0:
+        raise ValueError("camera_poses must be a non-empty Nx4x4 array")
+    if not np.isfinite(poses).all():
+        raise ValueError("camera_poses must contain only finite values")
+    rotations = poses[:, :3, :3]
+    identities = rotations @ np.transpose(rotations, (0, 2, 1))
+    if not np.allclose(identities, np.eye(3), atol=1e-4):
+        raise ValueError("camera pose rotations must be orthonormal")
+    if not np.allclose(np.linalg.det(rotations), 1.0, atol=1e-4):
+        raise ValueError("camera pose rotations must be proper rotations")
+    return poses
+
+
+def _arc_length_indices(poses: np.ndarray, count: int) -> tuple[int, ...]:
+    count = min(count, len(poses))
+    if count == len(poses):
+        return tuple(range(len(poses)))
+    translations = poses[:, :3, 3]
+    arc = np.concatenate(([0.0], np.cumsum(np.linalg.norm(np.diff(translations, axis=0), axis=1))))
+    if arc[-1] <= 1e-12:
+        return tuple(np.linspace(0, len(poses) - 1, count).round().astype(int))
+
+    chosen: list[int] = []
+    for target in np.linspace(0.0, arc[-1], count):
+        distances = np.abs(arc - target)
+        for index in np.argsort(distances, kind="stable"):
+            candidate = int(index)
+            if candidate not in chosen:
+                chosen.append(candidate)
+                break
+    return tuple(sorted(chosen))
+
+
+def _rotation_degrees(left: np.ndarray, right: np.ndarray) -> float:
+    relative = left.T @ right
+    cosine = float(np.clip((np.trace(relative) - 1.0) * 0.5, -1.0, 1.0))
+    return math.degrees(math.acos(cosine))
+
+
+def _coerce_tags(value: Any) -> frozenset[str]:
+    if value is None:
+        return frozenset()
+    if isinstance(value, Mapping):
+        value = value.get("semanticTags", value.get("tags", ()))
+    if isinstance(value, str):
+        value = (value,)
+    return frozenset(
+        str(tag).strip().lower().replace(" ", "-")
+        for tag in value
+        if str(tag).strip()
+    )
+
+
+def _normalized_frame_tags(frame_tags: Any, pose_count: int) -> dict[int, frozenset[str]]:
+    if frame_tags is None:
+        return {}
+    if isinstance(frame_tags, Mapping) and "frames" in frame_tags:
+        frame_tags = frame_tags["frames"]
+    normalized: dict[int, frozenset[str]] = {}
+    if isinstance(frame_tags, Mapping):
+        entries = frame_tags.items()
+    else:
+        entries = enumerate(frame_tags)
+    for fallback_index, value in entries:
+        index_value = fallback_index
+        if isinstance(value, Mapping):
+            index_value = value.get(
+                "frameIndex", value.get("index", value.get("frame_id", fallback_index))
+            )
+        try:
+            index = int(index_value)
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"invalid semantic frame index: {index_value!r}") from error
+        if index < 0 or index >= pose_count:
+            raise ValueError(f"semantic frame index out of range: {index}")
+        normalized[index] = _coerce_tags(value)
+    return normalized
+
+
+def _standardized_views(
+    frame_tags: Any, pose_count: int, seed: int
+) -> tuple[StandardizedView, ...]:
+    tags_by_frame = _normalized_frame_tags(frame_tags, pose_count)
+    views: list[StandardizedView] = []
+    for category in STANDARDIZED_CATEGORIES:
+        candidates = sorted(
+            index
+            for index, tags in tags_by_frame.items()
+            if tags.intersection(_CATEGORY_TAGS[category])
+        )
+        if not candidates:
+            views.append(StandardizedView(category, "not_observed", None))
+            continue
+        digest = hashlib.sha256(f"{seed}:{category}".encode("utf-8")).digest()
+        selected = candidates[int.from_bytes(digest[:8], "big") % len(candidates)]
+        views.append(StandardizedView(category, "observed", selected))
+    return tuple(views)
+
+
+def build_view_spec(
+    camera_poses: Any,
+    *,
+    seed: int = 0,
+    frame_tags: Any = None,
+    recorded_count: int = 12,
+    interpolation_alpha: float = 0.5,
+    max_translation_m: float = 1.5,
+    max_rotation_degrees: float = 20.0,
+) -> ValidationViewSpec:
+    """Select reproducible captured, withheld, interpolated and semantic views.
+
+    Candidate recorded frames are spaced by cumulative camera-path distance.
+    Every fifth candidate is withheld and therefore never appears in
+    ``recorded``.  Interpolation is limited to consecutive captured poses and
+    uses strict spatial and angular thresholds.
+    """
+    poses = _validated_poses(camera_poses)
+    if isinstance(recorded_count, bool) or recorded_count < 1:
+        raise ValueError("recorded_count must be positive")
+    if not 0.0 < float(interpolation_alpha) < 1.0:
+        raise ValueError("interpolation_alpha must be strictly between zero and one")
+    if max_translation_m <= 0.0 or max_rotation_degrees <= 0.0:
+        raise ValueError("interpolation thresholds must be positive")
+
+    eligible = _arc_length_indices(poses, int(recorded_count))
+    withheld = tuple(index for position, index in enumerate(eligible, 1) if position % 5 == 0)
+    recorded = tuple(index for position, index in enumerate(eligible, 1) if position % 5 != 0)
+
+    interpolated: list[InterpolatedView] = []
+    for start_index in range(len(poses) - 1):
+        end_index = start_index + 1
+        translation = float(
+            np.linalg.norm(poses[end_index, :3, 3] - poses[start_index, :3, 3])
+        )
+        rotation = _rotation_degrees(
+            poses[start_index, :3, :3], poses[end_index, :3, :3]
+        )
+        if translation < max_translation_m and rotation < max_rotation_degrees:
+            interpolated.append(
+                InterpolatedView(start_index, end_index, float(interpolation_alpha))
+            )
+
+    return ValidationViewSpec(
+        recorded=recorded,
+        withheld=withheld,
+        interpolated=tuple(interpolated),
+        standardized=_standardized_views(frame_tags, len(poses), int(seed)),
+    )
+
+
+def _normalized_image(image: Any, *, name: str) -> np.ndarray:
+    array = np.asarray(image)
+    if array.ndim not in (2, 3) or (array.ndim == 3 and array.shape[2] not in (1, 3, 4)):
+        raise ValueError(f"{name} must be an HxW or HxWxC image")
+    if array.size == 0 or not np.issubdtype(array.dtype, np.number):
+        raise ValueError(f"{name} must contain numeric pixels")
+    normalized = array.astype(np.float64)
+    if not np.isfinite(normalized).all():
+        raise ValueError(f"{name} must contain only finite pixels")
+    if np.issubdtype(array.dtype, np.integer):
+        if normalized.min() < 0.0:
+            raise ValueError(f"integer {name} pixels must be non-negative")
+        storage_max = float(np.iinfo(array.dtype).max)
+        pixel_max = 255.0 if storage_max > 255.0 and normalized.max() <= 255.0 else storage_max
+        normalized /= pixel_max
+    elif normalized.size and (normalized.min() < 0.0 or normalized.max() > 1.0):
+        raise ValueError(f"floating-point {name} pixels must be in [0, 1]")
+    return normalized
+
+
+def captured_image_metrics(ground_truth: Any, rendered: Any) -> dict[str, float]:
+    """Compute unit-range PSNR and SSIM for a captured reference view."""
+    reference = _normalized_image(ground_truth, name="ground_truth")
+    candidate = _normalized_image(rendered, name="rendered")
+    if reference.shape != candidate.shape:
+        raise ValueError("ground_truth and rendered images must have the same shape")
+    mse = float(np.mean(np.square(reference - candidate)))
+    psnr = float("inf") if mse == 0.0 else -10.0 * math.log10(mse)
+    # SSIM over the complete captured view, independently per channel.
+    axes = (0, 1) if reference.ndim == 3 else None
+    mu_ref = np.mean(reference, axis=axes)
+    mu_candidate = np.mean(candidate, axis=axes)
+    centered_ref = reference - mu_ref
+    centered_candidate = candidate - mu_candidate
+    variance_ref = np.mean(centered_ref * centered_ref, axis=axes)
+    variance_candidate = np.mean(centered_candidate * centered_candidate, axis=axes)
+    covariance = np.mean(centered_ref * centered_candidate, axis=axes)
+    c1, c2 = 0.01 ** 2, 0.03 ** 2
+    ssim_channels = (
+        (2.0 * mu_ref * mu_candidate + c1) * (2.0 * covariance + c2)
+        / ((mu_ref * mu_ref + mu_candidate * mu_candidate + c1)
+           * (variance_ref + variance_candidate + c2))
+    )
+    ssim = float(np.clip(np.mean(ssim_channels), -1.0, 1.0))
+    if mse == 0.0:
+        ssim = 1.0
+    return {"psnr": psnr, "ssim": ssim}
+
+
+def interpolation_flicker_metrics(
+    color_frames: Sequence[Any], depth_frames: Sequence[Any]
+) -> dict[str, float]:
+    """Return mean adjacent-frame absolute RGB and metric-depth changes."""
+    if len(color_frames) != len(depth_frames) or len(color_frames) < 2:
+        raise ValueError("color_frames and depth_frames require the same length of at least two")
+    colors = [_normalized_image(frame, name="color frame") for frame in color_frames]
+    depths = [np.asarray(frame, dtype=np.float64) for frame in depth_frames]
+    color_shape = colors[0].shape
+    depth_shape = depths[0].shape
+    if any(frame.shape != color_shape for frame in colors):
+        raise ValueError("all color frames must have the same shape")
+    if any(frame.shape != depth_shape for frame in depths):
+        raise ValueError("all depth frames must have the same shape")
+    if any(frame.ndim not in (2, 3) or not np.isfinite(frame).all() for frame in depths):
+        raise ValueError("depth frames must be finite HxW arrays")
+    color_changes = [
+        float(np.mean(np.abs(right - left))) for left, right in zip(colors, colors[1:])
+    ]
+    depth_changes = [
+        float(np.mean(np.abs(right - left))) for left, right in zip(depths, depths[1:])
+    ]
+    return {
+        "color_flicker": float(np.mean(color_changes)),
+        "depth_flicker": float(np.mean(depth_changes)),
+    }
+
+
+def _uint8_rgb(image: Any) -> np.ndarray:
+    normalized = _normalized_image(image, name="contact sheet image")
+    if normalized.ndim == 2:
+        normalized = np.repeat(normalized[:, :, None], 3, axis=2)
+    if normalized.shape[2] == 1:
+        normalized = np.repeat(normalized, 3, axis=2)
+    if normalized.shape[2] == 4:
+        normalized = normalized[:, :, :3]
+    return np.round(np.clip(normalized, 0.0, 1.0) * 255.0).astype(np.uint8)
+
+
+def build_contact_sheet(
+    rows: Sequence[Mapping[str, Any]], output_path: str | Path
+) -> tuple[str, ...]:
+    """Write labeled ground-truth/render/error rows and return their labels."""
+    if not rows:
+        raise ValueError("contact sheet requires at least one row")
+    prepared: list[tuple[np.ndarray, np.ndarray, np.ndarray, str]] = []
+    dimensions: tuple[int, int] | None = None
+    row_labels: list[str] = []
+    for row in rows:
+        ground_truth = _uint8_rgb(row["ground_truth"])
+        rendered = _uint8_rgb(row["balanced_render"])
+        if ground_truth.shape != rendered.shape:
+            raise ValueError("contact sheet ground truth and render shapes must match")
+        height, width = ground_truth.shape[:2]
+        if dimensions is None:
+            dimensions = (width, height)
+        elif dimensions != (width, height):
+            raise ValueError("all contact sheet rows must have the same dimensions")
+        error = np.abs(ground_truth.astype(np.int16) - rendered.astype(np.int16)).astype(np.uint8)
+        error_strength = error.max(axis=2)
+        heatmap = np.stack(
+            (error_strength, error_strength // 4, np.zeros_like(error_strength)), axis=2
+        )
+        label = (
+            f"{row['frame_id']} | PSNR {float(row['psnr']):.2f} dB | "
+            f"SSIM {float(row['ssim']):.4f}"
+        )
+        row_labels.append(label)
+        prepared.append((ground_truth, rendered, heatmap, label))
+
+    assert dimensions is not None
+    width, height = dimensions
+    header_height, label_height = 22, 18
+    canvas = Image.new(
+        "RGB",
+        (width * 3, header_height + len(prepared) * (height + label_height)),
+        "white",
+    )
+    draw = ImageDraw.Draw(canvas)
+    column_labels = ("Ground truth", "Balanced render", "Absolute error")
+    for column, label in enumerate(column_labels):
+        draw.text((column * width + 3, 4), label, fill="black")
+    for row_index, (ground_truth, rendered, heatmap, label) in enumerate(prepared):
+        top = header_height + row_index * (height + label_height)
+        canvas.paste(Image.fromarray(ground_truth), (0, top))
+        canvas.paste(Image.fromarray(rendered), (width, top))
+        canvas.paste(Image.fromarray(heatmap), (width * 2, top))
+        draw.text((3, top + height + 2), label, fill="black")
+    output = Path(output_path).expanduser()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    canvas.save(output, quality=92)
+    return column_labels + tuple(row_labels)
+
+
+def _json_safe_metric(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _json_safe_metric(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_metric(item) for item in value]
+    if isinstance(value, (float, np.floating)) and not math.isfinite(float(value)):
+        if math.isnan(float(value)):
+            return "NaN"
+        return "Infinity" if float(value) > 0.0 else "-Infinity"
+    if isinstance(value, np.generic):
+        return value.item()
+    return value
+
+
+def write_validation_metrics(document: Mapping[str, Any], output_path: str | Path) -> None:
+    """Persist strict JSON, spelling mathematically infinite PSNR explicitly."""
+    output = Path(output_path).expanduser()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("w", encoding="utf-8") as stream:
+        json.dump(
+            _json_safe_metric(document),
+            stream,
+            sort_keys=True,
+            indent=2,
+            allow_nan=False,
+        )
+        stream.write("\n")
+
+
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--ply", required=True, help="balanced candidate PLY")
+    parser.add_argument("--data", required=True, help="exported gsplat dataset")
+    parser.add_argument(
+        "--manifest", required=True, help="scan manifest containing frame semantic tags"
+    )
+    parser.add_argument("--out", required=True, help="validation artifact directory")
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--recorded-count", type=int, default=12)
+    return parser.parse_args(argv)
+
+
+def _load_manifest_tags(path: str | Path) -> Any:
+    with Path(path).expanduser().open(encoding="utf-8") as stream:
+        manifest = json.load(stream)
+    return manifest.get("frameSemanticTags", manifest.get("frames", ()))
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    """Render validation artifacts after the worker has admitted this GPU job."""
+    args = parse_args(argv)
+
+    # GPU-owning dependencies must stay below the admitted process entrypoint.
+    import torch
+    from gsplat import rasterization
+    from plyfile import PlyData
+
+    # The renderer implementation remains deliberately local to the admitted
+    # process.  Pure selection/metric tests never execute or import this path.
+    data_dir = Path(args.data).expanduser()
+    output_dir = Path(args.out).expanduser()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    poses = np.load(data_dir / "poses.npy")
+    intrinsics = np.load(data_dir / "intrinsics.npy")
+    spec = build_view_spec(
+        poses,
+        seed=args.seed,
+        frame_tags=_load_manifest_tags(args.manifest),
+        recorded_count=args.recorded_count,
+    )
+
+    vertex = PlyData.read(str(Path(args.ply).expanduser()))["vertex"].data
+    count = len(vertex)
+    means = torch.tensor(
+        np.stack([vertex[name] for name in ("x", "y", "z")], 1),
+        dtype=torch.float32,
+        device="cuda",
+    )
+    scales = torch.exp(torch.tensor(
+        np.stack([vertex[f"scale_{i}"] for i in range(3)], 1),
+        dtype=torch.float32,
+        device="cuda",
+    ))
+    quats = torch.tensor(
+        np.stack([vertex[f"rot_{i}"] for i in range(4)], 1),
+        dtype=torch.float32,
+        device="cuda",
+    )
+    opacities = torch.sigmoid(torch.tensor(
+        np.asarray(vertex["opacity"]), dtype=torch.float32, device="cuda"
+    ))
+    sh0 = np.stack([vertex[f"f_dc_{i}"] for i in range(3)], 1)[:, None, :]
+    rest_count = len([name for name in vertex.dtype.names if name.startswith("f_rest_")])
+    rest = np.stack(
+        [vertex[f"f_rest_{i}"] for i in range(rest_count)], 1
+    ).reshape(count, 3, rest_count // 3).transpose(0, 2, 1)
+    colors = torch.tensor(np.concatenate([sh0, rest], 1), dtype=torch.float32, device="cuda")
+    sh_degree = int(np.sqrt(rest_count // 3 + 1)) - 1
+
+    first_frame = Image.open(data_dir / "frames" / "0000.jpg")
+    width, height = first_frame.size
+
+    def render_pose(pose: np.ndarray, intrinsic: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        with torch.no_grad():
+            rendered, _alpha, _meta = rasterization(
+                means=means,
+                quats=torch.nn.functional.normalize(quats, dim=-1),
+                scales=scales,
+                opacities=opacities,
+                colors=colors,
+                viewmats=torch.tensor(
+                    np.linalg.inv(pose), dtype=torch.float32, device="cuda"
+                )[None],
+                Ks=torch.tensor(intrinsic, dtype=torch.float32, device="cuda")[None],
+                width=width,
+                height=height,
+                sh_degree=sh_degree,
+                packed=False,
+                render_mode="RGB+ED",
+            )
+        values = rendered[0].detach().cpu().numpy()
+        return np.clip(values[..., :3], 0.0, 1.0), values[..., 3]
+
+    captured_rows: list[dict[str, Any]] = []
+    captured_metrics: list[dict[str, Any]] = []
+    captured_groups: list[tuple[str, tuple[int, ...]]] = [
+        ("recorded", spec.recorded),
+        ("withheld", spec.withheld),
+    ]
+    already_captured = set(spec.recorded).union(spec.withheld)
+    for view in spec.standardized:
+        if (
+            view.status == "observed"
+            and view.frame_index is not None
+            and view.frame_index not in already_captured
+        ):
+            captured_groups.append(
+                (f"standardized-{view.category}", (view.frame_index,))
+            )
+            already_captured.add(view.frame_index)
+    for kind, indices in captured_groups:
+        for index in indices:
+            color, _depth = render_pose(poses[index], intrinsics[index])
+            ground_truth = np.asarray(Image.open(data_dir / "frames" / f"{index:04d}.jpg"))
+            metrics = captured_image_metrics(ground_truth, color)
+            frame_id = f"{kind}-{index:04d}"
+            Image.fromarray(_uint8_rgb(color)).save(output_dir / f"{frame_id}.png")
+            captured_metrics.append({"kind": kind, "frameIndex": index, **metrics})
+            captured_rows.append({
+                "frame_id": frame_id,
+                "ground_truth": ground_truth,
+                "balanced_render": color,
+                **metrics,
+            })
+
+    interpolation_metrics: list[dict[str, Any]] = []
+    for view in spec.interpolated:
+        colors_path: list[np.ndarray] = []
+        depths_path: list[np.ndarray] = []
+        for alpha in (0.0, view.alpha, 1.0):
+            pose = poses[view.start_index].copy()
+            pose[:3, 3] = (
+                (1.0 - alpha) * poses[view.start_index, :3, 3]
+                + alpha * poses[view.end_index, :3, 3]
+            )
+            # Nearby rotations are projected back to SO(3) after linear blend.
+            rotation = (
+                (1.0 - alpha) * poses[view.start_index, :3, :3]
+                + alpha * poses[view.end_index, :3, :3]
+            )
+            left, _, right = np.linalg.svd(rotation)
+            pose[:3, :3] = left @ right
+            intrinsic = (
+                (1.0 - alpha) * intrinsics[view.start_index]
+                + alpha * intrinsics[view.end_index]
+            )
+            color, depth = render_pose(pose, intrinsic)
+            colors_path.append(color)
+            depths_path.append(depth)
+            if alpha == view.alpha:
+                Image.fromarray(_uint8_rgb(color)).save(
+                    output_dir
+                    / f"interpolated-{view.start_index:04d}-{view.end_index:04d}.png"
+                )
+        metrics = interpolation_flicker_metrics(colors_path, depths_path)
+        interpolation_metrics.append({
+            "startIndex": view.start_index,
+            "endIndex": view.end_index,
+            "alpha": view.alpha,
+            **metrics,
+        })
+
+    metrics_document = {
+        "viewSpec": spec.to_dict(),
+        "captured": captured_metrics,
+        "interpolated": interpolation_metrics,
+        "aggregates": {
+            "meanPsnr": (
+                float(np.mean([entry["psnr"] for entry in captured_metrics]))
+                if captured_metrics else None
+            ),
+            "meanSsim": (
+                float(np.mean([entry["ssim"] for entry in captured_metrics]))
+                if captured_metrics else None
+            ),
+            "meanColorFlicker": (
+                float(np.mean([
+                    entry["color_flicker"] for entry in interpolation_metrics
+                ]))
+                if interpolation_metrics else None
+            ),
+            "meanDepthFlicker": (
+                float(np.mean([
+                    entry["depth_flicker"] for entry in interpolation_metrics
+                ]))
+                if interpolation_metrics else None
+            ),
+        },
+    }
+    write_validation_metrics(metrics_document, output_dir / "validation-metrics.json")
+    build_contact_sheet(captured_rows, output_dir / "validation-contact-sheet.jpg")
+
+
+if __name__ == "__main__":
+    main()
