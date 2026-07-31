@@ -644,8 +644,8 @@ def _produce_verified_publication(result: FusionResult, cell: str):
     """Build the gate inputs from durable artifacts and populate ``result``.
 
     Bindings are deliberately semantic and direct: validation SSIM, validation
-    depth error, validation RGB flicker, cleanup-reported floater ratio,
-    frame-audit-reported retained spatial coverage, and balanced asset bytes.
+    depth error, validation RGB flicker, cleanup-reported floater ratio and
+    retained spatial coverage, and balanced asset bytes.
     A missing direct measurement remains ``None`` for publication_decision;
     unrelated counts or depth-flicker values are never substituted.
     """
@@ -658,7 +658,6 @@ def _produce_verified_publication(result: FusionResult, cell: str):
     training_state = _json_mapping(candidate.training_state, name="training state")
     aggregates = _nested_mapping(validation, "aggregates")
     cleanup_quality = _nested_mapping(cleanup, "qualityMetrics")
-    audit_quality = _nested_mapping(frame_audit, "qualityMetrics")
     balanced_bytes = candidate.balanced_bytes
     if not isinstance(balanced_bytes, bytes):
         raise ValueError("verified balanced candidate bytes are unavailable")
@@ -668,7 +667,7 @@ def _produce_verified_publication(result: FusionResult, cell: str):
         depth_error=aggregates.get("meanDepthError"),
         temporal_flicker=aggregates.get("meanColorFlicker"),
         floater_ratio=cleanup_quality.get("floaterRatio"),
-        retained_coverage=audit_quality.get("retainedCoverage"),
+        retained_coverage=cleanup_quality.get("retainedCoverage"),
         asset_size_bytes=len(balanced_bytes),
     )
     thresholds, threshold_reasons = _quality_thresholds_from_env()

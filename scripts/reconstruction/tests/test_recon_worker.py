@@ -635,6 +635,16 @@ class _PublicationCandidateFixture:
     generation_id = "generation-4"
 
     def __init__(self, root: Path, *, include_depth_error: bool = True):
+        from clean_splat import clean_variants
+        from evidence_score import EvidenceResult
+        from plyfile import PlyData, PlyElement
+        from render_validation import (
+            snapshot_validation_comparisons,
+            validation_view_spec_from_dict,
+            write_validation_metrics,
+        )
+        from verified_evidence import ply_fingerprints
+
         self.raw = root / "splat_gsplat.ply"
         self.conservative = root / "splat_conservative.ply"
         self.balanced = root / "splat_balanced.ply"
@@ -645,42 +655,121 @@ class _PublicationCandidateFixture:
         self.frame_audit = root / "frame-audit.json"
         self.training_state = root / "training-state.json"
         self.checkpoint = root / "checkpoint_latest.pt"
-        for path in (
-            self.raw,
-            self.conservative,
-            self.balanced,
-            self.diagnostic,
-            self.evidence_artifact,
-            self.poses,
-            self.checkpoint,
-        ):
-            path.write_bytes(path.name.encode())
-        self.cleanup_report.write_text(
-            json.dumps({"qualityMetrics": {"floaterRatio": 0.04}})
+        vertices = np.zeros(
+            4,
+            dtype=[
+                ("x", "f4"),
+                ("y", "f4"),
+                ("z", "f4"),
+                ("opacity", "f4"),
+                ("scale_0", "f4"),
+                ("scale_1", "f4"),
+                ("scale_2", "f4"),
+            ],
         )
+        # All evidence-supported candidates occupy one deterministic 0.5 m
+        # voxel, so balanced retains real conservative spatial coverage.
+        vertices["x"] = [0.0, 0.1, 0.2, 1.0]
+        vertices["opacity"] = 1.0
+        for name in ("scale_0", "scale_1", "scale_2"):
+            vertices[name] = np.log(0.05)
+        PlyData([PlyElement.describe(vertices, "vertex")]).write(self.raw)
+
+        def frozen(values, *, dtype=float):
+            result = np.asarray(values, dtype=dtype)
+            result.setflags(write=False)
+            return result
+
+        evidence = EvidenceResult(
+            total=frozen([0.95, 0.85, 0.50, 0.10]),
+            components={
+                "lidar_proximity": frozen([1.0, 0.8, 0.6, 0.0]),
+                "view_support": frozen([1.0, 1.0, 0.0, 0.0]),
+                "component_size": frozen([1.0, 0.8, 0.4, 0.0]),
+            },
+            conservative_mask=frozen([True, True, True, False], dtype=bool),
+            balanced_mask=frozen([True, True, False, False], dtype=bool),
+            diagnostic_mask=frozen([True, True, False, False], dtype=bool),
+            source_vertex_sha256=ply_fingerprints(self.raw)[1],
+        )
+        clean_variants(self.raw, evidence, root)
+
+        self.evidence_artifact.write_bytes(b"verified evidence fixture")
+        np.save(self.poses, np.repeat(np.eye(4)[None], 2, axis=0))
+        self.checkpoint.write_bytes(b"checkpoint")
         self.frame_audit.write_text(
             json.dumps(
                 {
                     "selectedFrames": 12,
                     "rejectedFrames": {"blur": 2},
-                    "qualityMetrics": {"retainedCoverage": 0.92},
                 }
             )
         )
         self.training_state.write_text(
             json.dumps({"iterations": 30_000, "codeRevision": "fixture-revision"})
         )
-        aggregates = {
-            "meanSsim": 0.95,
-            "meanColorFlicker": 0.01,
-            # This remains present when meanDepthError is omitted, proving
-            # the producer does not relabel temporal depth instability.
-            "meanDepthFlicker": 0.001,
-        }
-        if include_depth_error:
-            aggregates["meanDepthError"] = 0.02
+        captured = []
+        image = np.zeros((4, 4, 3), dtype=np.float64)
+        for index in range(8):
+            kind = "withheld" if index == 4 else "recorded"
+            row = {
+                "frame_id": f"{kind}-{index:04d}",
+                "kind": kind,
+                "frame_index": index,
+                "ground_truth": image.copy(),
+                "balanced_render": image.copy(),
+            }
+            if kind == "withheld":
+                row.update(
+                    {
+                        "captured_depth": np.array([[2.0, 4.0]], dtype=np.float64),
+                        "balanced_depth": np.array([[2.04, 4.08]], dtype=np.float64),
+                        "depth_confidence": np.array(
+                            [[2, 1]] if include_depth_error else [[0, 0]],
+                            dtype=np.uint8,
+                        ),
+                    }
+                )
+            captured.append(row)
+        interpolated = [
+            {
+                "start_index": start,
+                "end_index": end,
+                "alpha": 0.5,
+                "color_frames": (
+                    np.zeros((2, 2, 3)),
+                    np.full((2, 2, 3), 0.01),
+                    np.full((2, 2, 3), 0.02),
+                ),
+                "depth_frames": (
+                    np.ones((2, 2)),
+                    np.full((2, 2), 1.001),
+                    np.full((2, 2), 1.002),
+                ),
+            }
+            for start, end in ((0, 1), (6, 7))
+        ]
         self.validation_metrics = root / "validation-metrics.json"
-        self.validation_metrics.write_text(json.dumps({"aggregates": aggregates}))
+        snapshots = snapshot_validation_comparisons(
+            captured,
+            interpolated_comparisons=interpolated,
+            workspace=root / "validation-evidence",
+        )
+        spec = validation_view_spec_from_dict(
+            {
+                "recorded": [0, 1, 2, 3, 5, 6, 7],
+                "withheld": [4],
+                "interpolated": [
+                    {"startIndex": 0, "endIndex": 1, "alpha": 0.5},
+                    {"startIndex": 6, "endIndex": 7, "alpha": 0.5},
+                ],
+                "standardized": [],
+            },
+            frame_count=8,
+        )
+        write_validation_metrics(
+            snapshots, self.validation_metrics, view_spec=spec
+        )
         self.contact_sheet = root / "validation-contact-sheet.jpg"
         self.contact_sheet.write_bytes(b"jpeg")
 
@@ -759,11 +848,11 @@ def test_real_artifacts_produce_canonical_metrics_manifest_and_pending_candidate
     recon_worker.process_job(conn, recon_worker.Job(job_id, "sess-1", "1:2", 1))
 
     assert result.verified_metrics.to_dict() == {
-        "imageSimilarity": 0.95,
-        "depthError": 0.02,
-        "temporalFlicker": 0.01,
-        "floaterRatio": 0.04,
-        "retainedCoverage": 0.92,
+        "imageSimilarity": 1.0,
+        "depthError": pytest.approx(0.02),
+        "temporalFlicker": pytest.approx(0.01),
+        "floaterRatio": 0.0,
+        "retainedCoverage": 1.0,
         "assetSizeBytes": len(result.verified_candidate.balanced_bytes),
     }
     assert result.publication_decision.to_dict() == {"publish": True, "reasons": []}
@@ -814,6 +903,10 @@ def test_missing_direct_metric_is_rejected_without_fabrication(
 
     recon_worker.process_job(conn, recon_worker.Job(job_id, "sess-1", "1:2", 1))
 
+    validation_document = json.loads(result.validation_metrics.read_text())
+    assert validation_document["aggregates"]["depthQualifiedPixels"] == 0
+    assert "meanDepthError" not in validation_document["aggregates"]
+    assert "meanDepthFlicker" in validation_document["aggregates"]
     assert result.verified_metrics.depth_error is None
     assert result.publication_decision.reasons == ["depth-error-missing"]
     with conn.cursor() as cur:

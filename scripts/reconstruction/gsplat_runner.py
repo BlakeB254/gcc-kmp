@@ -219,6 +219,8 @@ class VerifiedCandidate:
             raise ValueError("cleanup report component histograms are invalid")
         if removed_reasons != evaluation.removed_reason_counts:
             raise ValueError("cleanup report removal reasons are invalid")
+        if report.get("qualityMetrics") != evaluation.quality_metrics:
+            raise ValueError("cleanup report quality metrics are invalid")
         output_checksums: dict[str, str] = {}
         for policy in ("conservative", "balanced", "diagnostic"):
             entry = outputs[policy]
@@ -546,6 +548,11 @@ def _export_session_frames(manifest: dict, T_cell: np.ndarray, frames_dir: str,
             if "confidence" in kinds
             else []
         )
+        depth_records = (
+            chunk_io.parse_depth_chunk(r2_store.download_bytes(kinds["depth"]))
+            if "depth" in kinds
+            else []
+        )
         sharpness_by_index = _frame_sharpness_by_sidecar_index(video, sidecar)
         records: list[FrameRecord] = []
         for i, frame in enumerate(sidecar):
@@ -599,6 +606,40 @@ def _export_session_frames(manifest: dict, T_cell: np.ndarray, frames_dir: str,
                                         [0, f.intrinsics.fy, f.intrinsics.cy],
                                         [0, 0, 1]], dtype=np.float64))
             Image.fromarray(img).save(os.path.join(frames_dir, f"{n:04d}.jpg"), quality=92)
+            if depth_records and confidence_records:
+                depth_record = min(
+                    depth_records, key=lambda record: abs(record.t - f.t)
+                )
+                confidence_record = min(
+                    confidence_records, key=lambda record: abs(record.t - f.t)
+                )
+                if (
+                    abs(depth_record.t - f.t) <= 0.2
+                    and abs(confidence_record.t - f.t) <= 0.2
+                    and depth_record.depth_meters.shape
+                    == confidence_record.confidence.shape
+                ):
+                    captured_depth = np.asarray(
+                        depth_record.depth_meters, dtype=np.float32
+                    ).copy()
+                    captured_confidence = np.asarray(
+                        confidence_record.confidence, dtype=np.uint8
+                    ).copy()
+                    qualified = (
+                        np.isfinite(captured_depth)
+                        & (captured_depth > 0.0)
+                        & (captured_confidence >= 1)
+                        & (captured_confidence <= 2)
+                    )
+                    captured_depth[~qualified] = 0.0
+                    captured_confidence[~qualified] = 0
+                    evidence_dir = Path(frames_dir).parent / "depth-evidence"
+                    evidence_dir.mkdir(parents=True, exist_ok=True)
+                    np.savez(
+                        evidence_dir / f"{n:04d}.npz",
+                        depthMeters=captured_depth,
+                        confidence=captured_confidence,
+                    )
             n += 1
     return poses, intrinsics, n, audits
 
@@ -631,6 +672,10 @@ def train_gsplat_for_cell(
         Path(frames_dir).mkdir(parents=True, exist_ok=True)
         for stale_frame in Path(frames_dir).glob("*.jpg"):
             stale_frame.unlink()
+        depth_evidence_dir = Path(tmp) / "depth-evidence"
+        depth_evidence_dir.mkdir(parents=True, exist_ok=True)
+        for stale_evidence in depth_evidence_dir.glob("*.npz"):
+            stale_evidence.unlink()
         budget = max(1, MAX_TOTAL_FRAMES // len(fusion_result.accepted_session_ids))
         poses, intrinsics, n, frame_audits = [], [], 0, []
         for sid in fusion_result.accepted_session_ids:

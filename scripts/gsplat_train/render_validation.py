@@ -458,6 +458,104 @@ def captured_image_metrics(ground_truth: Any, rendered: Any) -> dict[str, float]
     return {"mse": mse, "psnr": psnr, "ssim": ssim}
 
 
+def captured_depth_metrics(
+    captured_depth: Any,
+    balanced_depth: Any,
+    confidence: Any,
+) -> dict[str, float | int] | None:
+    """Compute withheld-view metric depth error on qualified LiDAR pixels.
+
+    ``relative_error`` is the canonical ``meanDepthError`` input (AbsRel).
+    Captured depth must be positive and ARKit confidence must be medium/high
+    (>=1). A missing qualified pixel set returns ``None`` rather than a
+    fabricated zero error.
+    """
+    reference = np.asarray(captured_depth)
+    candidate = np.asarray(balanced_depth)
+    confidence_values = np.asarray(confidence)
+    if (
+        reference.ndim != 2
+        or reference.size == 0
+        or reference.shape != candidate.shape
+        or reference.shape != confidence_values.shape
+        or not np.issubdtype(reference.dtype, np.number)
+        or not np.issubdtype(candidate.dtype, np.number)
+        or not np.issubdtype(confidence_values.dtype, np.number)
+    ):
+        raise ValueError("captured, balanced, and confidence depth must align as numeric HxW arrays")
+    reference = np.asarray(reference, dtype=np.float64)
+    candidate = np.asarray(candidate, dtype=np.float64)
+    confidence_values = np.asarray(confidence_values, dtype=np.float64)
+    if (
+        not np.isfinite(reference).all()
+        or not np.isfinite(candidate).all()
+        or not np.isfinite(confidence_values).all()
+        or np.any(confidence_values < 0.0)
+        or np.any(confidence_values > 2.0)
+        or np.any(confidence_values != np.floor(confidence_values))
+    ):
+        raise ValueError("captured depth evidence contains invalid values")
+    qualified = (confidence_values >= 1.0) & (reference > 0.0)
+    qualified_pixels = int(qualified.sum())
+    if qualified_pixels == 0:
+        return None
+    absolute = np.abs(candidate[qualified] - reference[qualified])
+    relative = absolute / reference[qualified]
+    return {
+        "absolute_error_meters": float(np.mean(absolute)),
+        "relative_error": float(np.mean(relative)),
+        "qualified_pixels": qualified_pixels,
+    }
+
+
+def load_captured_depth_evidence(
+    path: str | Path,
+    *,
+    target_shape: tuple[int, int],
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Load exported LiDAR depth/confidence and nearest-resample them together."""
+    source = Path(path)
+    if not source.is_file():
+        return None
+    try:
+        with np.load(source, allow_pickle=False) as archive:
+            if set(archive.files) != {"depthMeters", "confidence"}:
+                raise ValueError("captured depth evidence fields are invalid")
+            depth = np.asarray(archive["depthMeters"], dtype=np.float64).copy()
+            confidence = np.asarray(archive["confidence"]).copy()
+    except (OSError, TypeError, ValueError) as error:
+        raise ValueError("captured depth evidence is unreadable") from error
+    if (
+        depth.ndim != 2
+        or depth.size == 0
+        or depth.shape != confidence.shape
+        or not np.isfinite(depth).all()
+        or not np.issubdtype(confidence.dtype, np.integer)
+        or np.any(confidence < 0)
+        or np.any(confidence > 2)
+        or len(target_shape) != 2
+        or any(
+            isinstance(value, bool) or not isinstance(value, Integral) or value < 1
+            for value in target_shape
+        )
+    ):
+        raise ValueError("captured depth evidence arrays are invalid")
+    target_height, target_width = (int(value) for value in target_shape)
+    source_height, source_width = depth.shape
+    rows = np.minimum(
+        (np.arange(target_height) * source_height // target_height),
+        source_height - 1,
+    )
+    columns = np.minimum(
+        (np.arange(target_width) * source_width // target_width),
+        source_width - 1,
+    )
+    return (
+        np.ascontiguousarray(depth[rows[:, None], columns[None, :]]),
+        np.ascontiguousarray(confidence[rows[:, None], columns[None, :]]),
+    )
+
+
 def aggregate_captured_metrics(
     captured_metrics: Sequence[Mapping[str, Any]],
 ) -> dict[str, float]:
@@ -698,6 +796,9 @@ class _CapturedComparisonSnapshot:
     frame_index: int
     ground_truth: _ArraySnapshot
     balanced_render: _ArraySnapshot
+    captured_depth: _ArraySnapshot | None = None
+    balanced_depth: _ArraySnapshot | None = None
+    depth_confidence: _ArraySnapshot | None = None
 
 
 @dataclass(frozen=True)
@@ -737,6 +838,9 @@ class ValidationEvidenceInstrumentation:
 
 _CAPTURED_COMPARISON_FIELDS = frozenset(
     ("frame_id", "kind", "frame_index", "ground_truth", "balanced_render")
+)
+_CAPTURED_DEPTH_FIELDS = frozenset(
+    ("captured_depth", "balanced_depth", "depth_confidence")
 )
 _INTERPOLATED_COMPARISON_FIELDS = frozenset(
     ("start_index", "end_index", "alpha", "color_frames", "depth_frames")
@@ -837,9 +941,14 @@ def snapshot_validation_comparisons(
     captured: list[_CapturedComparisonSnapshot] = []
     ordinal = 0
     for value in captured_iterator:
-        row = _strict_comparison_mapping(
-            value, fields=_CAPTURED_COMPARISON_FIELDS, name="captured comparison"
-        )
+        if not isinstance(value, Mapping) or set(value) not in (
+            _CAPTURED_COMPARISON_FIELDS,
+            _CAPTURED_COMPARISON_FIELDS | _CAPTURED_DEPTH_FIELDS,
+        ):
+            raise ValueError(
+                "captured comparison fields must be the image fields or the complete depth-evidence fields"
+            )
+        row = dict(value)
         frame_id = row["frame_id"]
         kind = row["kind"]
         frame_index = row["frame_index"]
@@ -865,6 +974,34 @@ def snapshot_validation_comparisons(
             raise ValueError(
                 "captured ground_truth and balanced_render must have the same shape"
             )
+        captured_depth = balanced_depth = depth_confidence = None
+        if _CAPTURED_DEPTH_FIELDS <= set(row):
+            if kind != "withheld":
+                raise ValueError("captured depth evidence is allowed only for withheld views")
+            captured_depth = _snapshot_depth(
+                row["captured_depth"],
+                workspace=evidence_workspace,
+                relative_path=f"captured/{ordinal:06d}-captured-depth.npy",
+                name="captured depth",
+            )
+            balanced_depth = _snapshot_depth(
+                row["balanced_depth"],
+                workspace=evidence_workspace,
+                relative_path=f"captured/{ordinal:06d}-balanced-depth.npy",
+                name="balanced depth",
+            )
+            depth_confidence = _snapshot_depth(
+                row["depth_confidence"],
+                workspace=evidence_workspace,
+                relative_path=f"captured/{ordinal:06d}-depth-confidence.npy",
+                name="depth confidence",
+            )
+            if not (
+                captured_depth.shape
+                == balanced_depth.shape
+                == depth_confidence.shape
+            ):
+                raise ValueError("captured depth evidence arrays must have the same shape")
         captured.append(
             _CapturedComparisonSnapshot(
                 frame_id=frame_id,
@@ -872,6 +1009,9 @@ def snapshot_validation_comparisons(
                 frame_index=int(frame_index),
                 ground_truth=ground_truth,
                 balanced_render=balanced_render,
+                captured_depth=captured_depth,
+                balanced_depth=balanced_depth,
+                depth_confidence=depth_confidence,
             )
         )
         del row, value, ground_truth, balanced_render
@@ -1013,6 +1153,21 @@ def _metric_snapshots_manifest_document(
                 "frameIndex": item.frame_index,
                 "groundTruth": _array_snapshot_document(item.ground_truth),
                 "balancedRender": _array_snapshot_document(item.balanced_render),
+                "capturedDepth": (
+                    _array_snapshot_document(item.captured_depth)
+                    if item.captured_depth is not None
+                    else None
+                ),
+                "balancedDepth": (
+                    _array_snapshot_document(item.balanced_depth)
+                    if item.balanced_depth is not None
+                    else None
+                ),
+                "depthConfidence": (
+                    _array_snapshot_document(item.depth_confidence)
+                    if item.depth_confidence is not None
+                    else None
+                ),
             }
             for item in captured
         ],
@@ -1115,6 +1270,21 @@ def _copy_metric_snapshots(value: Any) -> ValidationMetricSnapshots:
                 ),
                 balanced_render=_copy_array_snapshot(
                     item.balanced_render, name="captured balanced_render"
+                ),
+                captured_depth=(
+                    _copy_array_snapshot(item.captured_depth, name="captured depth")
+                    if item.captured_depth is not None
+                    else None
+                ),
+                balanced_depth=(
+                    _copy_array_snapshot(item.balanced_depth, name="balanced depth")
+                    if item.balanced_depth is not None
+                    else None
+                ),
+                depth_confidence=(
+                    _copy_array_snapshot(item.depth_confidence, name="depth confidence")
+                    if item.depth_confidence is not None
+                    else None
                 ),
             )
         )
@@ -1244,7 +1414,16 @@ def _snapshots_from_manifest_document(
         item = _strict_comparison_mapping(
             raw_item,
             fields=frozenset(
-                ("frameId", "kind", "frameIndex", "groundTruth", "balancedRender")
+                (
+                    "frameId",
+                    "kind",
+                    "frameIndex",
+                    "groundTruth",
+                    "balancedRender",
+                    "capturedDepth",
+                    "balancedDepth",
+                    "depthConfidence",
+                )
             ),
             name="captured evidence manifest item",
         )
@@ -1258,6 +1437,27 @@ def _snapshots_from_manifest_document(
                 ),
                 balanced_render=_array_snapshot_from_document(
                     item["balancedRender"], name="captured balanced_render"
+                ),
+                captured_depth=(
+                    _array_snapshot_from_document(
+                        item["capturedDepth"], name="captured depth"
+                    )
+                    if item["capturedDepth"] is not None
+                    else None
+                ),
+                balanced_depth=(
+                    _array_snapshot_from_document(
+                        item["balancedDepth"], name="balanced depth"
+                    )
+                    if item["balancedDepth"] is not None
+                    else None
+                ),
+                depth_confidence=(
+                    _array_snapshot_from_document(
+                        item["depthConfidence"], name="depth confidence"
+                    )
+                    if item["depthConfidence"] is not None
+                    else None
                 ),
             )
         )
@@ -1414,6 +1614,21 @@ def _validate_evidence_coverage(
         actual_captured.append((item.kind, int(item.frame_index)))
         if item.ground_truth.shape != item.balanced_render.shape:
             raise ValueError("captured comparison images must have the same shape")
+        depth_descriptors = (
+            item.captured_depth,
+            item.balanced_depth,
+            item.depth_confidence,
+        )
+        present_depth_descriptors = sum(
+            descriptor is not None for descriptor in depth_descriptors
+        )
+        if present_depth_descriptors not in (0, 3):
+            raise ValueError("captured depth evidence must be complete")
+        if present_depth_descriptors == 3 and (
+            item.kind != "withheld"
+            or len({descriptor.shape for descriptor in depth_descriptors}) != 1
+        ):
+            raise ValueError("captured depth evidence must align with a withheld view")
     if (
         len(actual_captured) != len(expected_captured)
         or len(set(actual_captured)) != len(actual_captured)
@@ -1468,6 +1683,16 @@ def _validate_evidence_coverage(
         for item in evidence.captured
         for descriptor in (item.ground_truth, item.balanced_render)
     ]
+    descriptor_paths.extend(
+        descriptor.relative_path
+        for item in evidence.captured
+        for descriptor in (
+            item.captured_depth,
+            item.balanced_depth,
+            item.depth_confidence,
+        )
+        if descriptor is not None
+    )
     descriptor_paths.extend(
         descriptor.relative_path
         for item in evidence.interpolated
@@ -1563,7 +1788,11 @@ def _validation_metrics_document(
     mse_sum = 0.0
     similarity_sum = 0.0
     captured_count = 0
+    depth_absolute_sum = 0.0
+    depth_relative_sum = 0.0
+    depth_qualified_pixels = 0
     for item in evidence.captured:
+        depth_metrics = None
         with _decoded_evidence_slot(decode_stats, kind="captured"):
             ground_truth = _array_from_snapshot(
                 evidence.workspace,
@@ -1575,23 +1804,68 @@ def _validation_metrics_document(
                 item.balanced_render,
                 name="captured balanced_render",
             )
+            decoded_arrays = [ground_truth, balanced_render]
+            if item.captured_depth is not None:
+                captured_depth = _array_from_snapshot(
+                    evidence.workspace,
+                    item.captured_depth,
+                    name="captured depth",
+                    depth=True,
+                )
+                balanced_depth = _array_from_snapshot(
+                    evidence.workspace,
+                    item.balanced_depth,
+                    name="balanced depth",
+                    depth=True,
+                )
+                depth_confidence = _array_from_snapshot(
+                    evidence.workspace,
+                    item.depth_confidence,
+                    name="depth confidence",
+                    depth=True,
+                )
+                decoded_arrays.extend(
+                    (captured_depth, balanced_depth, depth_confidence)
+                )
+                depth_metrics = captured_depth_metrics(
+                    captured_depth, balanced_depth, depth_confidence
+                )
             _register_decoded_arrays(
                 decode_stats,
-                (ground_truth, balanced_render),
+                decoded_arrays,
             )
             metrics = captured_image_metrics(ground_truth, balanced_render)
             mse = float(metrics["mse"])
             ssim = float(metrics["ssim"])
-            del ground_truth, balanced_render, metrics
+            del ground_truth, balanced_render, decoded_arrays, metrics
+            if item.captured_depth is not None:
+                del captured_depth, balanced_depth, depth_confidence
         psnr: float | str = "Infinity" if mse == 0.0 else -10.0 * math.log10(mse)
-        serialized_captured.append({
+        captured_document = {
             "frameId": item.frame_id,
             "kind": item.kind,
             "frameIndex": int(item.frame_index),
             "mse": mse,
             "psnr": psnr,
             "ssim": ssim,
-        })
+        }
+        if depth_metrics is not None:
+            qualified = int(depth_metrics["qualified_pixels"])
+            captured_document.update(
+                {
+                    "depthAbsoluteErrorMeters": float(
+                        depth_metrics["absolute_error_meters"]
+                    ),
+                    "depthError": float(depth_metrics["relative_error"]),
+                    "depthQualifiedPixels": qualified,
+                }
+            )
+            depth_absolute_sum += (
+                float(depth_metrics["absolute_error_meters"]) * qualified
+            )
+            depth_relative_sum += float(depth_metrics["relative_error"]) * qualified
+            depth_qualified_pixels += qualified
+        serialized_captured.append(captured_document)
         mse_sum += mse
         similarity_sum += ssim
         captured_count += 1
@@ -1602,6 +1876,13 @@ def _validation_metrics_document(
         "meanPsnr": "Infinity" if mean_mse == 0.0 else -10.0 * math.log10(mean_mse),
         "meanSsim": similarity_sum / captured_count,
     }
+    if any(item.captured_depth is not None for item in evidence.captured):
+        aggregates["depthQualifiedPixels"] = depth_qualified_pixels
+    if depth_qualified_pixels:
+        aggregates["meanDepthAbsoluteErrorMeters"] = (
+            depth_absolute_sum / depth_qualified_pixels
+        )
+        aggregates["meanDepthError"] = depth_relative_sum / depth_qualified_pixels
     if evidence.include_interpolation:
         interpolation_documents: list[dict[str, Any]] = []
         color_flicker_sum = 0.0
@@ -1940,7 +2221,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     def captured_comparisons() -> Iterator[Mapping[str, Any]]:
         for kind, indices in captured_groups:
             for index in indices:
-                color, _depth = render_pose(poses[index], intrinsics[index])
+                color, rendered_depth = render_pose(poses[index], intrinsics[index])
                 with Image.open(
                     data_dir / "frames" / f"{index:04d}.jpg"
                 ) as source_image:
@@ -1956,10 +2237,28 @@ def main(argv: Sequence[str] | None = None) -> None:
                     "ground_truth": ground_truth,
                     "balanced_render": color,
                 }
+                depth_evidence = None
+                if kind == "withheld":
+                    depth_evidence = load_captured_depth_evidence(
+                        data_dir / "depth-evidence" / f"{index:04d}.npz",
+                        target_shape=rendered_depth.shape,
+                    )
+                    if depth_evidence is not None:
+                        captured_depth, depth_confidence = depth_evidence
+                        comparison.update(
+                            {
+                                "captured_depth": captured_depth,
+                                "balanced_depth": rendered_depth,
+                                "depth_confidence": depth_confidence,
+                            }
+                        )
                 try:
                     yield comparison
                 finally:
-                    del comparison, color, _depth, ground_truth, rendered_image
+                    del comparison, color, rendered_depth, ground_truth, rendered_image
+                    if depth_evidence is not None:
+                        del captured_depth, depth_confidence
+                    del depth_evidence
 
     def interpolated_comparisons() -> Iterator[Mapping[str, Any]]:
         for view in spec.interpolated:

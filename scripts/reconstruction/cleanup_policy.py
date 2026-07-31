@@ -26,6 +26,10 @@ POLICY_THRESHOLDS = {
 }
 HISTOGRAM_EDGES = np.linspace(0.0, 1.0, 6)
 SPATIAL_THRESHOLD_NAMES = ("camHeight", "belowMargin", "aboveCap", "corridor")
+FLOATER_EVIDENCE_SCORE_THRESHOLD = 0.75
+FLOATER_LIDAR_DIRECT_SUPPORT_THRESHOLD = 0.8
+FLOATER_VERIFIED_VIEW_SUPPORT_THRESHOLD = 1.0
+RETAINED_COVERAGE_VOXEL_SIZE_METERS = 0.5
 
 
 @dataclass(frozen=True)
@@ -37,6 +41,7 @@ class CleanupEvaluation:
     counts: dict[str, int]
     histograms: dict[str, dict[str, list[Any]]]
     removed_reason_counts: dict[str, dict[str, int]]
+    quality_metrics: dict[str, Any]
 
 
 def build_policy_thresholds(
@@ -183,6 +188,76 @@ def _removed_reasons(
     return reasons
 
 
+def _quality_metrics(
+    vertices: np.ndarray,
+    total: np.ndarray,
+    components: dict[str, np.ndarray],
+    masks: dict[str, np.ndarray],
+) -> dict[str, Any]:
+    """Measure weak retained evidence and evidence-supported voxel coverage.
+
+    A balanced Gaussian is weak when it does not meet the stricter diagnostic
+    evidence score/direct-support thresholds. Coverage uses occupied 0.5 m
+    voxels from the evidence-supported conservative policy as its reference;
+    it is not a Gaussian-count or selected-frame ratio.
+    """
+    balanced = masks["balanced"]
+    conservative = masks["conservative"]
+    balanced_count = int(balanced.sum())
+    view_support = components.get("view_support")
+    lidar_proximity = components.get("lidar_proximity")
+    if balanced_count == 0 or view_support is None or lidar_proximity is None:
+        floater_ratio: float | None = None
+        weak_count = 0
+    else:
+        strong = (total >= FLOATER_EVIDENCE_SCORE_THRESHOLD) & (
+            (view_support >= FLOATER_VERIFIED_VIEW_SUPPORT_THRESHOLD)
+            | (lidar_proximity >= FLOATER_LIDAR_DIRECT_SUPPORT_THRESHOLD)
+        )
+        weak_count = int(np.sum(balanced & ~strong))
+        floater_ratio = weak_count / balanced_count
+
+    xyz = np.stack([vertices[name] for name in ("x", "y", "z")], axis=1)
+    if not np.isfinite(xyz).all():
+        raise ValueError("cleanup vertices contain non-finite positions")
+    voxel_indices = np.floor(
+        xyz / RETAINED_COVERAGE_VOXEL_SIZE_METERS
+    ).astype(np.int64)
+
+    def occupied(mask: np.ndarray) -> set[tuple[int, int, int]]:
+        return {
+            tuple(int(value) for value in voxel)
+            for voxel in voxel_indices[mask]
+        }
+
+    reference_voxels = occupied(conservative)
+    retained_voxels = occupied(balanced) & reference_voxels
+    retained_coverage = (
+        len(retained_voxels) / len(reference_voxels)
+        if reference_voxels
+        else None
+    )
+    return {
+        "floaterRatio": floater_ratio,
+        "retainedCoverage": retained_coverage,
+        "definitions": {
+            "floaterRatio": {
+                "evidenceScoreThreshold": FLOATER_EVIDENCE_SCORE_THRESHOLD,
+                "lidarDirectSupportThreshold": FLOATER_LIDAR_DIRECT_SUPPORT_THRESHOLD,
+                "verifiedViewSupportThreshold": FLOATER_VERIFIED_VIEW_SUPPORT_THRESHOLD,
+                "weakRetainedGaussians": weak_count,
+                "balancedGaussians": balanced_count,
+            },
+            "retainedCoverage": {
+                "referencePolicy": "conservative",
+                "voxelSizeMeters": RETAINED_COVERAGE_VOXEL_SIZE_METERS,
+                "retainedOccupiedVoxels": len(retained_voxels),
+                "referenceOccupiedVoxels": len(reference_voxels),
+            },
+        },
+    }
+
+
 def evaluate_cleanup(
     vertices: np.ndarray,
     evidence: EvidenceResult,
@@ -242,4 +317,5 @@ def evaluate_cleanup(
             )
             for policy in POLICY_NAMES
         },
+        quality_metrics=_quality_metrics(vertices, total, components, masks),
     )

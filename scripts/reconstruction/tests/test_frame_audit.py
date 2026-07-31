@@ -130,6 +130,90 @@ def test_export_audits_the_full_sidecar_route_before_bounded_rgb_decode(tmp_path
     assert audits[0]["rejections"]["4"] == ["limited-tracking"]
 
 
+def test_export_persists_time_matched_depth_and_confidence_for_selected_frames(
+    tmp_path, monkeypatch
+):
+    """Catches selected captured range evidence never reaching validation."""
+    intrinsics = Intrinsics(10.0, 10.0, 5.0, 5.0, 16, 16)
+    frames = []
+    for index in range(10):
+        transform = np.eye(4)
+        transform[0, 3] = float(index)
+        frames.append(
+            chunk_io.SidecarFrame(
+                t=float(index),
+                t_video=float(index),
+                camera_transform=transform,
+                intrinsics=intrinsics,
+                tracking=1 if index == 0 else 0,
+                thermal=0,
+            )
+        )
+    depth_records = [
+        chunk_io.DepthRecord(
+            t=float(index),
+            depth_meters=np.array([[2.0 + index, 3.0 + index]], dtype=np.float32),
+        )
+        for index in (1, 5)
+    ]
+    confidence_records = [
+        chunk_io.ConfidenceRecord(
+            t=float(index), confidence=np.array([[2, 0]], dtype=np.uint8)
+        )
+        for index in (1, 5)
+    ]
+    image = np.zeros((16, 16, 3), dtype=np.uint8)
+
+    monkeypatch.setattr(gsplat_runner.r2_store, "is_configured", lambda: False)
+    monkeypatch.setattr(gsplat_runner.r2_store, "download_bytes", lambda _key: b"source")
+    monkeypatch.setattr(gsplat_runner.chunk_io, "parse_sidecar", lambda _source: ({}, frames))
+    monkeypatch.setattr(
+        gsplat_runner.chunk_io, "parse_depth_chunk", lambda _source: depth_records
+    )
+    monkeypatch.setattr(
+        gsplat_runner.chunk_io,
+        "parse_confidence_chunk",
+        lambda _source: confidence_records,
+    )
+    monkeypatch.setattr(
+        gsplat_runner.chunk_io,
+        "extract_video_frames_at",
+        lambda _video, _times: [image for _ in _times],
+    )
+    monkeypatch.setattr(
+        gsplat_runner,
+        "_frame_sharpness_by_sidecar_index",
+        lambda _video, _sidecar: {index: 1.0 for index in range(len(_sidecar))},
+    )
+
+    frames_dir = tmp_path / "frames"
+    frames_dir.mkdir()
+    _poses, _intrinsics, next_index, _audits = gsplat_runner._export_session_frames(
+        {
+            "captureChunks": [
+                "chunk-0.mov",
+                "chunk-0.jsonl",
+                "chunk-0.depth",
+                "chunk-0.confidence",
+            ]
+        },
+        np.eye(4),
+        str(frames_dir),
+        start_index=0,
+        budget=2,
+    )
+
+    assert next_index == 2
+    for frame_index, expected_depth in ((0, [[3.0, 0.0]]), (1, [[7.0, 0.0]])):
+        with np.load(
+            tmp_path / "depth-evidence" / f"{frame_index:04d}.npz",
+            allow_pickle=False,
+        ) as evidence:
+            assert set(evidence.files) == {"depthMeters", "confidence"}
+            assert evidence["depthMeters"].tolist() == expected_depth
+            assert evidence["confidence"].tolist() == [[2, 0]]
+
+
 def test_frame_sharpness_map_covers_every_sidecar_frame_from_one_video_decode():
     """Catches full-path auditing reintroducing one decode or RGB array per pose."""
     checkerboard = np.indices((32, 32)).sum(axis=0) % 2

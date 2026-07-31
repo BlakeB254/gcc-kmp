@@ -206,6 +206,7 @@ def clean_variants(
             "counts": counts,
             "componentScoreHistograms": evaluation.histograms,
             "removedReasonCounts": evaluation.removed_reason_counts,
+            "qualityMetrics": evaluation.quality_metrics,
             "outputs": {
                 policy: {
                     "path": str(outputs[policy]),

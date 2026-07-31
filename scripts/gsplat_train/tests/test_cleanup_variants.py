@@ -253,6 +253,25 @@ def test_cleanup_report_records_checksums_thresholds_histograms_and_reasons(tmp_
     assert serialized["removedReasonCounts"]["balanced"]["policy-mask-rejected"] == 2
     assert serialized["removedReasonCounts"]["balanced"]["below-total-score"] == 2
     assert serialized["removedReasonCounts"]["balanced"]["insufficient-direct-support"] == 1
+    assert serialized["qualityMetrics"] == {
+        "floaterRatio": 0.5,
+        "retainedCoverage": pytest.approx(2 / 3),
+        "definitions": {
+            "floaterRatio": {
+                "evidenceScoreThreshold": 0.75,
+                "lidarDirectSupportThreshold": 0.8,
+                "verifiedViewSupportThreshold": 1.0,
+                "weakRetainedGaussians": 1,
+                "balancedGaussians": 2,
+            },
+            "retainedCoverage": {
+                "referencePolicy": "conservative",
+                "voxelSizeMeters": 0.5,
+                "retainedOccupiedVoxels": 2,
+                "referenceOccupiedVoxels": 3,
+            },
+        },
+    }
     for policy in ("conservative", "balanced", "diagnostic"):
         output = output_dir / f"splat_{policy}.ply"
         assert serialized["outputs"][policy] == {
@@ -441,6 +460,7 @@ def test_verified_candidate_names_all_durable_artifacts_and_only_balanced_is_pub
         "string-threshold",
         "negative-reason-count",
         "changed-histogram",
+        "quality-metric",
         "missing-section",
     ),
 )
@@ -471,6 +491,8 @@ def test_verified_candidate_rejects_incoherent_cleanup_report(
         target_index = (source_index + 1) % len(counts)
         counts[source_index] -= 1
         counts[target_index] += 1
+    elif mutation == "quality-metric":
+        report["qualityMetrics"]["floaterRatio"] = 0.0
     else:
         del report["componentScoreHistograms"]
     report_path.write_text(json.dumps(report))

@@ -21,8 +21,10 @@ from render_validation import (  # noqa: E402
     aggregate_captured_metrics,
     build_contact_sheet,
     build_view_spec,
+    captured_depth_metrics,
     captured_image_metrics,
     interpolation_flicker_metrics,
+    load_captured_depth_evidence,
     snapshot_validation_comparisons,
     validation_view_spec_from_dict,
     write_validation_metrics,
@@ -87,6 +89,26 @@ def complete_interpolated_comparisons():
                 ),
             }
         )
+    return rows
+
+
+def captured_comparisons_with_withheld_depth(*, qualified: bool = True):
+    rows = complete_captured_comparisons()
+    rows[4].update(
+        {
+            "captured_depth": np.array(
+                [[2.0, 4.0], [0.0, 8.0]], dtype=np.float64
+            ),
+            "balanced_depth": np.array(
+                [[2.2, 3.2], [5.0, 12.0]], dtype=np.float64
+            ),
+            "depth_confidence": np.array(
+                [[2, 1], [2, 0]], dtype=np.uint8
+            )
+            if qualified
+            else np.zeros((2, 2), dtype=np.uint8),
+        }
+    )
     return rows
 
 
@@ -313,6 +335,92 @@ def test_captured_metrics_measure_identical_and_changed_images():
     assert identical["ssim"] == 1.0
     assert different["psnr"] < 20.0
     assert 0.0 <= different["ssim"] < 1.0
+
+
+def test_captured_depth_metrics_use_only_confidence_qualified_positive_depth():
+    """Catches low-confidence/background depth lowering the verified error."""
+    row = captured_comparisons_with_withheld_depth()[4]
+
+    metrics = captured_depth_metrics(
+        row["captured_depth"],
+        row["balanced_depth"],
+        row["depth_confidence"],
+    )
+
+    assert metrics == {
+        "absolute_error_meters": pytest.approx(0.5),
+        "relative_error": pytest.approx(0.15),
+        "qualified_pixels": 2,
+    }
+
+
+def test_captured_depth_metrics_fail_closed_without_qualified_pixels():
+    """Catches an empty confidence mask becoming a passing zero error."""
+    row = captured_comparisons_with_withheld_depth(qualified=False)[4]
+
+    assert captured_depth_metrics(
+        row["captured_depth"],
+        row["balanced_depth"],
+        row["depth_confidence"],
+    ) is None
+
+
+def test_depth_evidence_loader_resamples_captured_depth_and_confidence_together(
+    tmp_path,
+):
+    """Catches mismatched RGB/depth resolution comparing unrelated pixels."""
+    path = tmp_path / "withheld.npz"
+    np.savez(
+        path,
+        depthMeters=np.array([[2.0, 4.0]], dtype=np.float32),
+        confidence=np.array([[2, 0]], dtype=np.uint8),
+    )
+
+    loaded = load_captured_depth_evidence(path, target_shape=(2, 4))
+
+    assert loaded is not None
+    depth, confidence = loaded
+    assert depth.tolist() == [[2.0, 2.0, 4.0, 4.0], [2.0, 2.0, 4.0, 4.0]]
+    assert confidence.tolist() == [[2, 2, 0, 0], [2, 2, 0, 0]]
+
+
+def test_metrics_writer_emits_withheld_absolute_and_relative_depth_error(tmp_path):
+    """Catches real withheld LiDAR depth being dropped before publication."""
+    snapshots = snapshot_validation_comparisons(
+        captured_comparisons_with_withheld_depth(),
+        workspace=tmp_path / "evidence",
+    )
+
+    document = write_validation_metrics(
+        snapshots,
+        tmp_path / "validation-metrics.json",
+        view_spec=eight_frame_validation_spec(),
+    )
+
+    withheld = next(row for row in document["captured"] if row["kind"] == "withheld")
+    assert withheld["depthAbsoluteErrorMeters"] == pytest.approx(0.5)
+    assert withheld["depthError"] == pytest.approx(0.15)
+    assert withheld["depthQualifiedPixels"] == 2
+    assert document["aggregates"]["meanDepthAbsoluteErrorMeters"] == pytest.approx(0.5)
+    assert document["aggregates"]["meanDepthError"] == pytest.approx(0.15)
+    assert document["aggregates"]["depthQualifiedPixels"] == 2
+
+
+def test_metrics_writer_omits_mean_depth_error_without_qualified_pixels(tmp_path):
+    """Catches absent captured range evidence being reported as perfect depth."""
+    snapshots = snapshot_validation_comparisons(
+        captured_comparisons_with_withheld_depth(qualified=False),
+        workspace=tmp_path / "evidence",
+    )
+
+    document = write_validation_metrics(
+        snapshots,
+        tmp_path / "validation-metrics.json",
+        view_spec=eight_frame_validation_spec(),
+    )
+
+    assert "meanDepthError" not in document["aggregates"]
+    assert document["aggregates"]["depthQualifiedPixels"] == 0
 
 
 def test_captured_metrics_treat_ordinary_integer_arrays_as_eight_bit_pixels():
