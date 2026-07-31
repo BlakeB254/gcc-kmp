@@ -1,9 +1,12 @@
 """CPU-only contracts for deterministic reconstruction validation views."""
 from __future__ import annotations
 
+import gc
 import importlib
+import hashlib
 import json
 import sys
+import weakref
 from pathlib import Path
 
 import numpy as np
@@ -85,6 +88,153 @@ def complete_interpolated_comparisons():
             }
         )
     return rows
+
+
+def test_validation_snapshots_are_disk_backed_with_portable_integrity_descriptors(
+    tmp_path,
+):
+    """Catches validation evidence retaining all normalized float64 bytes in RAM."""
+    workspace = tmp_path / "validation-evidence"
+
+    snapshots = snapshot_validation_comparisons(
+        (row for row in complete_captured_comparisons()),
+        interpolated_comparisons=(
+            row for row in complete_interpolated_comparisons()
+        ),
+        workspace=workspace,
+    )
+
+    descriptor = snapshots.captured[0].ground_truth
+    snapshot_path = snapshots.workspace / descriptor.relative_path
+    payload = snapshot_path.read_bytes()
+    decoded = np.load(snapshot_path, allow_pickle=False)
+    assert snapshots.workspace == workspace.resolve()
+    assert descriptor.shape == (4, 4, 3)
+    assert descriptor.dtype == "<f8"
+    assert descriptor.byte_length == len(payload)
+    assert descriptor.sha256 == hashlib.sha256(payload).hexdigest()
+    assert decoded.dtype.str == "<f8"
+    assert decoded.flags.c_contiguous
+
+
+def test_metrics_writer_rejects_replaced_disk_evidence_before_publishing(tmp_path):
+    """Catches a file replacement changing snapshotted pixels before recomputation."""
+    snapshots = snapshot_validation_comparisons(
+        complete_captured_comparisons(), workspace=tmp_path / "evidence"
+    )
+    descriptor = snapshots.captured[0].balanced_render
+    snapshot_path = snapshots.workspace / descriptor.relative_path
+    payload = bytearray(snapshot_path.read_bytes())
+    payload[-1] ^= 1
+    replacement = snapshot_path.with_name("replacement.npy")
+    replacement.write_bytes(payload)
+    replacement.replace(snapshot_path)
+    output = tmp_path / "validation-metrics.json"
+
+    with pytest.raises(ValueError, match="SHA-256"):
+        write_validation_metrics(
+            snapshots, output, view_spec=eight_frame_validation_spec()
+        )
+
+    assert not output.exists()
+
+
+def test_snapshot_stream_releases_each_source_comparison_before_requesting_next(
+    tmp_path,
+):
+    """Catches the snapshot boundary accumulating caller arrays across rows."""
+    released_after_yield: list[weakref.ReferenceType[np.ndarray]] = []
+
+    def comparisons():
+        for index in range(8):
+            gc.collect()
+            assert all(reference() is None for reference in released_after_yield)
+            released_after_yield.clear()
+            ground_truth = np.zeros((4, 4, 3), dtype=np.float64)
+            balanced_render = np.zeros((4, 4, 3), dtype=np.float64)
+            released_after_yield.extend(
+                (weakref.ref(ground_truth), weakref.ref(balanced_render))
+            )
+            kind = "withheld" if index == 4 else "recorded"
+            comparison = {
+                "frame_id": f"{kind}-{index:04d}",
+                "kind": kind,
+                "frame_index": index,
+                "ground_truth": ground_truth,
+                "balanced_render": balanced_render,
+            }
+            yield comparison
+            del comparison, ground_truth, balanced_render
+        gc.collect()
+        assert all(reference() is None for reference in released_after_yield)
+
+    snapshots = snapshot_validation_comparisons(
+        comparisons(), workspace=tmp_path / "evidence"
+    )
+
+    assert len(snapshots.captured) == 8
+
+
+def test_writer_and_contact_sheet_decode_at_most_one_evidence_comparison(tmp_path):
+    """Catches retaining decoded captured rows or interpolation tuples across iterations."""
+    snapshots = snapshot_validation_comparisons(
+        complete_captured_comparisons(),
+        interpolated_comparisons=complete_interpolated_comparisons(),
+        workspace=tmp_path / "evidence",
+    )
+    writer_stats = validation_module.ValidationEvidenceInstrumentation()
+    document = write_validation_metrics(
+        snapshots,
+        tmp_path / "validation-metrics.json",
+        view_spec=eight_frame_validation_spec(),
+        instrumentation=writer_stats,
+    )
+
+    assert writer_stats.max_live_decoded_evidence == 1
+    assert writer_stats.live_decoded_evidence == 0
+    assert writer_stats.decoded_captured_comparisons == 8
+    assert writer_stats.decoded_interpolation_tuples == 2
+
+    contact_stats = validation_module.ValidationEvidenceInstrumentation()
+    validation_module.build_contact_sheet_from_snapshots(
+        snapshots,
+        document,
+        tmp_path / "validation-contact-sheet.jpg",
+        workspace=tmp_path / "contact-sheet-spool",
+        instrumentation=contact_stats,
+    )
+
+    assert contact_stats.max_live_decoded_evidence == 1
+    assert contact_stats.live_decoded_evidence == 0
+    assert contact_stats.decoded_captured_comparisons == 8
+    assert contact_stats.decoded_interpolation_tuples == 0
+
+
+def test_contact_sheet_rejects_metric_labels_modified_after_pixel_recomputation(
+    tmp_path,
+):
+    """Catches mutable returned metrics producing authoritative-looking false labels."""
+    snapshots = snapshot_validation_comparisons(
+        complete_captured_comparisons(), workspace=tmp_path / "evidence"
+    )
+    document = write_validation_metrics(
+        snapshots,
+        tmp_path / "validation-metrics.json",
+        view_spec=eight_frame_validation_spec(),
+    )
+    document["captured"][0]["psnr"] = 3.0
+    document["captured"][0]["ssim"] = 0.25
+    output = tmp_path / "validation-contact-sheet.jpg"
+
+    with pytest.raises(ValueError, match="metric labels do not match"):
+        validation_module.build_contact_sheet_from_snapshots(
+            snapshots,
+            document,
+            output,
+            workspace=tmp_path / "contact-sheet-spool",
+        )
+
+    assert not output.exists()
 
 
 def test_view_spec_separates_arc_length_recorded_and_every_fifth_withheld_pose():
@@ -208,7 +358,9 @@ def test_validation_metrics_serialize_identical_view_psnr_explicitly(tmp_path):
     """Catches perfect-view infinite PSNR producing invalid or unwritable JSON."""
     output = tmp_path / "validation-metrics.json"
 
-    snapshots = snapshot_validation_comparisons(complete_captured_comparisons())
+    snapshots = snapshot_validation_comparisons(
+        complete_captured_comparisons(), workspace=tmp_path / "evidence"
+    )
     write_validation_metrics(snapshots, output, view_spec=eight_frame_validation_spec())
 
     document = json.loads(output.read_text())
@@ -276,8 +428,10 @@ def test_metrics_writer_rejects_forged_private_report_even_with_checksum(tmp_pat
 def test_metrics_writer_rejects_incomplete_one_of_eight_captured_coverage(tmp_path):
     """Catches expected coverage being set tautologically from caller rows."""
     snapshots = snapshot_validation_comparisons(
-        complete_captured_comparisons()[:1]
+        complete_captured_comparisons()[:1], workspace=tmp_path / "evidence"
     )
+    corrupted = snapshots.workspace / snapshots.captured[0].ground_truth.relative_path
+    corrupted.write_bytes(b"not a valid snapshot")
 
     with pytest.raises(ValueError, match="exact captured coverage"):
         write_validation_metrics(
@@ -299,7 +453,9 @@ def test_metrics_writer_rejects_extra_frame_index_999(tmp_path):
             "balanced_render": np.zeros((4, 4, 3), dtype=np.float64),
         }
     )
-    snapshots = snapshot_validation_comparisons(rows)
+    snapshots = snapshot_validation_comparisons(
+        rows, workspace=tmp_path / "evidence"
+    )
 
     with pytest.raises(ValueError, match="exact captured coverage"):
         write_validation_metrics(
@@ -323,7 +479,9 @@ def test_metrics_writer_rejects_duplicate_transplanted_or_wrong_kind_comparison(
     """Catches duplicate evidence or a captured frame moved to the wrong split."""
     rows = complete_captured_comparisons()
     mutate_rows(rows)
-    snapshots = snapshot_validation_comparisons(rows)
+    snapshots = snapshot_validation_comparisons(
+        rows, workspace=tmp_path / "evidence"
+    )
 
     with pytest.raises(ValueError, match="exact captured coverage"):
         write_validation_metrics(
@@ -352,6 +510,7 @@ def test_metrics_writer_requires_exact_interpolated_pair_coverage_when_emitted(
     snapshots = snapshot_validation_comparisons(
         complete_captured_comparisons(),
         interpolated_comparisons=interpolation_rows,
+        workspace=tmp_path / "evidence",
     )
 
     with pytest.raises(ValueError, match="exact interpolated coverage"):
@@ -362,17 +521,21 @@ def test_metrics_writer_requires_exact_interpolated_pair_coverage_when_emitted(
         )
 
 
-def test_metric_snapshots_reject_bad_shapes_types_and_nonfinite_depth():
+def test_metric_snapshots_reject_bad_shapes_types_and_nonfinite_depth(tmp_path):
     """Catches malformed pixels or depth entering authoritative metric evidence."""
     captured = complete_captured_comparisons()
     captured[0]["balanced_render"] = np.zeros((3, 4, 3), dtype=np.float64)
     with pytest.raises(ValueError, match="same shape"):
-        snapshot_validation_comparisons(captured)
+        snapshot_validation_comparisons(
+            captured, workspace=tmp_path / "bad-shape"
+        )
 
     captured = complete_captured_comparisons()
     captured[0]["ground_truth"] = np.zeros((4, 4, 3), dtype=np.bool_)
     with pytest.raises(ValueError, match="numeric pixels"):
-        snapshot_validation_comparisons(captured)
+        snapshot_validation_comparisons(
+            captured, workspace=tmp_path / "bad-type"
+        )
 
     interpolation = complete_interpolated_comparisons()
     interpolation[0]["depth_frames"][1][0, 0] = float("nan")
@@ -380,6 +543,7 @@ def test_metric_snapshots_reject_bad_shapes_types_and_nonfinite_depth():
         snapshot_validation_comparisons(
             complete_captured_comparisons(),
             interpolated_comparisons=interpolation,
+            workspace=tmp_path / "bad-depth",
         )
 
 
@@ -387,7 +551,9 @@ def test_metrics_writer_uses_immutable_snapshots_after_source_arrays_mutate(tmp_
     """Catches caller mutation changing pixels after the evidence boundary."""
     rows = complete_captured_comparisons()
     caller_render = rows[0]["balanced_render"]
-    snapshots = snapshot_validation_comparisons(rows)
+    snapshots = snapshot_validation_comparisons(
+        rows, workspace=tmp_path / "evidence"
+    )
     caller_render[...] = 1.0
     rows[0]["ground_truth"][...] = 0.5
 
@@ -407,6 +573,7 @@ def test_metrics_writer_recomputes_interpolation_flicker_from_snapshots(tmp_path
     snapshots = snapshot_validation_comparisons(
         complete_captured_comparisons(),
         interpolated_comparisons=complete_interpolated_comparisons(),
+        workspace=tmp_path / "evidence",
     )
     output = tmp_path / "validation-metrics.json"
 
@@ -435,20 +602,22 @@ def test_metrics_writer_recomputes_interpolation_flicker_from_snapshots(tmp_path
     assert document["aggregates"]["meanDepthFlicker"] == 0.25
 
 
-def test_writer_rejects_caller_supplied_derived_metric_fields():
+def test_writer_rejects_caller_supplied_derived_metric_fields(tmp_path):
     """Catches a reserved Infinity token bypassing recomputation from pixels."""
     rows = complete_captured_comparisons()
     rows[0]["psnr"] = "Infinity"
 
     with pytest.raises(ValueError, match="fields"):
-        snapshot_validation_comparisons(rows)
+        snapshot_validation_comparisons(rows, workspace=tmp_path / "evidence")
 
 
 def test_mixed_pixel_evidence_keeps_aggregate_psnr_finite(tmp_path):
     """Catches a single perfect frame contaminating a mixed aggregate with Infinity."""
     rows = complete_captured_comparisons()
     rows[7]["balanced_render"] = np.full((4, 4, 3), 0.5, dtype=np.float64)
-    snapshots = snapshot_validation_comparisons(rows)
+    snapshots = snapshot_validation_comparisons(
+        rows, workspace=tmp_path / "evidence"
+    )
     output = tmp_path / "validation-metrics.json"
 
     write_validation_metrics(

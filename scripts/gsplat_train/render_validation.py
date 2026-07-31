@@ -7,13 +7,19 @@ launched by the reconstruction worker rather than during module import.
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 import hashlib
+import io
 import json
 import math
+import os
 from numbers import Integral, Real
-from pathlib import Path
-from typing import Any, Mapping, Sequence
+from pathlib import Path, PurePosixPath
+import stat
+import tempfile
+from typing import Any, Iterable, Iterator, Mapping, Sequence
+import weakref
 
 import numpy as np
 from PIL import Image, ImageDraw
@@ -541,64 +547,148 @@ def _uint8_rgb(image: Any) -> np.ndarray:
 
 
 def build_contact_sheet(
-    rows: Sequence[Mapping[str, Any]], output_path: str | Path
+    rows: Iterable[Mapping[str, Any]],
+    output_path: str | Path,
+    *,
+    workspace: str | Path | None = None,
 ) -> tuple[str, ...]:
-    """Write labeled ground-truth/render/error rows and return their labels."""
-    if not rows:
-        raise ValueError("contact sheet requires at least one row")
-    prepared: list[tuple[np.ndarray, np.ndarray, np.ndarray, str]] = []
+    """Spool labeled rows and assemble a disk-backed contact sheet."""
+    if isinstance(rows, (str, bytes, Mapping)):
+        raise ValueError("contact sheet rows must be an iterable of mappings")
+    if workspace is None:
+        with tempfile.TemporaryDirectory(prefix="validation-contact-sheet-") as temporary:
+            return _build_contact_sheet_in_workspace(
+                rows, output_path, workspace=Path(temporary)
+            )
+    spool = Path(workspace).expanduser().resolve()
+    spool.mkdir(mode=0o700, parents=True, exist_ok=False)
+    return _build_contact_sheet_in_workspace(rows, output_path, workspace=spool)
+
+
+def _atomic_save_jpeg(image: Image.Image, output: Path) -> None:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{output.name}.", suffix=".jpg", dir=output.parent
+    )
+    os.close(descriptor)
+    temporary = Path(temporary_name)
+    try:
+        image.save(temporary, format="JPEG", quality=92)
+        os.replace(temporary, output)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _build_contact_sheet_in_workspace(
+    rows: Iterable[Mapping[str, Any]],
+    output_path: str | Path,
+    *,
+    workspace: Path,
+) -> tuple[str, ...]:
+    prepared: list[tuple[Path, str]] = []
     dimensions: tuple[int, int] | None = None
     row_labels: list[str] = []
-    for row in rows:
-        ground_truth = _uint8_rgb(row["ground_truth"])
-        rendered = _uint8_rgb(row["balanced_render"])
-        if ground_truth.shape != rendered.shape:
-            raise ValueError("contact sheet ground truth and render shapes must match")
-        height, width = ground_truth.shape[:2]
-        if dimensions is None:
-            dimensions = (width, height)
-        elif dimensions != (width, height):
-            raise ValueError("all contact sheet rows must have the same dimensions")
-        error = np.abs(ground_truth.astype(np.int16) - rendered.astype(np.int16)).astype(np.uint8)
-        error_strength = error.max(axis=2)
-        heatmap = np.stack(
-            (error_strength, error_strength // 4, np.zeros_like(error_strength)), axis=2
-        )
-        label = (
-            f"{row['frame_id']} | PSNR {float(row['psnr']):.2f} dB | "
-            f"SSIM {float(row['ssim']):.4f}"
-        )
-        row_labels.append(label)
-        prepared.append((ground_truth, rendered, heatmap, label))
-
-    assert dimensions is not None
-    width, height = dimensions
     header_height, label_height = 22, 18
-    canvas = Image.new(
-        "RGB",
-        (width * 3, header_height + len(prepared) * (height + label_height)),
-        "white",
-    )
-    draw = ImageDraw.Draw(canvas)
     column_labels = ("Ground truth", "Balanced render", "Absolute error")
-    for column, label in enumerate(column_labels):
-        draw.text((column * width + 3, 4), label, fill="black")
-    for row_index, (ground_truth, rendered, heatmap, label) in enumerate(prepared):
-        top = header_height + row_index * (height + label_height)
-        canvas.paste(Image.fromarray(ground_truth), (0, top))
-        canvas.paste(Image.fromarray(rendered), (width, top))
-        canvas.paste(Image.fromarray(heatmap), (width * 2, top))
-        draw.text((3, top + height + 2), label, fill="black")
-    output = Path(output_path).expanduser()
-    output.parent.mkdir(parents=True, exist_ok=True)
-    canvas.save(output, quality=92)
-    return column_labels + tuple(row_labels)
+    canvas_path = workspace / "contact-sheet-canvas.rgb"
+    try:
+        row_index = 0
+        for row in rows:
+            if not isinstance(row, Mapping):
+                raise ValueError("contact sheet row must be a mapping")
+            ground_truth = _uint8_rgb(row["ground_truth"])
+            rendered = _uint8_rgb(row["balanced_render"])
+            if ground_truth.shape != rendered.shape:
+                raise ValueError(
+                    "contact sheet ground truth and render shapes must match"
+                )
+            height, width = ground_truth.shape[:2]
+            if dimensions is None:
+                dimensions = (width, height)
+            elif dimensions != (width, height):
+                raise ValueError("all contact sheet rows must have the same dimensions")
+            error = np.abs(
+                ground_truth.astype(np.int16) - rendered.astype(np.int16)
+            ).astype(np.uint8)
+            error_strength = error.max(axis=2)
+            heatmap = np.stack(
+                (
+                    error_strength,
+                    error_strength // 4,
+                    np.zeros_like(error_strength),
+                ),
+                axis=2,
+            )
+            label = (
+                f"{row['frame_id']} | PSNR {float(row['psnr']):.2f} dB | "
+                f"SSIM {float(row['ssim']):.4f}"
+            )
+            row_labels.append(label)
+            row_image = Image.new("RGB", (width * 3, height + label_height), "white")
+            row_image.paste(Image.fromarray(ground_truth), (0, 0))
+            row_image.paste(Image.fromarray(rendered), (width, 0))
+            row_image.paste(Image.fromarray(heatmap), (width * 2, 0))
+            ImageDraw.Draw(row_image).text((3, height + 2), label, fill="black")
+            row_path = workspace / f"row-{row_index:06d}.png"
+            row_image.save(row_path, format="PNG")
+            prepared.append((row_path, label))
+            row_image.close()
+            del row, ground_truth, rendered, error, error_strength, heatmap, row_image
+            row_index += 1
+
+        if dimensions is None:
+            raise ValueError("contact sheet requires at least one row")
+        width, height = dimensions
+        canvas_height = header_height + len(prepared) * (height + label_height)
+        canvas = np.memmap(
+            canvas_path,
+            mode="w+",
+            dtype=np.uint8,
+            shape=(canvas_height, width * 3, 3),
+        )
+        header = Image.new("RGB", (width * 3, header_height), "white")
+        header_draw = ImageDraw.Draw(header)
+        for column, label in enumerate(column_labels):
+            header_draw.text((column * width + 3, 4), label, fill="black")
+        canvas[:header_height] = np.asarray(header)
+        header.close()
+        del header, header_draw
+
+        for row_index, (row_path, _label) in enumerate(prepared):
+            with Image.open(row_path) as row_image:
+                row_pixels = np.asarray(row_image.convert("RGB"))
+                top = header_height + row_index * (height + label_height)
+                canvas[top : top + height + label_height] = row_pixels
+                del row_pixels
+            row_path.unlink()
+        canvas.flush()
+        canvas_image = Image.frombuffer(
+            "RGB",
+            (width * 3, canvas_height),
+            canvas,
+            "raw",
+            "RGB",
+            0,
+            1,
+        )
+        _atomic_save_jpeg(canvas_image, Path(output_path).expanduser())
+        canvas_image.close()
+        del canvas_image, canvas
+        canvas_path.unlink(missing_ok=True)
+        return column_labels + tuple(row_labels)
+    finally:
+        for row_path, _label in prepared:
+            row_path.unlink(missing_ok=True)
+        canvas_path.unlink(missing_ok=True)
 
 
 @dataclass(frozen=True)
 class _ArraySnapshot:
+    relative_path: str
     shape: tuple[int, ...]
-    values: bytes
+    dtype: str
+    byte_length: int
+    sha256: str
 
 
 @dataclass(frozen=True)
@@ -621,10 +711,28 @@ class _InterpolatedComparisonSnapshot:
 
 @dataclass(frozen=True)
 class ValidationMetricSnapshots:
-    """Immutable pixel/depth evidence; no derived metric is accepted here."""
+    """Small immutable manifest for disk-backed pixel/depth evidence."""
 
+    workspace: Path
+    manifest_relative_path: str
+    manifest_byte_length: int
+    manifest_sha256: str
+    include_interpolation: bool
     captured: tuple[_CapturedComparisonSnapshot, ...]
     interpolated: tuple[_InterpolatedComparisonSnapshot, ...]
+
+
+@dataclass
+class ValidationEvidenceInstrumentation:
+    """Records and enforces the one-comparison decode bound."""
+
+    live_decoded_evidence: int = 0
+    max_live_decoded_evidence: int = 0
+    decoded_captured_comparisons: int = 0
+    decoded_interpolation_tuples: int = 0
+    _active_array_references: tuple[Any, ...] = field(
+        default=(), init=False, repr=False, compare=False
+    )
 
 
 _CAPTURED_COMPARISON_FIELDS = frozenset(
@@ -635,15 +743,57 @@ _INTERPOLATED_COMPARISON_FIELDS = frozenset(
 )
 
 
-def _snapshot_image(value: Any, *, name: str) -> _ArraySnapshot:
-    normalized = np.ascontiguousarray(_normalized_image(value, name=name))
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _write_array_snapshot(
+    workspace: Path,
+    relative_path: str,
+    array: np.ndarray,
+) -> _ArraySnapshot:
+    portable = np.ascontiguousarray(array, dtype=np.dtype("<f8"))
+    destination = workspace / relative_path
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with destination.open("xb") as stream:
+        np.lib.format.write_array(
+            stream,
+            portable,
+            version=(2, 0),
+            allow_pickle=False,
+        )
+    byte_length = destination.stat().st_size
     return _ArraySnapshot(
-        shape=tuple(int(dimension) for dimension in normalized.shape),
-        values=normalized.tobytes(order="C"),
+        relative_path=relative_path,
+        shape=tuple(int(dimension) for dimension in portable.shape),
+        dtype=portable.dtype.str,
+        byte_length=byte_length,
+        sha256=_sha256_file(destination),
     )
 
 
-def _snapshot_depth(value: Any, *, name: str) -> _ArraySnapshot:
+def _snapshot_image(
+    value: Any,
+    *,
+    workspace: Path,
+    relative_path: str,
+    name: str,
+) -> _ArraySnapshot:
+    normalized = _normalized_image(value, name=name)
+    return _write_array_snapshot(workspace, relative_path, normalized)
+
+
+def _snapshot_depth(
+    value: Any,
+    *,
+    workspace: Path,
+    relative_path: str,
+    name: str,
+) -> _ArraySnapshot:
     array = np.asarray(value)
     if (
         array.ndim != 2
@@ -651,13 +801,10 @@ def _snapshot_depth(value: Any, *, name: str) -> _ArraySnapshot:
         or not np.issubdtype(array.dtype, np.number)
     ):
         raise ValueError(f"{name} must be a non-empty numeric HxW depth array")
-    copied = np.ascontiguousarray(array, dtype=np.float64)
+    copied = np.ascontiguousarray(array, dtype=np.dtype("<f8"))
     if not np.isfinite(copied).all():
         raise ValueError(f"{name} must contain only finite depth values")
-    return _ArraySnapshot(
-        shape=tuple(int(dimension) for dimension in copied.shape),
-        values=copied.tobytes(order="C"),
-    )
+    return _write_array_snapshot(workspace, relative_path, copied)
 
 
 def _strict_comparison_mapping(
@@ -672,17 +819,24 @@ def _strict_comparison_mapping(
 
 
 def snapshot_validation_comparisons(
-    captured_comparisons: Sequence[Mapping[str, Any]],
+    captured_comparisons: Iterable[Mapping[str, Any]],
     *,
-    interpolated_comparisons: Sequence[Mapping[str, Any]] = (),
+    workspace: str | Path,
+    interpolated_comparisons: Iterable[Mapping[str, Any]] | None = None,
 ) -> ValidationMetricSnapshots:
-    """Copy raw comparison arrays into immutable normalized byte snapshots."""
-    if isinstance(captured_comparisons, (str, bytes)) or not isinstance(
-        captured_comparisons, Sequence
-    ):
-        raise ValueError("captured comparisons must be a sequence")
+    """Stream raw comparisons into a caller-owned, hash-bound evidence spool."""
+    if isinstance(captured_comparisons, (str, bytes, Mapping)):
+        raise ValueError("captured comparisons must be an iterable")
+    try:
+        captured_iterator = iter(captured_comparisons)
+    except TypeError as error:
+        raise ValueError("captured comparisons must be an iterable") from error
+    evidence_workspace = Path(workspace).expanduser().resolve()
+    evidence_workspace.mkdir(mode=0o700, parents=True, exist_ok=False)
+
     captured: list[_CapturedComparisonSnapshot] = []
-    for value in captured_comparisons:
+    ordinal = 0
+    for value in captured_iterator:
         row = _strict_comparison_mapping(
             value, fields=_CAPTURED_COMPARISON_FIELDS, name="captured comparison"
         )
@@ -696,10 +850,16 @@ def snapshot_validation_comparisons(
         if isinstance(frame_index, bool) or not isinstance(frame_index, Integral):
             raise ValueError("captured comparison frame index is invalid")
         ground_truth = _snapshot_image(
-            row["ground_truth"], name="captured ground_truth"
+            row["ground_truth"],
+            workspace=evidence_workspace,
+            relative_path=f"captured/{ordinal:06d}-ground-truth.npy",
+            name="captured ground_truth",
         )
         balanced_render = _snapshot_image(
-            row["balanced_render"], name="captured balanced_render"
+            row["balanced_render"],
+            workspace=evidence_workspace,
+            relative_path=f"captured/{ordinal:06d}-balanced-render.npy",
+            name="captured balanced_render",
         )
         if ground_truth.shape != balanced_render.shape:
             raise ValueError(
@@ -714,13 +874,22 @@ def snapshot_validation_comparisons(
                 balanced_render=balanced_render,
             )
         )
+        del row, value, ground_truth, balanced_render
+        ordinal += 1
 
-    if isinstance(interpolated_comparisons, (str, bytes)) or not isinstance(
-        interpolated_comparisons, Sequence
-    ):
-        raise ValueError("interpolated comparisons must be a sequence")
+    include_interpolation = interpolated_comparisons is not None
+    if interpolated_comparisons is None:
+        interpolated_iterator: Iterator[Mapping[str, Any]] = iter(())
+    else:
+        if isinstance(interpolated_comparisons, (str, bytes, Mapping)):
+            raise ValueError("interpolated comparisons must be an iterable")
+        try:
+            interpolated_iterator = iter(interpolated_comparisons)
+        except TypeError as error:
+            raise ValueError("interpolated comparisons must be an iterable") from error
     interpolated: list[_InterpolatedComparisonSnapshot] = []
-    for value in interpolated_comparisons:
+    ordinal = 0
+    for value in interpolated_iterator:
         row = _strict_comparison_mapping(
             value,
             fields=_INTERPOLATED_COMPARISON_FIELDS,
@@ -753,12 +922,22 @@ def snapshot_validation_comparisons(
                 "interpolated comparison requires three color and depth frames"
             )
         colors = tuple(
-            _snapshot_image(frame, name="interpolated color frame")
-            for frame in color_values
+            _snapshot_image(
+                frame,
+                workspace=evidence_workspace,
+                relative_path=f"interpolated/{ordinal:06d}-color-{position}.npy",
+                name="interpolated color frame",
+            )
+            for position, frame in enumerate(color_values)
         )
         depths = tuple(
-            _snapshot_depth(frame, name="interpolated depth frame")
-            for frame in depth_values
+            _snapshot_depth(
+                frame,
+                workspace=evidence_workspace,
+                relative_path=f"interpolated/{ordinal:06d}-depth-{position}.npy",
+                name="interpolated depth frame",
+            )
+            for position, frame in enumerate(depth_values)
         )
         if len({frame.shape for frame in colors}) != 1:
             raise ValueError("interpolated color frames must have the same shape")
@@ -775,38 +954,152 @@ def snapshot_validation_comparisons(
                 depth_frames=depths,
             )
         )
-    return ValidationMetricSnapshots(tuple(captured), tuple(interpolated))
+        del row, value, color_values, depth_values, colors, depths
+        ordinal += 1
+
+    manifest_document = _metric_snapshots_manifest_document(
+        include_interpolation=include_interpolation,
+        captured=tuple(captured),
+        interpolated=tuple(interpolated),
+    )
+    manifest_payload = (
+        json.dumps(
+            manifest_document,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        + "\n"
+    ).encode("utf-8")
+    manifest_relative_path = "validation-evidence-manifest.json"
+    manifest_path = evidence_workspace / manifest_relative_path
+    with manifest_path.open("xb") as stream:
+        stream.write(manifest_payload)
+    return ValidationMetricSnapshots(
+        workspace=evidence_workspace,
+        manifest_relative_path=manifest_relative_path,
+        manifest_byte_length=len(manifest_payload),
+        manifest_sha256=hashlib.sha256(manifest_payload).hexdigest(),
+        include_interpolation=include_interpolation,
+        captured=tuple(captured),
+        interpolated=tuple(interpolated),
+    )
+
+
+def _array_snapshot_document(value: _ArraySnapshot) -> dict[str, Any]:
+    return {
+        "relativePath": value.relative_path,
+        "shape": list(value.shape),
+        "dtype": value.dtype,
+        "byteLength": value.byte_length,
+        "sha256": value.sha256,
+    }
+
+
+def _metric_snapshots_manifest_document(
+    *,
+    include_interpolation: bool,
+    captured: tuple[_CapturedComparisonSnapshot, ...],
+    interpolated: tuple[_InterpolatedComparisonSnapshot, ...],
+) -> dict[str, Any]:
+    return {
+        "formatVersion": 1,
+        "arrayFormat": "numpy-npy-v2-little-endian-float64",
+        "includeInterpolation": include_interpolation,
+        "captured": [
+            {
+                "frameId": item.frame_id,
+                "kind": item.kind,
+                "frameIndex": item.frame_index,
+                "groundTruth": _array_snapshot_document(item.ground_truth),
+                "balancedRender": _array_snapshot_document(item.balanced_render),
+            }
+            for item in captured
+        ],
+        "interpolated": [
+            {
+                "startIndex": item.start_index,
+                "endIndex": item.end_index,
+                "alpha": item.alpha,
+                "colorFrames": [
+                    _array_snapshot_document(frame) for frame in item.color_frames
+                ],
+                "depthFrames": [
+                    _array_snapshot_document(frame) for frame in item.depth_frames
+                ],
+            }
+            for item in interpolated
+        ],
+    }
 
 
 def _copy_array_snapshot(value: Any, *, name: str) -> _ArraySnapshot:
     if not isinstance(value, _ArraySnapshot):
-        raise ValueError(f"{name} must be an immutable array snapshot")
+        raise ValueError(f"{name} must be an immutable array descriptor")
+    relative_path = value.relative_path
     shape = tuple(value.shape)
     if (
-        not shape
+        not isinstance(relative_path, str)
+        or not relative_path
+        or PurePosixPath(relative_path).is_absolute()
+        or ".." in PurePosixPath(relative_path).parts
+        or not shape
         or any(
             isinstance(dimension, bool)
             or not isinstance(dimension, Integral)
             or int(dimension) < 1
             for dimension in shape
         )
-        or not isinstance(value.values, bytes)
+        or value.dtype != "<f8"
+        or isinstance(value.byte_length, bool)
+        or not isinstance(value.byte_length, Integral)
+        or int(value.byte_length) <= math.prod(int(item) for item in shape) * 8
+        or int(value.byte_length)
+        > math.prod(int(item) for item in shape) * 8 + 65536
+        or not isinstance(value.sha256, str)
+        or len(value.sha256) != 64
+        or any(character not in "0123456789abcdef" for character in value.sha256)
     ):
-        raise ValueError(f"{name} snapshot is invalid")
-    return _ArraySnapshot(tuple(int(dimension) for dimension in shape), value.values)
+        raise ValueError(f"{name} descriptor is invalid")
+    return _ArraySnapshot(
+        relative_path=relative_path,
+        shape=tuple(int(dimension) for dimension in shape),
+        dtype="<f8",
+        byte_length=int(value.byte_length),
+        sha256=value.sha256,
+    )
 
 
 def _copy_metric_snapshots(value: Any) -> ValidationMetricSnapshots:
-    """Take a writer-owned copy before validation and metric computation."""
+    """Take a writer-owned copy of the small descriptor manifest."""
     if not isinstance(value, ValidationMetricSnapshots):
         raise ValueError(
             "write_validation_metrics requires immutable pixel/depth snapshots"
         )
     try:
+        workspace = value.workspace
+        manifest_relative_path = value.manifest_relative_path
+        manifest_byte_length = value.manifest_byte_length
+        manifest_sha256 = value.manifest_sha256
+        include_interpolation = value.include_interpolation
         captured_values = tuple(value.captured)
         interpolated_values = tuple(value.interpolated)
     except (AttributeError, TypeError) as error:
         raise ValueError("validation metric snapshots are invalid") from error
+
+    if (
+        not isinstance(workspace, Path)
+        or not isinstance(manifest_relative_path, str)
+        or manifest_relative_path != "validation-evidence-manifest.json"
+        or isinstance(manifest_byte_length, bool)
+        or not isinstance(manifest_byte_length, Integral)
+        or int(manifest_byte_length) < 2
+        or not isinstance(manifest_sha256, str)
+        or len(manifest_sha256) != 64
+        or any(character not in "0123456789abcdef" for character in manifest_sha256)
+        or not isinstance(include_interpolation, bool)
+    ):
+        raise ValueError("validation metric snapshot manifest is invalid")
 
     captured: list[_CapturedComparisonSnapshot] = []
     for item in captured_values:
@@ -845,16 +1138,224 @@ def _copy_metric_snapshots(value: Any) -> ValidationMetricSnapshots:
                 ),
             )
         )
-    return ValidationMetricSnapshots(tuple(captured), tuple(interpolated))
+    if not include_interpolation and interpolated:
+        raise ValueError("omitted interpolation evidence must be empty")
+    return ValidationMetricSnapshots(
+        workspace=workspace.expanduser().resolve(),
+        manifest_relative_path=manifest_relative_path,
+        manifest_byte_length=int(manifest_byte_length),
+        manifest_sha256=manifest_sha256,
+        include_interpolation=include_interpolation,
+        captured=tuple(captured),
+        interpolated=tuple(interpolated),
+    )
+
+
+def _verified_payload(
+    workspace: Path,
+    relative_path: str,
+    *,
+    byte_length: int,
+    sha256: str,
+    name: str,
+) -> bytes:
+    candidate = workspace / relative_path
+    if candidate.is_symlink():
+        raise ValueError(f"{name} must not be a symbolic link")
+    try:
+        resolved = candidate.resolve(strict=True)
+        resolved.relative_to(workspace)
+        file_status = resolved.stat()
+    except (FileNotFoundError, OSError, ValueError) as error:
+        raise ValueError(f"{name} path is invalid") from error
+    if not stat.S_ISREG(file_status.st_mode):
+        raise ValueError(f"{name} must be a regular file")
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(resolved, flags)
+    except OSError as error:
+        raise ValueError(f"{name} could not be opened safely") from error
+    try:
+        opened_status = os.fstat(descriptor)
+        if not stat.S_ISREG(opened_status.st_mode) or opened_status.st_size != byte_length:
+            raise ValueError(f"{name} byte length does not match its descriptor")
+        with os.fdopen(descriptor, "rb", closefd=False) as stream:
+            payload = stream.read()
+    finally:
+        os.close(descriptor)
+    if len(payload) != byte_length:
+        raise ValueError(f"{name} byte length does not match its descriptor")
+    if hashlib.sha256(payload).hexdigest() != sha256:
+        raise ValueError(f"{name} SHA-256 does not match its descriptor")
+    return payload
+
+
+def _array_snapshot_from_document(value: Any, *, name: str) -> _ArraySnapshot:
+    row = _strict_comparison_mapping(
+        value,
+        fields=frozenset(("relativePath", "shape", "dtype", "byteLength", "sha256")),
+        name=f"{name} descriptor",
+    )
+    shape = row["shape"]
+    if not isinstance(shape, list):
+        raise ValueError(f"{name} descriptor shape is invalid")
+    return _copy_array_snapshot(
+        _ArraySnapshot(
+            relative_path=row["relativePath"],
+            shape=tuple(shape),
+            dtype=row["dtype"],
+            byte_length=row["byteLength"],
+            sha256=row["sha256"],
+        ),
+        name=name,
+    )
+
+
+def _snapshots_from_manifest_document(
+    document: Any,
+    *,
+    evidence: ValidationMetricSnapshots,
+) -> ValidationMetricSnapshots:
+    row = _strict_comparison_mapping(
+        document,
+        fields=frozenset(
+            (
+                "formatVersion",
+                "arrayFormat",
+                "includeInterpolation",
+                "captured",
+                "interpolated",
+            )
+        ),
+        name="validation evidence manifest",
+    )
+    if (
+        row["formatVersion"] != 1
+        or row["arrayFormat"] != "numpy-npy-v2-little-endian-float64"
+        or not isinstance(row["includeInterpolation"], bool)
+        or not isinstance(row["captured"], list)
+        or not isinstance(row["interpolated"], list)
+    ):
+        raise ValueError("validation evidence manifest format is invalid")
+    captured: list[_CapturedComparisonSnapshot] = []
+    for raw_item in row["captured"]:
+        item = _strict_comparison_mapping(
+            raw_item,
+            fields=frozenset(
+                ("frameId", "kind", "frameIndex", "groundTruth", "balancedRender")
+            ),
+            name="captured evidence manifest item",
+        )
+        captured.append(
+            _CapturedComparisonSnapshot(
+                frame_id=item["frameId"],
+                kind=item["kind"],
+                frame_index=item["frameIndex"],
+                ground_truth=_array_snapshot_from_document(
+                    item["groundTruth"], name="captured ground_truth"
+                ),
+                balanced_render=_array_snapshot_from_document(
+                    item["balancedRender"], name="captured balanced_render"
+                ),
+            )
+        )
+    interpolated: list[_InterpolatedComparisonSnapshot] = []
+    for raw_item in row["interpolated"]:
+        item = _strict_comparison_mapping(
+            raw_item,
+            fields=frozenset(
+                ("startIndex", "endIndex", "alpha", "colorFrames", "depthFrames")
+            ),
+            name="interpolated evidence manifest item",
+        )
+        if not isinstance(item["colorFrames"], list) or not isinstance(
+            item["depthFrames"], list
+        ):
+            raise ValueError("interpolated evidence manifest arrays are invalid")
+        interpolated.append(
+            _InterpolatedComparisonSnapshot(
+                start_index=item["startIndex"],
+                end_index=item["endIndex"],
+                alpha=item["alpha"],
+                color_frames=tuple(
+                    _array_snapshot_from_document(
+                        frame, name="interpolated color frame"
+                    )
+                    for frame in item["colorFrames"]
+                ),
+                depth_frames=tuple(
+                    _array_snapshot_from_document(
+                        frame, name="interpolated depth frame"
+                    )
+                    for frame in item["depthFrames"]
+                ),
+            )
+        )
+    parsed = ValidationMetricSnapshots(
+        workspace=evidence.workspace,
+        manifest_relative_path=evidence.manifest_relative_path,
+        manifest_byte_length=evidence.manifest_byte_length,
+        manifest_sha256=evidence.manifest_sha256,
+        include_interpolation=row["includeInterpolation"],
+        captured=tuple(captured),
+        interpolated=tuple(interpolated),
+    )
+    return _copy_metric_snapshots(parsed)
+
+
+def _load_evidence_manifest(value: Any) -> ValidationMetricSnapshots:
+    evidence = _copy_metric_snapshots(value)
+    payload = _verified_payload(
+        evidence.workspace,
+        evidence.manifest_relative_path,
+        byte_length=evidence.manifest_byte_length,
+        sha256=evidence.manifest_sha256,
+        name="validation evidence manifest",
+    )
+    try:
+        document = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError("validation evidence manifest is invalid JSON") from error
+    parsed = _snapshots_from_manifest_document(document, evidence=evidence)
+    if (
+        parsed.include_interpolation != evidence.include_interpolation
+        or parsed.captured != evidence.captured
+        or parsed.interpolated != evidence.interpolated
+    ):
+        raise ValueError("validation evidence descriptors do not match their manifest")
+    return parsed
 
 
 def _array_from_snapshot(
-    snapshot: _ArraySnapshot, *, name: str, depth: bool = False
+    workspace: Path,
+    snapshot: _ArraySnapshot,
+    *,
+    name: str,
+    depth: bool = False,
 ) -> np.ndarray:
-    expected_size = math.prod(snapshot.shape) * np.dtype(np.float64).itemsize
-    if len(snapshot.values) != expected_size:
-        raise ValueError(f"{name} snapshot byte length does not match its shape")
-    array = np.frombuffer(snapshot.values, dtype=np.float64).reshape(snapshot.shape)
+    payload = _verified_payload(
+        workspace,
+        snapshot.relative_path,
+        byte_length=snapshot.byte_length,
+        sha256=snapshot.sha256,
+        name=name,
+    )
+    stream = io.BytesIO(payload)
+    try:
+        array = np.load(stream, allow_pickle=False)
+    except (OSError, TypeError, ValueError) as error:
+        raise ValueError(f"{name} is not a valid NumPy snapshot") from error
+    if stream.tell() != len(payload):
+        raise ValueError(f"{name} snapshot contains trailing bytes")
+    if (
+        array.shape != snapshot.shape
+        or array.dtype.str != snapshot.dtype
+        or not array.flags.c_contiguous
+        or array.nbytes != math.prod(snapshot.shape) * np.dtype(snapshot.dtype).itemsize
+    ):
+        raise ValueError(f"{name} snapshot does not match its descriptor")
     if not np.isfinite(array).all():
         raise ValueError(f"{name} snapshot must contain only finite values")
     if depth:
@@ -866,6 +1367,7 @@ def _array_from_snapshot(
         raise ValueError(f"{name} snapshot must be an HxW or HxWxC image")
     if not depth and (array.min() < 0.0 or array.max() > 1.0):
         raise ValueError(f"{name} snapshot pixels must be in [0, 1]")
+    array.setflags(write=False)
     return array
 
 
@@ -888,12 +1390,10 @@ def _validated_metrics_view_spec(value: Any) -> ValidationViewSpec:
     return validation_view_spec_from_dict(persisted, frame_count=frame_count)
 
 
-def _validation_metrics_document(
-    snapshots: ValidationMetricSnapshots, view_spec: Any
-) -> dict[str, Any]:
-    evidence = _copy_metric_snapshots(snapshots)
-    spec = _validated_metrics_view_spec(view_spec)
-
+def _validate_evidence_coverage(
+    evidence: ValidationMetricSnapshots,
+    spec: ValidationViewSpec,
+) -> int:
     expected_captured = {
         *(("recorded", index) for index in spec.recorded),
         *(("withheld", index) for index in spec.withheld),
@@ -912,6 +1412,8 @@ def _validation_metrics_document(
             raise ValueError("validation metrics require exact captured coverage")
         frame_ids.add(item.frame_id)
         actual_captured.append((item.kind, int(item.frame_index)))
+        if item.ground_truth.shape != item.balanced_render.shape:
+            raise ValueError("captured comparison images must have the same shape")
     if (
         len(actual_captured) != len(expected_captured)
         or len(set(actual_captured)) != len(actual_captured)
@@ -919,7 +1421,7 @@ def _validation_metrics_document(
     ):
         raise ValueError("validation metrics require exact captured coverage")
 
-    if evidence.interpolated:
+    if evidence.include_interpolation:
         expected_interpolated = {
             (view.start_index, view.end_index, view.alpha)
             for view in spec.interpolated
@@ -939,28 +1441,148 @@ def _validation_metrics_document(
             actual_interpolated.append(
                 (int(item.start_index), int(item.end_index), float(item.alpha))
             )
+            if len(item.color_frames) != 3 or len(item.depth_frames) != 3:
+                raise ValueError(
+                    "interpolated comparison requires three color and depth frames"
+                )
+            if len({frame.shape for frame in item.color_frames}) != 1:
+                raise ValueError("interpolated color frames must have the same shape")
+            if len({frame.shape for frame in item.depth_frames}) != 1:
+                raise ValueError("interpolated depth frames must have the same shape")
+            if any(
+                color.shape[:2] != depth.shape
+                for color, depth in zip(item.color_frames, item.depth_frames)
+            ):
+                raise ValueError("interpolated color and depth frame shapes must align")
         if (
             len(actual_interpolated) != len(expected_interpolated)
             or len(set(actual_interpolated)) != len(actual_interpolated)
             or set(actual_interpolated) != expected_interpolated
         ):
             raise ValueError("validation metrics require exact interpolated coverage")
+    elif evidence.interpolated:
+        raise ValueError("omitted interpolation evidence must be empty")
+
+    descriptor_paths = [
+        descriptor.relative_path
+        for item in evidence.captured
+        for descriptor in (item.ground_truth, item.balanced_render)
+    ]
+    descriptor_paths.extend(
+        descriptor.relative_path
+        for item in evidence.interpolated
+        for descriptor in (*item.color_frames, *item.depth_frames)
+    )
+    if len(descriptor_paths) != len(set(descriptor_paths)):
+        raise ValueError("validation evidence descriptor paths must be unique")
+    return len(expected_captured)
+
+
+def _validated_instrumentation(
+    value: ValidationEvidenceInstrumentation | None,
+) -> ValidationEvidenceInstrumentation:
+    if value is None:
+        return ValidationEvidenceInstrumentation()
+    if not isinstance(value, ValidationEvidenceInstrumentation):
+        raise ValueError("validation evidence instrumentation is invalid")
+    if value.live_decoded_evidence != 0 or any(
+        reference() is not None for reference in value._active_array_references
+    ):
+        raise ValueError("validation evidence instrumentation is already active")
+    value._active_array_references = ()
+    return value
+
+
+@contextmanager
+def _decoded_evidence_slot(
+    instrumentation: ValidationEvidenceInstrumentation,
+    *,
+    kind: str,
+) -> Iterator[None]:
+    if instrumentation.live_decoded_evidence != 0 or any(
+        reference() is not None
+        for reference in instrumentation._active_array_references
+    ):
+        raise RuntimeError("validation decoded more than one evidence comparison")
+    instrumentation._active_array_references = ()
+    instrumentation.live_decoded_evidence += 1
+    instrumentation.max_live_decoded_evidence = max(
+        instrumentation.max_live_decoded_evidence,
+        instrumentation.live_decoded_evidence,
+    )
+    if kind == "captured":
+        instrumentation.decoded_captured_comparisons += 1
+    elif kind == "interpolated":
+        instrumentation.decoded_interpolation_tuples += 1
+    else:
+        raise RuntimeError("invalid validation evidence kind")
+    failed = False
+    try:
+        yield
+    except BaseException:
+        failed = True
+        raise
+    finally:
+        retained = tuple(
+            reference
+            for reference in instrumentation._active_array_references
+            if reference() is not None
+        )
+        instrumentation._active_array_references = retained
+        instrumentation.live_decoded_evidence = 1 if retained else 0
+        if retained and not failed:
+            raise RuntimeError(
+                "validation retained decoded evidence after comparison processing"
+            )
+
+
+def _register_decoded_arrays(
+    instrumentation: ValidationEvidenceInstrumentation,
+    arrays: Iterable[np.ndarray],
+) -> None:
+    if instrumentation.live_decoded_evidence != 1:
+        raise RuntimeError("validation decoded arrays outside an evidence slot")
+    references = tuple(weakref.ref(array) for array in arrays)
+    if not references:
+        raise RuntimeError("validation evidence slot decoded no arrays")
+    instrumentation._active_array_references = references
+
+
+def _validation_metrics_document(
+    snapshots: ValidationMetricSnapshots,
+    view_spec: Any,
+    *,
+    instrumentation: ValidationEvidenceInstrumentation | None = None,
+) -> dict[str, Any]:
+    evidence = _load_evidence_manifest(snapshots)
+    spec = _validated_metrics_view_spec(view_spec)
+    expected_captured_count = _validate_evidence_coverage(evidence, spec)
+    decode_stats = _validated_instrumentation(instrumentation)
 
     serialized_captured: list[dict[str, Any]] = []
-    mses: list[float] = []
-    similarities: list[float] = []
+    mse_sum = 0.0
+    similarity_sum = 0.0
+    captured_count = 0
     for item in evidence.captured:
-        ground_truth = _array_from_snapshot(
-            item.ground_truth, name="captured ground_truth"
-        )
-        balanced_render = _array_from_snapshot(
-            item.balanced_render, name="captured balanced_render"
-        )
-        if ground_truth.shape != balanced_render.shape:
-            raise ValueError("captured comparison images must have the same shape")
-        metrics = captured_image_metrics(ground_truth, balanced_render)
-        mse = float(metrics["mse"])
-        ssim = float(metrics["ssim"])
+        with _decoded_evidence_slot(decode_stats, kind="captured"):
+            ground_truth = _array_from_snapshot(
+                evidence.workspace,
+                item.ground_truth,
+                name="captured ground_truth",
+            )
+            balanced_render = _array_from_snapshot(
+                evidence.workspace,
+                item.balanced_render,
+                name="captured balanced_render",
+            )
+            _register_decoded_arrays(
+                decode_stats,
+                (ground_truth, balanced_render),
+            )
+            metrics = captured_image_metrics(ground_truth, balanced_render)
+            mse = float(metrics["mse"])
+            ssim = float(metrics["ssim"])
+            del ground_truth, balanced_render, metrics
         psnr: float | str = "Infinity" if mse == 0.0 else -10.0 * math.log10(mse)
         serialized_captured.append({
             "frameId": item.frame_id,
@@ -970,42 +1592,43 @@ def _validation_metrics_document(
             "psnr": psnr,
             "ssim": ssim,
         })
-        mses.append(mse)
-        similarities.append(ssim)
+        mse_sum += mse
+        similarity_sum += ssim
+        captured_count += 1
 
-    mean_mse = float(np.mean(mses))
+    mean_mse = mse_sum / captured_count
     aggregates: dict[str, float | str] = {
         "meanMse": mean_mse,
         "meanPsnr": "Infinity" if mean_mse == 0.0 else -10.0 * math.log10(mean_mse),
-        "meanSsim": float(np.mean(similarities)),
+        "meanSsim": similarity_sum / captured_count,
     }
-    if evidence.interpolated:
+    if evidence.include_interpolation:
         interpolation_documents: list[dict[str, Any]] = []
+        color_flicker_sum = 0.0
+        depth_flicker_sum = 0.0
+        interpolation_count = 0
         for item in evidence.interpolated:
-            if len(item.color_frames) != 3 or len(item.depth_frames) != 3:
-                raise ValueError(
-                    "interpolated comparison requires three color and depth frames"
+            with _decoded_evidence_slot(decode_stats, kind="interpolated"):
+                colors = tuple(
+                    _array_from_snapshot(
+                        evidence.workspace,
+                        frame,
+                        name="interpolated color frame",
+                    )
+                    for frame in item.color_frames
                 )
-            colors = tuple(
-                _array_from_snapshot(frame, name="interpolated color frame")
-                for frame in item.color_frames
-            )
-            depths = tuple(
-                _array_from_snapshot(
-                    frame, name="interpolated depth frame", depth=True
+                depths = tuple(
+                    _array_from_snapshot(
+                        evidence.workspace,
+                        frame,
+                        name="interpolated depth frame",
+                        depth=True,
+                    )
+                    for frame in item.depth_frames
                 )
-                for frame in item.depth_frames
-            )
-            if len({frame.shape for frame in colors}) != 1:
-                raise ValueError("interpolated color frames must have the same shape")
-            if len({frame.shape for frame in depths}) != 1:
-                raise ValueError("interpolated depth frames must have the same shape")
-            if any(
-                color.shape[:2] != depth.shape
-                for color, depth in zip(colors, depths)
-            ):
-                raise ValueError("interpolated color and depth frame shapes must align")
-            metrics = interpolation_flicker_metrics(colors, depths)
+                _register_decoded_arrays(decode_stats, (*colors, *depths))
+                metrics = interpolation_flicker_metrics(colors, depths)
+                del colors, depths
             interpolation_documents.append(
                 {
                     "startIndex": int(item.start_index),
@@ -1014,14 +1637,21 @@ def _validation_metrics_document(
                     **metrics,
                 }
             )
-        color = [item["color_flicker"] for item in interpolation_documents]
-        depth = [item["depth_flicker"] for item in interpolation_documents]
-        aggregates["meanColorFlicker"] = float(np.mean(color))
-        aggregates["meanDepthFlicker"] = float(np.mean(depth))
+            color_flicker_sum += metrics["color_flicker"]
+            depth_flicker_sum += metrics["depth_flicker"]
+            interpolation_count += 1
+            del metrics
+        if interpolation_count:
+            aggregates["meanColorFlicker"] = (
+                color_flicker_sum / interpolation_count
+            )
+            aggregates["meanDepthFlicker"] = (
+                depth_flicker_sum / interpolation_count
+            )
     else:
         interpolation_documents = []
     document: dict[str, Any] = {
-        "expectedCapturedCount": len(expected_captured),
+        "expectedCapturedCount": expected_captured_count,
         "captured": serialized_captured,
         "interpolated": interpolation_documents,
         "aggregates": aggregates,
@@ -1035,21 +1665,156 @@ def write_validation_metrics(
     output_path: str | Path,
     *,
     view_spec: ValidationViewSpec | Mapping[str, Any],
+    instrumentation: ValidationEvidenceInstrumentation | None = None,
 ) -> dict[str, Any]:
-    """Validate exact persisted coverage and write pixel-recomputed metrics."""
-    document = _validation_metrics_document(snapshots, view_spec)
+    """Validate descriptors first, then stream pixel-recomputed metrics."""
+    document = _validation_metrics_document(
+        snapshots,
+        view_spec,
+        instrumentation=instrumentation,
+    )
     output = Path(output_path).expanduser()
     output.parent.mkdir(parents=True, exist_ok=True)
-    with output.open("w", encoding="utf-8") as stream:
-        json.dump(
-            document,
-            stream,
-            sort_keys=True,
-            indent=2,
-            allow_nan=False,
-        )
-        stream.write("\n")
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{output.name}.", suffix=".json", dir=output.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            json.dump(
+                document,
+                stream,
+                sort_keys=True,
+                indent=2,
+                allow_nan=False,
+            )
+            stream.write("\n")
+        os.replace(temporary, output)
+    finally:
+        temporary.unlink(missing_ok=True)
     return document
+
+
+def build_contact_sheet_from_snapshots(
+    snapshots: ValidationMetricSnapshots,
+    metrics_document: Mapping[str, Any],
+    output_path: str | Path,
+    *,
+    workspace: str | Path,
+    instrumentation: ValidationEvidenceInstrumentation | None = None,
+) -> tuple[str, ...]:
+    """Verify and decode one captured comparison per spooled contact-sheet row."""
+    if not isinstance(metrics_document, Mapping):
+        raise ValueError("contact sheet metrics document is invalid")
+    evidence = _load_evidence_manifest(snapshots)
+    spec = _validated_metrics_view_spec(metrics_document.get("viewSpec"))
+    _validate_evidence_coverage(evidence, spec)
+    raw_metrics = metrics_document.get("captured")
+    if not isinstance(raw_metrics, list):
+        raise ValueError("contact sheet captured metrics are invalid")
+    by_identity: dict[tuple[str, int], Mapping[str, Any]] = {}
+    for raw_item in raw_metrics:
+        if not isinstance(raw_item, Mapping):
+            raise ValueError("contact sheet captured metric is invalid")
+        kind = raw_item.get("kind")
+        frame_index = raw_item.get("frameIndex")
+        if (
+            not isinstance(kind, str)
+            or isinstance(frame_index, bool)
+            or not isinstance(frame_index, Integral)
+            or (kind, int(frame_index)) in by_identity
+        ):
+            raise ValueError("contact sheet captured metric identity is invalid")
+        by_identity[(kind, int(frame_index))] = raw_item
+    expected_identities = {
+        (item.kind, int(item.frame_index)) for item in evidence.captured
+    }
+    if set(by_identity) != expected_identities:
+        raise ValueError("contact sheet metrics require exact captured coverage")
+    decode_stats = _validated_instrumentation(instrumentation)
+
+    def rows() -> Iterator[Mapping[str, Any]]:
+        for item in evidence.captured:
+            metrics = by_identity[(item.kind, int(item.frame_index))]
+            if metrics.get("frameId") != item.frame_id:
+                raise ValueError("contact sheet frame ID does not match evidence")
+            raw_psnr = metrics.get("psnr")
+            raw_ssim = metrics.get("ssim")
+            if raw_psnr != "Infinity" and (
+                isinstance(raw_psnr, bool)
+                or not isinstance(raw_psnr, Real)
+                or not math.isfinite(float(raw_psnr))
+            ):
+                raise ValueError("contact sheet PSNR is invalid")
+            if (
+                isinstance(raw_ssim, bool)
+                or not isinstance(raw_ssim, Real)
+                or not math.isfinite(float(raw_ssim))
+            ):
+                raise ValueError("contact sheet SSIM is invalid")
+            with _decoded_evidence_slot(decode_stats, kind="captured"):
+                ground_truth = _array_from_snapshot(
+                    evidence.workspace,
+                    item.ground_truth,
+                    name="contact sheet ground_truth",
+                )
+                balanced_render = _array_from_snapshot(
+                    evidence.workspace,
+                    item.balanced_render,
+                    name="contact sheet balanced_render",
+                )
+                _register_decoded_arrays(
+                    decode_stats,
+                    (ground_truth, balanced_render),
+                )
+                recomputed = captured_image_metrics(
+                    ground_truth,
+                    balanced_render,
+                )
+                expected_psnr = float(recomputed["psnr"])
+                expected_ssim = float(recomputed["ssim"])
+                psnr_matches = (
+                    raw_psnr == "Infinity" and math.isinf(expected_psnr)
+                ) or (
+                    raw_psnr != "Infinity"
+                    and math.isfinite(expected_psnr)
+                    and math.isclose(
+                        float(raw_psnr),
+                        expected_psnr,
+                        rel_tol=0.0,
+                        abs_tol=1e-12,
+                    )
+                )
+                if not psnr_matches or not math.isclose(
+                    float(raw_ssim),
+                    expected_ssim,
+                    rel_tol=0.0,
+                    abs_tol=1e-12,
+                ):
+                    raise ValueError(
+                        "contact sheet metric labels do not match pixel evidence"
+                    )
+                row = {
+                    "frame_id": item.frame_id,
+                    "ground_truth": ground_truth,
+                    "balanced_render": balanced_render,
+                    "psnr": expected_psnr,
+                    "ssim": expected_ssim,
+                }
+                try:
+                    yield row
+                finally:
+                    del row, ground_truth, balanced_render, recomputed
+
+    contact_rows = rows()
+    try:
+        return build_contact_sheet(
+            contact_rows,
+            output_path,
+            workspace=workspace,
+        )
+    finally:
+        contact_rows.close()
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -1132,8 +1897,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     colors = torch.tensor(np.concatenate([sh0, rest], 1), dtype=torch.float32, device="cuda")
     sh_degree = int(np.sqrt(rest_count // 3 + 1)) - 1
 
-    first_frame = Image.open(data_dir / "frames" / "0000.jpg")
-    width, height = first_frame.size
+    with Image.open(data_dir / "frames" / "0000.jpg") as first_frame:
+        width, height = first_frame.size
 
     def render_pose(pose: np.ndarray, intrinsic: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         with torch.no_grad():
@@ -1156,7 +1921,6 @@ def main(argv: Sequence[str] | None = None) -> None:
         values = rendered[0].detach().cpu().numpy()
         return np.clip(values[..., :3], 0.0, 1.0), values[..., 3]
 
-    captured_rows: list[dict[str, Any]] = []
     captured_groups: list[tuple[str, tuple[int, ...]]] = [
         ("recorded", spec.recorded),
         ("withheld", spec.withheld),
@@ -1172,77 +1936,94 @@ def main(argv: Sequence[str] | None = None) -> None:
                 (f"standardized-{view.category}", (view.frame_index,))
             )
             already_captured.add(view.frame_index)
-    for kind, indices in captured_groups:
-        for index in indices:
-            color, _depth = render_pose(poses[index], intrinsics[index])
-            ground_truth = np.asarray(Image.open(data_dir / "frames" / f"{index:04d}.jpg"))
-            frame_id = f"{kind}-{index:04d}"
-            Image.fromarray(_uint8_rgb(color)).save(output_dir / f"{frame_id}.png")
-            captured_rows.append({
-                "frame_id": frame_id,
-                "kind": kind,
-                "frame_index": index,
-                "ground_truth": ground_truth,
-                "balanced_render": color,
-            })
 
-    interpolation_comparisons: list[dict[str, Any]] = []
-    for view in spec.interpolated:
-        colors_path: list[np.ndarray] = []
-        depths_path: list[np.ndarray] = []
-        for alpha in (0.0, view.alpha, 1.0):
-            pose = poses[view.start_index].copy()
-            pose[:3, 3] = (
-                (1.0 - alpha) * poses[view.start_index, :3, 3]
-                + alpha * poses[view.end_index, :3, 3]
-            )
-            # Nearby rotations are projected back to SO(3) after linear blend.
-            rotation = (
-                (1.0 - alpha) * poses[view.start_index, :3, :3]
-                + alpha * poses[view.end_index, :3, :3]
-            )
-            left, _, right = np.linalg.svd(rotation)
-            pose[:3, :3] = left @ right
-            intrinsic = (
-                (1.0 - alpha) * intrinsics[view.start_index]
-                + alpha * intrinsics[view.end_index]
-            )
-            color, depth = render_pose(pose, intrinsic)
-            colors_path.append(color)
-            depths_path.append(depth)
-            if alpha == view.alpha:
-                Image.fromarray(_uint8_rgb(color)).save(
-                    output_dir
-                    / f"interpolated-{view.start_index:04d}-{view.end_index:04d}.png"
+    def captured_comparisons() -> Iterator[Mapping[str, Any]]:
+        for kind, indices in captured_groups:
+            for index in indices:
+                color, _depth = render_pose(poses[index], intrinsics[index])
+                with Image.open(
+                    data_dir / "frames" / f"{index:04d}.jpg"
+                ) as source_image:
+                    ground_truth = np.asarray(source_image).copy()
+                frame_id = f"{kind}-{index:04d}"
+                rendered_image = Image.fromarray(_uint8_rgb(color))
+                rendered_image.save(output_dir / f"{frame_id}.png")
+                rendered_image.close()
+                comparison = {
+                    "frame_id": frame_id,
+                    "kind": kind,
+                    "frame_index": index,
+                    "ground_truth": ground_truth,
+                    "balanced_render": color,
+                }
+                try:
+                    yield comparison
+                finally:
+                    del comparison, color, _depth, ground_truth, rendered_image
+
+    def interpolated_comparisons() -> Iterator[Mapping[str, Any]]:
+        for view in spec.interpolated:
+            colors_path: list[np.ndarray] = []
+            depths_path: list[np.ndarray] = []
+            for alpha in (0.0, view.alpha, 1.0):
+                pose = poses[view.start_index].copy()
+                pose[:3, 3] = (
+                    (1.0 - alpha) * poses[view.start_index, :3, 3]
+                    + alpha * poses[view.end_index, :3, 3]
                 )
-        interpolation_comparisons.append({
-            "start_index": view.start_index,
-            "end_index": view.end_index,
-            "alpha": view.alpha,
-            "color_frames": colors_path,
-            "depth_frames": depths_path,
-        })
+                # Nearby rotations are projected back to SO(3) after linear blend.
+                rotation = (
+                    (1.0 - alpha) * poses[view.start_index, :3, :3]
+                    + alpha * poses[view.end_index, :3, :3]
+                )
+                left, _, right = np.linalg.svd(rotation)
+                pose[:3, :3] = left @ right
+                intrinsic = (
+                    (1.0 - alpha) * intrinsics[view.start_index]
+                    + alpha * intrinsics[view.end_index]
+                )
+                color, depth = render_pose(pose, intrinsic)
+                colors_path.append(color)
+                depths_path.append(depth)
+                if alpha == view.alpha:
+                    rendered_image = Image.fromarray(_uint8_rgb(color))
+                    rendered_image.save(
+                        output_dir
+                        / f"interpolated-{view.start_index:04d}-{view.end_index:04d}.png"
+                    )
+                    rendered_image.close()
+            comparison = {
+                "start_index": view.start_index,
+                "end_index": view.end_index,
+                "alpha": view.alpha,
+                "color_frames": colors_path,
+                "depth_frames": depths_path,
+            }
+            try:
+                yield comparison
+            finally:
+                del comparison, colors_path, depths_path
 
-    metric_snapshots = snapshot_validation_comparisons(
-        captured_rows,
-        interpolated_comparisons=interpolation_comparisons,
-    )
-    metrics_document = write_validation_metrics(
-        metric_snapshots,
-        output_dir / "validation-metrics.json",
-        view_spec=spec,
-    )
-    by_identity = {
-        (item["kind"], item["frameIndex"]): item
-        for item in metrics_document["captured"]
-    }
-    for row in captured_rows:
-        metrics = by_identity[(row["kind"], row["frame_index"])]
-        row["psnr"] = (
-            float("inf") if metrics["psnr"] == "Infinity" else metrics["psnr"]
+    with tempfile.TemporaryDirectory(
+        prefix=".validation-evidence-", dir=output_dir
+    ) as temporary_workspace:
+        temporary_root = Path(temporary_workspace)
+        metric_snapshots = snapshot_validation_comparisons(
+            captured_comparisons(),
+            interpolated_comparisons=interpolated_comparisons(),
+            workspace=temporary_root / "snapshots",
         )
-        row["ssim"] = metrics["ssim"]
-    build_contact_sheet(captured_rows, output_dir / "validation-contact-sheet.jpg")
+        metrics_document = write_validation_metrics(
+            metric_snapshots,
+            output_dir / "validation-metrics.json",
+            view_spec=spec,
+        )
+        build_contact_sheet_from_snapshots(
+            metric_snapshots,
+            metrics_document,
+            output_dir / "validation-contact-sheet.jpg",
+            workspace=temporary_root / "contact-sheet",
+        )
 
 
 if __name__ == "__main__":
