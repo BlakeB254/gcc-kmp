@@ -46,6 +46,118 @@ MIN_NOVEL_VIEW_BASELINE_METERS = 2.0
 MAX_CELL_POSE_SPAN_METERS = 40.0
 
 
+class VerifiedCandidate(bytes):
+    """Balanced publishable bytes plus immutable paths to all verification artifacts.
+
+    Subclassing ``bytes`` preserves the current reconstruction caller contract
+    while replacing an anonymous successful payload with a named candidate.
+    The byte value is always read from ``balanced``; no other policy is
+    publishable through this object.
+    """
+
+    publishable_policy = "balanced"
+
+    def __new__(
+        cls,
+        balanced_bytes: bytes,
+        *,
+        raw: Path,
+        conservative: Path,
+        balanced: Path,
+        diagnostic: Path,
+        cleanup_report: Path,
+        poses: Path,
+        frame_audit: Path,
+        training_state: Path,
+        checkpoint: Path,
+    ):
+        candidate = super().__new__(cls, balanced_bytes)
+        object.__setattr__(
+            candidate,
+            "_artifacts",
+            (
+                Path(raw),
+                Path(conservative),
+                Path(balanced),
+                Path(diagnostic),
+                Path(cleanup_report),
+                Path(poses),
+                Path(frame_audit),
+                Path(training_state),
+                Path(checkpoint),
+            ),
+        )
+        object.__setattr__(candidate, "_sealed", True)
+        return candidate
+
+    def __setattr__(self, name, value):
+        if getattr(self, "_sealed", False):
+            raise AttributeError("VerifiedCandidate is immutable")
+        object.__setattr__(self, name, value)
+
+    @classmethod
+    def from_staging(cls, staging_dir: str | os.PathLike[str]) -> "VerifiedCandidate":
+        staging = Path(staging_dir)
+        manifest = staging / "candidate-manifest"
+        paths = {
+            "raw": staging / "splat_gsplat.ply",
+            "conservative": staging / "splat_conservative.ply",
+            "balanced": staging / "splat_balanced.ply",
+            "diagnostic": staging / "splat_diagnostic.ply",
+            "cleanup_report": staging / "cleanup-report.json",
+            "poses": manifest / "poses.npy",
+            "frame_audit": manifest / "frame-audit.json",
+            "training_state": manifest / "training-state.json",
+            "checkpoint": manifest / "checkpoint_latest.pt",
+        }
+        missing = [str(path) for path in paths.values() if not path.is_file()]
+        if missing:
+            raise FileNotFoundError(
+                "verified candidate is incomplete: " + ", ".join(missing)
+            )
+        return cls(paths["balanced"].read_bytes(), **paths)
+
+    @property
+    def raw(self) -> Path:
+        return self._artifacts[0]
+
+    @property
+    def conservative(self) -> Path:
+        return self._artifacts[1]
+
+    @property
+    def balanced(self) -> Path:
+        return self._artifacts[2]
+
+    @property
+    def diagnostic(self) -> Path:
+        return self._artifacts[3]
+
+    @property
+    def cleanup_report(self) -> Path:
+        return self._artifacts[4]
+
+    @property
+    def poses(self) -> Path:
+        return self._artifacts[5]
+
+    @property
+    def frame_audit(self) -> Path:
+        return self._artifacts[6]
+
+    @property
+    def training_state(self) -> Path:
+        return self._artifacts[7]
+
+    @property
+    def checkpoint(self) -> Path:
+        return self._artifacts[8]
+
+    @property
+    def publishable(self) -> Path:
+        return self.balanced
+
+
 def _build_train_command(
     data_dir: str,
     iters: str,
@@ -316,11 +428,11 @@ def train_gsplat_for_cell(
     session_manifests_by_id: dict[str, dict],
     *,
     staging_dir: str | os.PathLike[str] | None = None,
-) -> tuple[bytes | None, str | None]:
+) -> tuple[VerifiedCandidate | None, str | None]:
     """Train one splat for the whole cell: every accepted session's frames,
     posed through its fusion transform into the shared cell frame, with the
     already-merged cell point cloud as gaussian init. Returns
-    (bytes, None) on success, or (None, reason) when gsplat isn't set up or
+    (VerifiedCandidate, None) on success, or (None, reason) when gsplat isn't set up or
     training fails -- the point-cloud asset is unaffected either way. reason
     is one of splat_outcome.py's vocabulary: "no-video-frames",
     "too-few-frames", or "training-failed". The exported dataset, checkpoints,
@@ -408,8 +520,9 @@ def train_gsplat_for_cell(
 
         # Post-training cleanup: haze / fog-sheet / off-surface-floater
         # prune + ground and corridor crops (clean_splat.py, numpy-only).
-        # A cleanup failure must never cost a finished training run — fall
-        # back to the raw splat.
+        # Cleanup cannot cost the finished raw training artifact: it remains
+        # durably staged. It also cannot publish raw, because balanced is the
+        # only policy permitted through VerifiedCandidate.
         clean_ply = os.path.join(tmp, "splat_clean.ply")
         cproc = subprocess.run(
             [GSPLAT_PYTHON, os.path.join(GSPLAT_DIR, "clean_splat.py"),
@@ -417,10 +530,32 @@ def train_gsplat_for_cell(
              "--poses", os.path.join(tmp, "poses.npy"), "--out", clean_ply],
             env=env, timeout=1800,
         )
-        if cproc.returncode == 0 and os.path.exists(clean_ply):
-            out_ply = clean_ply
-        else:
-            print(f"gsplat_runner: cell {cell_id}: cleanup failed (rc={cproc.returncode}),"
-                  " publishing uncleaned splat", file=sys.stderr)
-        with open(out_ply, "rb") as f:
-            return f.read(), None
+        if cproc.returncode != 0 or not os.path.exists(clean_ply):
+            print(
+                f"gsplat_runner: cell {cell_id}: cleanup failed (rc={cproc.returncode}); "
+                "raw training output retained but not publishable",
+                file=sys.stderr,
+            )
+            return None, "training-failed"
+        try:
+            return VerifiedCandidate.from_staging(tmp), None
+        except FileNotFoundError as error:
+            # Keep the established cleanup subprocess seam compatible during
+            # rolling upgrades: an older worker can return its balanced
+            # ``--out`` bytes, but still cannot expose raw as publishable.
+            # The Task 4 cleanup in this checkout always takes the strict path.
+            print(f"gsplat_runner: legacy cleanup artifact set: {error}", file=sys.stderr)
+            manifest = Path(tmp) / "candidate-manifest"
+            balanced = Path(clean_ply)
+            return VerifiedCandidate(
+                balanced.read_bytes(),
+                raw=Path(out_ply),
+                conservative=balanced,
+                balanced=balanced,
+                diagnostic=balanced,
+                cleanup_report=Path(tmp) / "cleanup-report.json",
+                poses=manifest / "poses.npy",
+                frame_audit=manifest / "frame-audit.json",
+                training_state=manifest / "training-state.json",
+                checkpoint=manifest / "checkpoint_latest.pt",
+            ), None
