@@ -36,7 +36,9 @@ MAX_POSE_TIME_GAP_SECONDS = 0.2
 # real R2 keys 2026-07-10) even though ArSessionRecorder's doc-comment says
 # .depth -- accept both, normalized to the "depth" kind in
 # _group_chunks_by_index.
-_CHUNK_KEY_PATTERN = re.compile(r"chunk-(\d+)\.(mov|jsonl|depth|bin)$")
+_CHUNK_KEY_PATTERN = re.compile(
+    r"chunk-(\d+)\.(mov|jsonl|depth|bin|confidence)$"
+)
 
 # A cell isn't canonical until this many independent sessions have
 # successfully registered -- design spec §3.1's activation gate. This exact
@@ -303,9 +305,10 @@ def _track_gps_pairs(session: SessionFusionInput) -> list:
 
 
 def _group_chunks_by_index(capture_chunk_keys: list[str]) -> dict[int, dict[str, str]]:
-    """{chunk_index: {"mov": key, "jsonl": key, "depth": key}} -- kind is
-    inferred from the R2 key's extension (chunk-NNN.{mov,jsonl,depth,bin};
-    .bin is what real uploads use for depth and is normalized to "depth"),
+    """Group each chunk's video, pose, depth, and optional confidence keys.
+
+    Kind is inferred from chunk-NNN.{mov,jsonl,depth,bin,confidence};
+    .bin is what real uploads use for depth and is normalized to "depth",
     matching ArSessionRecorder's file-per-kind convention. Missing kinds
     (e.g. no .mov when a whole chunk was recorded under thermal .serious
     pressure -- sidecar-only) are simply absent from the inner dict."""
@@ -321,7 +324,24 @@ def _group_chunks_by_index(capture_chunk_keys: list[str]) -> dict[int, dict[str,
     return grouped
 
 
-def _fuse_one_chunk(video_bytes: bytes | None, sidecar_bytes: bytes, depth_bytes: bytes) -> list[frame_io.PointCloudArrays]:
+def _apply_depth_confidence(
+    depth_meters: np.ndarray,
+    confidence: np.ndarray,
+) -> np.ndarray:
+    """Invalidate ARKit's low-confidence (0) samples, retaining medium/high."""
+    if depth_meters.shape != confidence.shape:
+        return depth_meters
+    filtered = depth_meters.copy()
+    filtered[confidence < 1] = np.nan
+    return filtered
+
+
+def _fuse_one_chunk(
+    video_bytes: bytes | None,
+    sidecar_bytes: bytes,
+    depth_bytes: bytes,
+    confidence_bytes: bytes | None = None,
+) -> list[frame_io.PointCloudArrays]:
     """One chunk's depth keyframes (~2Hz), each matched to its nearest
     sidecar pose sample and nearest extracted video frame by timestamp.
     Video is optional -- a chunk recorded entirely under thermal `.serious`
@@ -334,6 +354,11 @@ def _fuse_one_chunk(video_bytes: bytes | None, sidecar_bytes: bytes, depth_bytes
     if not sidecar_frames:
         return []
     depth_records = chunk_io.parse_depth_chunk(depth_bytes)
+    confidence_records = (
+        chunk_io.parse_confidence_chunk(confidence_bytes)
+        if confidence_bytes is not None
+        else []
+    )
 
     sidecar_times = np.array([f.t for f in sidecar_frames])
 
@@ -359,8 +384,25 @@ def _fuse_one_chunk(video_bytes: bytes | None, sidecar_bytes: bytes, depth_bytes
     for (depth_record, pose_frame), color_img in zip(usable, color_imgs):
         if color_img is None:
             continue
+        depth_meters = depth_record.depth_meters
+        if confidence_records:
+            confidence_record = min(
+                confidence_records,
+                key=lambda record: abs(record.t - depth_record.t),
+            )
+            if (
+                abs(confidence_record.t - depth_record.t)
+                <= MAX_POSE_TIME_GAP_SECONDS
+            ):
+                depth_meters = _apply_depth_confidence(
+                    depth_meters,
+                    confidence_record.confidence,
+                )
         cloud = frame_io.build_point_cloud_from_frame(
-            color_img, depth_record.depth_meters, pose_frame.camera_transform, pose_frame.intrinsics
+            color_img,
+            depth_meters,
+            pose_frame.camera_transform,
+            pose_frame.intrinsics,
         )
         if cloud.points.shape[0] > 0:
             clouds.append(cloud)
@@ -412,13 +454,25 @@ def _session_fusion_input_from_manifest(manifest_obj: r2_store.ManifestObject) -
         video_bytes = r2_store.download_video_bytes(kinds["mov"]) if "mov" in kinds else None
         sidecar_bytes = r2_store.download_bytes(kinds["jsonl"])
         depth_bytes = r2_store.download_bytes(kinds["depth"])
+        confidence_bytes = (
+            r2_store.download_bytes(kinds["confidence"])
+            if "confidence" in kinds
+            else None
+        )
 
         _header, sidecar_frames = chunk_io.parse_sidecar(sidecar_bytes)
         if anchor_xyz is None and sidecar_frames:
             anchor_xyz = sidecar_frames[0].camera_transform[:3, 3]
         track.extend((f.t, f.camera_transform[:3, 3].astype(np.float64)) for f in sidecar_frames[::10])
 
-        clouds.extend(_fuse_one_chunk(video_bytes, sidecar_bytes, depth_bytes))
+        clouds.extend(
+            _fuse_one_chunk(
+                video_bytes,
+                sidecar_bytes,
+                depth_bytes,
+                confidence_bytes,
+            )
+        )
 
     if not clouds or anchor_xyz is None:
         return None
