@@ -25,6 +25,7 @@ const EXTENSION_CONTENT_TYPES: Record<string, string> = {
   mp4: 'video/mp4',
   mov: 'video/quicktime',
   bin: 'application/octet-stream',
+  confidence: 'application/vnd.gcc.depth-confidence-v1',
   ply: 'application/octet-stream',
   json: 'application/json',
   jsonl: 'application/x-ndjson',

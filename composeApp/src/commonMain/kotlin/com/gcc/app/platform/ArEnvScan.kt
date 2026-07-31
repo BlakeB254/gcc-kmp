@@ -45,7 +45,7 @@ data class GroundIntentPrompt(
  * One finished background-capture artifact chunk (Pillar 1 session capture)
  * drained from the native recorder. Mirrors the Swift/iosMain
  * `"index|kind|path|sizeBytes"` packet convention (kind: video|sidecar|
- * depth) — see `ArNativeSurface.drainFinishedCaptureChunks`/
+ * depth|confidence) — see `ArNativeSurface.drainFinishedCaptureChunks`/
  * `stopCaptureAndDrain`. Android/Desktop never produce these (capture is
  * iOS-only in v1 — the scope guard in the session-capture plan).
  */

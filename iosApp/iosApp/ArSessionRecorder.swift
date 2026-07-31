@@ -5,7 +5,7 @@ import Foundation
 
 /// Background reconstruction-grade recorder for the native AR surface
 /// (Pillar 1). Fed one `ARFrame` per `session(_:didUpdate:)` callback by
-/// `RealityKitArSurface`, it spools three artifact streams per rotating
+/// `RealityKitArSurface`, it spools four artifact streams per rotating
 /// chunk into the session's output directory:
 ///
 ///  - `chunk-NNN.mov`    — HEVC (H.264 fallback) video of `capturedImage`,
@@ -14,12 +14,17 @@ import Foundation
 ///  - `chunk-NNN.jsonl`  — per-frame pose sidecar: one header line
 ///                         (schema/session/dims) then per-frame records of
 ///                         t, transform[16], intrinsics[9] (column-major),
-///                         trackingState, thermalState;
+///                         trackingState, thermalState, and nullable camera
+///                         exposure/ISO/white-balance/focus metadata;
 ///  - `chunk-NNN.depth`  — LiDAR depth keyframes at 2 Hz: LZFSE-compressed
 ///                         `depthMap` planes as length-prefixed binary
 ///                         records (native little-endian), absent/empty on
 ///                         non-LiDAR devices (empty file deleted at
 ///                         finalize).
+///  - `chunk-NNN.confidence` — raw ARKit depth-confidence planes selected
+///                         with the depth keyframes at the same 2 Hz
+///                         timestamps; versioned, explicitly little-endian
+///                         length-prefixed records, absent on non-LiDAR.
 ///
 /// Chunks rotate at 60 s or 64 MB. Finished chunks are handed to Kotlin as
 /// "index|kind|path|sizeBytes" packet strings via poll-drain (the
@@ -149,9 +154,11 @@ final class ArSessionRecorder {
     private var chunkStartTime: TimeInterval = 0
     private var sidecarHandle: FileHandle?
     private var depthHandle: FileHandle?
+    private var confidenceHandle: FileHandle?
     private var videoURL: URL?
     private var sidecarURL: URL?
     private var depthURL: URL?
+    private var confidenceURL: URL?
     private var writer: AVAssetWriter?
     private var writerInput: AVAssetWriterInput?
     private var adaptor: AVAssetWriterInputPixelBufferAdaptor?
@@ -181,6 +188,21 @@ final class ArSessionRecorder {
 
     /// Delegate-thread-only (append is always the ARSession delegate thread).
     private var lastDepthTime: TimeInterval = -.greatestFiniteMagnitude
+    /// ARKit world tracking uses the back wide camera in this capture
+    /// surface. ARCamera exposes exact per-frame exposure duration, while
+    /// these additional current sensor values are available only through
+    /// AVCaptureDevice; nil keeps the JSON contract honest if unavailable.
+    private let cameraCaptureDevice =
+        AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
+
+    private struct CameraMetadata {
+        let exposureDurationSeconds: Double?
+        let iso: Double?
+        let whiteBalanceRedGain: Double?
+        let whiteBalanceGreenGain: Double?
+        let whiteBalanceBlueGain: Double?
+        let lensPosition: Double?
+    }
 
     // MARK: - Kotlin-facing API (thread-safe)
 
@@ -373,14 +395,26 @@ final class ArSessionRecorder {
         }
         let sourceWidth = CVPixelBufferGetWidth(frame.capturedImage)
         let sourceHeight = CVPixelBufferGetHeight(frame.capturedImage)
+        let captureDevice = cameraCaptureDevice
+        let whiteBalance = captureDevice?.deviceWhiteBalanceGains
+        let cameraMetadata = CameraMetadata(
+            exposureDurationSeconds: Self.finiteOrNil(camera.exposureDuration),
+            iso: Self.finiteOrNil(captureDevice.map { Double($0.iso) }),
+            whiteBalanceRedGain: Self.finiteOrNil(whiteBalance.map { Double($0.redGain) }),
+            whiteBalanceGreenGain: Self.finiteOrNil(whiteBalance.map { Double($0.greenGain) }),
+            whiteBalanceBlueGain: Self.finiteOrNil(whiteBalance.map { Double($0.blueGain) }),
+            lensPosition: Self.finiteOrNil(captureDevice.map { Double($0.lensPosition) })
+        )
 
         // Video AND depth continue at .serious now — reduced tier instead of
         // the old skipHeavy drop (spec: degrade, then warn).
         let video: CVPixelBuffer? = frame.capturedImage
         var depth: CVPixelBuffer?
+        var confidence: CVPixelBuffer?
         if time - lastDepthTime >= Self.depthIntervalSeconds,
-           let depthMap = (frame.smoothedSceneDepth ?? frame.sceneDepth)?.depthMap {
-            depth = depthMap
+           let depthData = frame.smoothedSceneDepth ?? frame.sceneDepth {
+            depth = depthData.depthMap
+            confidence = depthData.confidenceMap
             lastDepthTime = time
         }
 
@@ -392,11 +426,13 @@ final class ArSessionRecorder {
                 intrinsics: intrinsics,
                 tracking: tracking,
                 thermal: thermal.rawValue,
+                cameraMetadata: cameraMetadata,
                 tierRaw: tier.rawValue,
                 sourceWidth: sourceWidth,
                 sourceHeight: sourceHeight,
                 video: video,
-                depth: depth
+                depth: depth,
+                confidence: confidence
             )
             stateLock.lock()
             pendingSamples -= 1
@@ -412,11 +448,13 @@ final class ArSessionRecorder {
         intrinsics: simd_float3x3,
         tracking: Int,
         thermal: Int,
+        cameraMetadata: CameraMetadata,
         tierRaw: Int,
         sourceWidth: Int,
         sourceHeight: Int,
         video: CVPixelBuffer?,
-        depth: CVPixelBuffer?
+        depth: CVPixelBuffer?,
+        confidence: CVPixelBuffer?
     ) {
         stateLock.lock()
         let live = capturing && !failed
@@ -435,7 +473,7 @@ final class ArSessionRecorder {
 
         appendSidecarLine(
             time: time, transform: transform, intrinsics: intrinsics,
-            tracking: tracking, thermal: thermal
+            tracking: tracking, thermal: thermal, cameraMetadata: cameraMetadata
         )
         if let video {
             appendVideo(video, time: time, sourceWidth: sourceWidth, sourceHeight: sourceHeight)
@@ -443,9 +481,12 @@ final class ArSessionRecorder {
         if let depth, chunkActive {
             appendDepth(depth, time: time)
         }
+        if let confidence, chunkActive {
+            appendConfidence(confidence, time: time)
+        }
     }
 
-    /// Open the chunk's sidecar + depth files and write the sidecar header.
+    /// Open the chunk's sidecar + depth/confidence files and write the sidecar header.
     /// The AVAssetWriter is created lazily on the first VIDEO sample.
     /// [tier] is fixed for the chunk's lifetime — a thermal-driven tier
     /// change rotates to a fresh chunk (see `processSample`) rather than
@@ -457,19 +498,30 @@ final class ArSessionRecorder {
         let vURL = outputDir.appendingPathComponent(base + ".mov")
         let sURL = outputDir.appendingPathComponent(base + ".jsonl")
         let dURL = outputDir.appendingPathComponent(base + ".depth")
+        let cURL = outputDir.appendingPathComponent(base + ".confidence")
         let fm = FileManager.default
         fm.createFile(atPath: sURL.path, contents: nil)
         fm.createFile(atPath: dURL.path, contents: nil)
+        fm.createFile(atPath: cURL.path, contents: nil)
         do {
             sidecarHandle = try FileHandle(forWritingTo: sURL)
             depthHandle = try FileHandle(forWritingTo: dURL)
+            confidenceHandle = try FileHandle(forWritingTo: cURL)
         } catch {
+            try? sidecarHandle?.close()
+            sidecarHandle = nil
+            try? depthHandle?.close()
+            depthHandle = nil
+            try? confidenceHandle?.close()
+            confidenceHandle = nil
+            for url in [sURL, dURL, cURL] { try? fm.removeItem(at: url) }
             failCapture("chunk \(chunkIndex) file open failed: \(error)")
             return
         }
         videoURL = vURL
         sidecarURL = sURL
         depthURL = dURL
+        confidenceURL = cURL
         chunkStartTime = time
         videoSampleCount = 0
         lastVideoTime = -.greatestFiniteMagnitude
@@ -508,7 +560,8 @@ final class ArSessionRecorder {
         transform: simd_float4x4,
         intrinsics: simd_float3x3,
         tracking: Int,
-        thermal: Int
+        thermal: Int,
+        cameraMetadata: CameraMetadata
     ) {
         let t = [transform.columns.0, transform.columns.1, transform.columns.2, transform.columns.3]
             .flatMap { [$0.x, $0.y, $0.z, $0.w] }
@@ -518,8 +571,22 @@ final class ArSessionRecorder {
             "{\"t\":\(time)," +
             "\"transform\":[\(t.map { String($0) }.joined(separator: ","))]," +
             "\"intrinsics\":[\(k.map { String($0) }.joined(separator: ","))]," +
-            "\"tracking\":\(tracking),\"thermal\":\(thermal)}"
+            "\"tracking\":\(tracking),\"thermal\":\(thermal)," +
+            "\"exposureDurationSeconds\":\(Self.jsonNumber(cameraMetadata.exposureDurationSeconds))," +
+            "\"iso\":\(Self.jsonNumber(cameraMetadata.iso))," +
+            "\"whiteBalanceRedGain\":\(Self.jsonNumber(cameraMetadata.whiteBalanceRedGain))," +
+            "\"whiteBalanceGreenGain\":\(Self.jsonNumber(cameraMetadata.whiteBalanceGreenGain))," +
+            "\"whiteBalanceBlueGain\":\(Self.jsonNumber(cameraMetadata.whiteBalanceBlueGain))," +
+            "\"lensPosition\":\(Self.jsonNumber(cameraMetadata.lensPosition))}"
         )
+    }
+
+    private static func finiteOrNil(_ value: Double?) -> Double? {
+        value?.isFinite == true ? value : nil
+    }
+
+    private static func jsonNumber(_ value: Double?) -> String {
+        value.map { String($0) } ?? "null"
     }
 
     private func writeSidecar(_ line: String) {
@@ -714,9 +781,49 @@ final class ArSessionRecorder {
         }
     }
 
+    /// Confidence record v1 (every integer and Float64 bit pattern is
+    /// explicitly little-endian):
+    /// [UInt32 recordLength excluding itself] [UInt16 version=1]
+    /// [UInt16 fixedHeaderLength=32] [Float64 t] [UInt32 width]
+    /// [UInt32 height] [UInt32 bytesPerRow] [UInt32 pixelFormat]
+    /// [UInt32 payloadLength] [raw plane bytes including row padding]
+    private func appendConfidence(_ buffer: CVPixelBuffer, time: TimeInterval) {
+        guard let handle = confidenceHandle else { return }
+        CVPixelBufferLockBaseAddress(buffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(buffer) else { return }
+        let width = CVPixelBufferGetWidth(buffer)
+        let height = CVPixelBufferGetHeight(buffer)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
+        let pixelFormat = CVPixelBufferGetPixelFormatType(buffer)
+        let payloadLength = height * bytesPerRow
+        guard payloadLength > 0, payloadLength <= Int(UInt32.max) - 32 else { return }
+
+        var record = Data(capacity: 36 + payloadLength)
+        func putInteger<T: FixedWidthInteger>(_ value: T) {
+            var littleEndian = value.littleEndian
+            withUnsafeBytes(of: &littleEndian) { record.append(contentsOf: $0) }
+        }
+        putInteger(UInt32(32 + payloadLength))
+        putInteger(UInt16(1))
+        putInteger(UInt16(32))
+        putInteger(Double(time).bitPattern)
+        putInteger(UInt32(width))
+        putInteger(UInt32(height))
+        putInteger(UInt32(bytesPerRow))
+        putInteger(UInt32(pixelFormat))
+        putInteger(UInt32(payloadLength))
+        record.append(base.assumingMemoryBound(to: UInt8.self), count: payloadLength)
+        do {
+            try handle.write(contentsOf: record)
+        } catch {
+            failCapture("confidence write failed: \(error)")
+        }
+    }
+
     // MARK: - Chunk lifecycle (serial queue)
 
-    /// Close the chunk: sidecar/depth packets emit immediately (files are
+    /// Close the chunk: sidecar/depth/confidence packets emit immediately (files are
     /// complete); the video finalizes asynchronously via `finishWriting` and
     /// emits its packet from the completion — the next chunk can start
     /// writing while the previous one is still wrapping its moov atom.
@@ -738,6 +845,8 @@ final class ArSessionRecorder {
         sidecarHandle = nil
         try? depthHandle?.close()
         depthHandle = nil
+        try? confidenceHandle?.close()
+        confidenceHandle = nil
         if let url = sidecarURL {
             emitFinished(index: index, kind: "sidecar", url: url, deleteIfEmpty: false)
         }
@@ -745,8 +854,12 @@ final class ArSessionRecorder {
             // Empty on non-LiDAR devices — delete instead of shipping a stub.
             emitFinished(index: index, kind: "depth", url: url, deleteIfEmpty: true)
         }
+        if let url = confidenceURL {
+            emitFinished(index: index, kind: "confidence", url: url, deleteIfEmpty: true)
+        }
         sidecarURL = nil
         depthURL = nil
+        confidenceURL = nil
 
         let finishingWriter = writer
         let finishingInput = writerInput
@@ -799,17 +912,20 @@ final class ArSessionRecorder {
         sidecarHandle = nil
         try? depthHandle?.close()
         depthHandle = nil
+        try? confidenceHandle?.close()
+        confidenceHandle = nil
         if let writer, writer.status == .writing { writer.cancelWriting() }
         writer = nil
         writerInput = nil
         adaptor = nil
         let fm = FileManager.default
-        for url in [videoURL, sidecarURL, depthURL] {
+        for url in [videoURL, sidecarURL, depthURL, confidenceURL] {
             if let url { try? fm.removeItem(at: url) }
         }
         videoURL = nil
         sidecarURL = nil
         depthURL = nil
+        confidenceURL = nil
         // Never reuse a discarded index — chunk numbering stays monotonic.
         chunkIndex += 1
     }
