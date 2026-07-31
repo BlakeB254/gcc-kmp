@@ -18,8 +18,9 @@ import kotlinx.datetime.Clock
 
 /**
  * Uploads background full-session capture artifacts (completion JPEGs, HEVC
- * video, pose/intrinsics sidecars, and LiDAR depth keyframes — bookkept in
- * [CaptureChunkStore], written by [com.gcc.app.platform.ArEnvScanOverlay])
+ * video, pose/intrinsics sidecars, and LiDAR depth/confidence keyframes —
+ * bookkept in [CaptureChunkStore], written by
+ * [com.gcc.app.platform.ArEnvScanOverlay])
  * to R2 once policy allows it. Policy (any one satisfies): Wi-Fi, OR the
  * device is charging, OR the user opted into cellular uploads (multiplatform-
  * settings key [KEY_CELLULAR_UPLOAD_OPT_IN], default false — no UI in this
@@ -169,6 +170,7 @@ class CaptureChunkUploader(
             "video" -> "mov"
             "sidecar" -> "jsonl"
             "depth" -> "bin"
+            "confidence" -> "confidence"
             "photo" -> "jpg"
             else -> "bin"
         }
@@ -176,6 +178,7 @@ class CaptureChunkUploader(
         internal fun contentTypeFor(ext: String): String = when (ext) {
             "mov" -> "video/quicktime"
             "jsonl" -> "application/x-ndjson"
+            "confidence" -> "application/vnd.gcc.depth-confidence-v1"
             "jpg" -> "image/jpeg"
             else -> "application/octet-stream"
         }

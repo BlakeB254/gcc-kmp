@@ -297,6 +297,20 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         return [KotlinDouble(double: Double(t.x)), KotlinDouble(double: Double(t.y)), KotlinDouble(double: Double(t.z))]
     }
 
+    func isLidarDevice() -> Bool {
+        ARWorldTrackingConfiguration.supportsFrameSemantics(.smoothedSceneDepth) ||
+            ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth)
+    }
+
+    func currentFrameHasUsableDepth() -> Bool {
+        frameLock.lock()
+        defer { frameLock.unlock() }
+        guard let depthMap = (lastFrame?.smoothedSceneDepth ?? lastFrame?.sceneDepth)?.depthMap else {
+            return false
+        }
+        return CVPixelBufferGetWidth(depthMap) > 0 && CVPixelBufferGetHeight(depthMap) > 0
+    }
+
     /// ARKit clock of the latest frame — the SAME clock the pose sidecar
     /// stamps `t` with, so a (wall-clock, this) pair at geo-ref time lets the
     /// DGX pipeline align the pose stream with the GPS track.

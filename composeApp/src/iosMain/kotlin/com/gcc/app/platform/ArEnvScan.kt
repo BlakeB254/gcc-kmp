@@ -31,6 +31,7 @@ import platform.ARKit.ARCoachingOverlayView
 import platform.ARKit.ARFrame
 import platform.ARKit.ARPlaneAnchor
 import platform.ARKit.ARSCNView
+import platform.ARKit.ARTrackingState
 import platform.ARKit.ARWorldAlignment
 import platform.ARKit.ARWorldTrackingConfiguration
 import platform.CoreGraphics.CGPointMake
@@ -193,6 +194,14 @@ actual class ArEnvScanOverlay actual constructor() {
 
     private val sessionHealth = ArSessionHealth()
     actual val trackingState: StateFlow<TrackingState> = sessionHealth.trackingState
+
+    private val reconstructionCameraPositions = mutableListOf<CameraPosition3d>()
+    private var reconstructionNormalTrackingSamples = 0
+    private var reconstructionTotalTrackingSamples = 0
+    private var reconstructionUsableDepthSamples = 0
+    private val _reconstructionReadiness = MutableStateFlow<ReconstructionReadiness?>(null)
+    actual val reconstructionReadiness: StateFlow<ReconstructionReadiness?> =
+        _reconstructionReadiness.asStateFlow()
 
     private val _groundDetected = MutableStateFlow(false)
     actual val groundDetected: StateFlow<Boolean> = _groundDetected.asStateFlow()
@@ -428,6 +437,7 @@ actual class ArEnvScanOverlay actual constructor() {
             )
             captureSessionId = sessionId
             captureLocationCellId = cellId
+            resetReconstructionReadiness()
             surface.startCapture(sessionId, outputDir)
             DiagnosticsLog.info("capture", "session capture started: $sessionId (cell $cellId)")
             true
@@ -976,6 +986,7 @@ actual class ArEnvScanOverlay actual constructor() {
         val frame: ARFrame? = if (native == null) sceneView?.session?.currentFrame else null
         if (native == null && frame == null) return false
         tick += 1
+        updateReconstructionReadiness(native, frame)
 
         // Tap-to-focus (Task 5): process at the START of the tick, before
         // any other Vision/raycast work this tick does — see
@@ -1133,6 +1144,56 @@ actual class ArEnvScanOverlay actual constructor() {
 
         analyzeTrash(frame, native, commonObs, saliencyRequest)
         return false
+    }
+
+    private fun updateReconstructionReadiness(native: ArNativeSurface?, frame: ARFrame?) {
+        if (captureSessionId == null) return
+        val position = cameraPosition()?.takeIf { it.size >= 3 }?.let {
+            CameraPosition3d(x = it[0].toDouble(), y = it[1].toDouble(), z = it[2].toDouble())
+        } ?: return
+
+        val tracking = when {
+            native != null -> native.trackingStateRaw()
+            frame?.camera?.trackingState == ARTrackingState.ARTrackingStateNormal -> 0
+            else -> 1
+        }
+        val lidar = native?.isLidarDevice() ?: supportsSceneDepth()
+        val hasDepth = native?.currentFrameHasUsableDepth() ?: run {
+            val depth = frame?.smoothedSceneDepth ?: frame?.sceneDepth
+            depth != null
+        }
+
+        reconstructionCameraPositions += position
+        reconstructionTotalTrackingSamples += 1
+        if (tracking == 0) reconstructionNormalTrackingSamples += 1
+        if (hasDepth) reconstructionUsableDepthSamples += 1
+        _reconstructionReadiness.value = ReconstructionReadinessEvaluator.evaluate(
+            ReconstructionReadinessInput(
+                cameraPositions = reconstructionCameraPositions,
+                normalTrackingSamples = reconstructionNormalTrackingSamples,
+                totalTrackingSamples = reconstructionTotalTrackingSamples,
+                isLidarDevice = lidar,
+                usableDepthSamples = reconstructionUsableDepthSamples,
+            )
+        )
+    }
+
+    private fun resetReconstructionReadiness() {
+        reconstructionCameraPositions.clear()
+        reconstructionNormalTrackingSamples = 0
+        reconstructionTotalTrackingSamples = 0
+        reconstructionUsableDepthSamples = 0
+        _reconstructionReadiness.value = null
+    }
+
+    private fun supportsSceneDepth(): Boolean = try {
+        ARWorldTrackingConfiguration.supportsFrameSemantics(
+            platform.ARKit.ARFrameSemanticSmoothedSceneDepth
+        ) || ARWorldTrackingConfiguration.supportsFrameSemantics(
+            platform.ARKit.ARFrameSemanticSceneDepth
+        )
+    } catch (_: Throwable) {
+        false
     }
 
     /**

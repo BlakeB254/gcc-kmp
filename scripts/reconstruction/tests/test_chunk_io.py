@@ -7,7 +7,12 @@ import av
 import liblzfse
 import numpy as np
 
-from chunk_io import extract_video_frame_at, parse_depth_chunk, parse_sidecar
+from chunk_io import (
+    extract_video_frame_at,
+    parse_confidence_chunk,
+    parse_depth_chunk,
+    parse_sidecar,
+)
 
 
 def _sidecar_jsonl(header: dict, frames: list[dict]) -> bytes:
@@ -63,6 +68,52 @@ def test_parse_sidecar_recovers_transform_and_scales_intrinsics_to_video_resolut
     assert f.intrinsics.height == 120
 
 
+def test_parse_sidecar_preserves_optional_camera_appearance_metadata():
+    transform = np.eye(4)
+    source_intrinsics = np.eye(3)
+    header = {"schema": 2, "sessionId": "s1", "chunk": 0, "sourceWidth": 20, "sourceHeight": 20, "videoWidth": 20, "videoHeight": 20}
+    frame = {
+        "t": 2.0,
+        "transform": _column_major_flatten(transform),
+        "intrinsics": _column_major_flatten(source_intrinsics),
+        "tracking": 0,
+        "thermal": 0,
+        "exposureDurationSeconds": 0.008,
+        "iso": 64.0,
+        "whiteBalanceRedGain": 1.7,
+        "whiteBalanceGreenGain": 1.0,
+        "whiteBalanceBlueGain": 1.5,
+        "lensPosition": None,
+    }
+
+    _, frames = parse_sidecar(_sidecar_jsonl(header, [frame]))
+
+    assert frames[0].exposure_duration_seconds == 0.008
+    assert frames[0].iso == 64.0
+    assert frames[0].white_balance_gains == (1.7, 1.0, 1.5)
+    assert frames[0].lens_position is None
+
+
+def test_parse_sidecar_keeps_legacy_appearance_metadata_optional():
+    transform = np.eye(4)
+    source_intrinsics = np.eye(3)
+    header = {"schema": 1, "sessionId": "legacy", "chunk": 0, "sourceWidth": 20, "sourceHeight": 20, "videoWidth": 20, "videoHeight": 20}
+    frame = {
+        "t": 2.0,
+        "transform": _column_major_flatten(transform),
+        "intrinsics": _column_major_flatten(source_intrinsics),
+        "tracking": 0,
+        "thermal": 0,
+    }
+
+    _, frames = parse_sidecar(_sidecar_jsonl(header, [frame]))
+
+    assert frames[0].exposure_duration_seconds is None
+    assert frames[0].iso is None
+    assert frames[0].white_balance_gains is None
+    assert frames[0].lens_position is None
+
+
 def _build_depth_chunk_bytes(records: list[tuple[float, np.ndarray]]) -> bytes:
     """Hand-builds the exact on-wire format ArSessionRecorder.appendDepth
     writes, so parse_depth_chunk can be tested against a real, independently
@@ -114,6 +165,37 @@ def test_parse_depth_chunk_strips_row_padding():
     assert len(records) == 1
     assert records[0].depth_meters.shape == (height, width)
     assert np.allclose(records[0].depth_meters, depth)
+
+
+def test_parse_confidence_chunk_reads_versioned_little_endian_records():
+    width, height, bytes_per_row = 3, 2, 4
+    payload = bytes([2, 1, 0, 99, 1, 2, 1, 88])
+    fixed_header = struct.pack(
+        "<HHdIIIII",
+        1,
+        32,
+        4.25,
+        width,
+        height,
+        bytes_per_row,
+        0x4C303038,
+        len(payload),
+    )
+    encoded = struct.pack("<I", len(fixed_header) + len(payload)) + fixed_header + payload
+
+    records = parse_confidence_chunk(encoded)
+
+    assert len(records) == 1
+    assert records[0].t == 4.25
+    assert records[0].confidence.shape == (height, width)
+    assert records[0].confidence.tolist() == [[2, 1, 0], [1, 2, 1]]
+
+
+def test_parse_confidence_chunk_skips_unknown_version_by_record_length():
+    unknown_body = struct.pack("<HH", 9, 4) + b"future"
+    encoded = struct.pack("<I", len(unknown_body)) + unknown_body
+
+    assert parse_confidence_chunk(encoded) == []
 
 
 def _encode_synthetic_mov(frames_with_colors: list[tuple[float, tuple[int, int, int]]]) -> bytes:

@@ -140,6 +140,32 @@ def test_group_chunks_by_index_accepts_real_bin_depth_extension():
     }
 
 
+def test_group_chunks_by_index_keeps_confidence_separate_from_legacy_depth():
+    keys = [
+        "raw/cell/session/capture/chunk-3.bin",
+        "raw/cell/session/capture/chunk-3.confidence",
+    ]
+
+    grouped = _group_chunks_by_index(keys)
+
+    assert grouped[3]["depth"].endswith("chunk-3.bin")
+    assert grouped[3]["confidence"].endswith("chunk-3.confidence")
+
+
+def test_depth_confidence_mask_removes_only_low_confidence_pixels():
+    from fuse_cell import _apply_depth_confidence
+
+    depth = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+    confidence = np.array([[0, 1], [2, 0]], dtype=np.uint8)
+
+    filtered = _apply_depth_confidence(depth, confidence)
+
+    assert np.isnan(filtered[0, 0])
+    assert filtered[0, 1] == 2.0
+    assert filtered[1, 0] == 3.0
+    assert np.isnan(filtered[1, 1])
+
+
 # --- Real-format synthetic chunk builders (mirrors tests/test_chunk_io.py's
 # fixtures -- kept local to this file rather than shared, since each exists
 # to validate a different layer: test_chunk_io tests the decoders in

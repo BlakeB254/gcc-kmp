@@ -45,7 +45,7 @@ data class GroundIntentPrompt(
  * One finished background-capture artifact chunk (Pillar 1 session capture)
  * drained from the native recorder. Mirrors the Swift/iosMain
  * `"index|kind|path|sizeBytes"` packet convention (kind: video|sidecar|
- * depth) — see `ArNativeSurface.drainFinishedCaptureChunks`/
+ * depth|confidence) — see `ArNativeSurface.drainFinishedCaptureChunks`/
  * `stopCaptureAndDrain`. Android/Desktop never produce these (capture is
  * iOS-only in v1 — the scope guard in the session-capture plan).
  */
@@ -75,6 +75,12 @@ data class CaptureChunkInfo(
 expect class ArEnvScanOverlay() {
     /** AR tracking quality; LIMITED should surface a "hold steady" prompt. */
     val trackingState: StateFlow<TrackingState>
+
+    /**
+     * Live advisory quality for downstream 3D reconstruction. Null off-iOS
+     * and before the first AR camera sample. This never gates scan progress.
+     */
+    val reconstructionReadiness: StateFlow<ReconstructionReadiness?>
 
     /** True once ARKit has recognized ground and the grid effect is live. */
     val groundDetected: StateFlow<Boolean>

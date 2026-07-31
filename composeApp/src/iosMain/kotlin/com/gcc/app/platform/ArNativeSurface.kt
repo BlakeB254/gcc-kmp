@@ -62,6 +62,12 @@ interface ArNativeSurface {
     /** Camera AR-world position as [x, y, z], or null before the first frame. */
     fun cameraPosition(): List<Double>?
 
+    /** True when this AR session is configured for LiDAR scene depth. */
+    fun isLidarDevice(): Boolean
+
+    /** True when the latest frame carries a non-empty scene-depth map. */
+    fun currentFrameHasUsableDepth(): Boolean
+
     /**
      * ARKit timestamp of the latest frame (boot-relative seconds — the SAME
      * clock the capture recorder's pose sidecar stamps every `t` with), or

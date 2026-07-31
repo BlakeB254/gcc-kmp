@@ -1140,6 +1140,8 @@ private fun CameraPhase(
 
         val arTracking by (arOverlay?.trackingState
             ?: remember { MutableStateFlow(com.gcc.app.platform.TrackingState.NORMAL) }).collectAsState()
+        val reconstructionReadiness by (arOverlay?.reconstructionReadiness
+            ?: remember { MutableStateFlow(null) }).collectAsState()
 
         // WS3: the SAME signal the ScanQualityBadge shows also gates the deep
         // (CLOSE) coverage shade. Feedback-only contract intact — this never
@@ -1173,6 +1175,8 @@ private fun CameraPhase(
                 (gpsAccuracy ?: 0.0) > MAX_GEO_REF_ACCURACY_METERS ->
                 "GPS too weak to anchor the scan — move toward open sky"
             arOverlay != null && !groundDetected -> "Point the camera at the ground to map it"
+            reconstructionReadiness?.isReady == false ->
+                reconstructionReadiness?.guidance ?: "Environment scan active — sweep the camera slowly"
             // "Highlighted area" must only be said when the minimap actually
             // highlights one: ScanMinimapOverlay hides the guidance ring for
             // targets hugging the user dot (the frontier pick is the ground

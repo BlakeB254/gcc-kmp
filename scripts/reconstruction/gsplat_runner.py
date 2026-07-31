@@ -36,6 +36,64 @@ GSPLAT_PYTHON = os.path.join(GSPLAT_DIR, ".venv", "bin", "python")
 MAX_TOTAL_FRAMES = 160
 # ARKit camera convention is GL (-Z forward, +Y up); gsplat wants OpenCV.
 GL_TO_CV = np.diag([1.0, -1.0, -1.0, 1.0])
+MIN_NOVEL_VIEW_BASELINE_METERS = 2.0
+MAX_CELL_POSE_SPAN_METERS = 40.0
+
+
+def splat_quality_gate(poses: np.ndarray) -> str | None:
+    """Reject camera tracks that cannot form a trustworthy cell splat.
+
+    Map/evidence ingestion happens before this trainer and is unaffected.
+    The horizontal bounding-box diagonal is intentionally conservative:
+    below 2 m there is not enough parallax for a useful novel view, while
+    above 40 m indicates that independent session frames were misregistered
+    into one local cell coordinate frame.
+    """
+    camera_positions = np.asarray(poses, dtype=np.float64)[:, :3, 3]
+    horizontal_extent = np.ptp(camera_positions[:, [0, 2]], axis=0)
+    span = float(np.linalg.norm(horizontal_extent))
+    if span < MIN_NOVEL_VIEW_BASELINE_METERS:
+        return "insufficient-parallax"
+    if span > MAX_CELL_POSE_SPAN_METERS:
+        return "implausible-pose-span"
+    return None
+
+
+def _frame_sharpness(image: np.ndarray) -> float:
+    """Resolution-normalized high-frequency energy used only for ranking."""
+    gray = np.asarray(image, dtype=np.float32).mean(axis=2) / 255.0
+    if min(gray.shape) < 3:
+        return 0.0
+    laplacian = (
+        -4.0 * gray[1:-1, 1:-1]
+        + gray[:-2, 1:-1]
+        + gray[2:, 1:-1]
+        + gray[1:-1, :-2]
+        + gray[1:-1, 2:]
+    )
+    return float(np.var(laplacian))
+
+
+def select_training_frame_indices(images: list[np.ndarray], budget: int) -> list[int]:
+    """Drop the blurriest fifth, then retain uniform temporal coverage.
+
+    This is deliberately relative within a capture: concrete, grass, and
+    brick have very different absolute texture energy, so a global threshold
+    would reject legitimate low-texture scenes. Short captures stay intact.
+    """
+    if budget <= 0 or not images:
+        return []
+    if len(images) <= budget:
+        return list(range(len(images)))
+
+    scores = np.asarray([_frame_sharpness(image) for image in images])
+    keep_count = max(budget, int(np.ceil(len(images) * 0.8)))
+    sharpest = np.argsort(scores, kind="stable")[-keep_count:]
+    candidates = np.sort(sharpest)
+    if len(candidates) <= budget:
+        return candidates.tolist()
+    picks = np.linspace(0, len(candidates) - 1, budget, dtype=int)
+    return candidates[picks].tolist()
 
 
 def available() -> bool:
@@ -70,12 +128,20 @@ def _export_session_frames(manifest: dict, T_cell: np.ndarray, frames_dir: str,
         usable = [i for i, f in enumerate(sidecar) if f.tracking == 0]
         if not usable:
             continue
-        idxs = [usable[j] for j in np.linspace(0, len(usable) - 1,
-                                               min(per_chunk, len(usable)), dtype=int)]
+        candidate_count = min(len(usable), max(per_chunk, per_chunk * 2))
+        idxs = [
+            usable[j]
+            for j in np.unique(
+                np.linspace(0, len(usable) - 1, candidate_count, dtype=int)
+            )
+        ]
         imgs = chunk_io.extract_video_frames_at(video, [sidecar[i].t_video for i in idxs])
-        for i, img in zip(idxs, imgs):
-            if img is None:
-                continue
+        valid = [(i, img) for i, img in zip(idxs, imgs) if img is not None]
+        selected = select_training_frame_indices(
+            [img for _i, img in valid], budget=per_chunk
+        )
+        for selected_index in selected:
+            i, img = valid[selected_index]
             f = sidecar[i]
             poses.append(T_cell @ f.camera_transform @ GL_TO_CV)
             intrinsics.append(np.array([[f.intrinsics.fx, 0, f.intrinsics.cx],
@@ -123,6 +189,13 @@ def train_gsplat_for_cell(
         if n < 8:
             print(f"gsplat_runner: cell {cell_id}: only {n} posed frames (need 8+)")
             return None, "too-few-frames"
+        quality_reason = splat_quality_gate(np.stack(poses))
+        if quality_reason is not None:
+            print(
+                f"gsplat_runner: cell {cell_id}: splat publication held: "
+                f"{quality_reason}"
+            )
+            return None, quality_reason
 
         sample = Image.open(os.path.join(frames_dir, "0000.jpg"))
         np.save(os.path.join(tmp, "poses.npy"), np.stack(poses).astype(np.float64))

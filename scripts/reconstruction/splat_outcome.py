@@ -11,6 +11,10 @@ splat_train.py's trainer contracts, `-> tuple[bytes | None, str | None]`):
   "no-video-frames"  trainer found zero posed frames to train from
   "too-few-frames"   trainer found more than zero but fewer than 8 posed
                      frames
+  "insufficient-parallax" camera path spans less than 2m horizontally;
+                     evidence is retained but no fuzzy splat is published
+  "implausible-pose-span" camera path spans more than 40m inside one cell,
+                     indicating a cross-session registration failure
   "training-failed"  venv missing / empty merged points / training
                      subprocess rc != 0 / missing output file
   "disabled"         splat_wanted was falsy (train_splat off, no accepted

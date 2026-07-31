@@ -52,12 +52,22 @@ class SidecarFrame:
     intrinsics: Intrinsics | None  # width/height filled in by caller (sidecar only has fx/fy/cx/cy)
     tracking: int  # 0=normal, 1=limited, 2=other
     thermal: int
+    exposure_duration_seconds: float | None = None
+    iso: float | None = None
+    white_balance_gains: tuple[float, float, float] | None = None
+    lens_position: float | None = None
 
 
 @dataclass
 class DepthRecord:
     t: float
     depth_meters: np.ndarray  # (height, width) float32, row padding already stripped
+
+
+@dataclass
+class ConfidenceRecord:
+    t: float
+    confidence: np.ndarray  # (height, width) uint8, row padding already stripped
 
 
 def _matrix_from_column_major(values: list[float], n: int) -> np.ndarray:
@@ -118,6 +128,18 @@ def parse_sidecar(jsonl_bytes: bytes) -> tuple[dict, list[SidecarFrame]]:
             intrinsics=intr,
             tracking=record["tracking"],
             thermal=record["thermal"],
+            exposure_duration_seconds=record.get("exposureDurationSeconds"),
+            iso=record.get("iso"),
+            white_balance_gains=(
+                record["whiteBalanceRedGain"],
+                record["whiteBalanceGreenGain"],
+                record["whiteBalanceBlueGain"],
+            ) if all(record.get(key) is not None for key in (
+                "whiteBalanceRedGain",
+                "whiteBalanceGreenGain",
+                "whiteBalanceBlueGain",
+            )) else None,
+            lens_position=record.get("lensPosition"),
         ))
     return header, frames
 
@@ -153,6 +175,77 @@ def parse_depth_chunk(depth_bytes: bytes) -> list[DepthRecord]:
         depth_meters = np.ascontiguousarray(as_float[:, :width])
 
         records.append(DepthRecord(t=t, depth_meters=depth_meters))
+        offset = record_end
+    return records
+
+
+_CONFIDENCE_RECORD_PREFIX = struct.Struct("<I")
+_CONFIDENCE_V1_HEADER = struct.Struct("<HHdIIIII")
+
+
+def parse_confidence_chunk(confidence_bytes: bytes) -> list[ConfidenceRecord]:
+    """Parse the additive v1 LiDAR confidence artifact.
+
+    Unknown versions are skipped using their outer record length. Version 1
+    stores the raw UInt8 Core Video plane, including row padding.
+    """
+    records = []
+    offset = 0
+    total = len(confidence_bytes)
+    while offset < total:
+        if total - offset < _CONFIDENCE_RECORD_PREFIX.size:
+            raise ValueError(f"truncated confidence record length at offset {offset}")
+        (record_len,) = _CONFIDENCE_RECORD_PREFIX.unpack_from(confidence_bytes, offset)
+        offset += _CONFIDENCE_RECORD_PREFIX.size
+        record_end = offset + record_len
+        if record_end > total:
+            raise ValueError(
+                f"truncated confidence record at offset {offset}: "
+                f"need {record_len} bytes, have {total - offset}"
+            )
+        if record_len < 4:
+            raise ValueError(f"invalid confidence record length {record_len}")
+
+        version, fixed_header_len = struct.unpack_from("<HH", confidence_bytes, offset)
+        if version != 1:
+            offset = record_end
+            continue
+        if fixed_header_len != _CONFIDENCE_V1_HEADER.size:
+            raise ValueError(
+                f"unsupported confidence v1 header length {fixed_header_len}"
+            )
+        if record_len < fixed_header_len:
+            raise ValueError("confidence record shorter than its fixed header")
+
+        (
+            _version,
+            _header_len,
+            t,
+            width,
+            height,
+            bytes_per_row,
+            _pixel_format,
+            payload_len,
+        ) = _CONFIDENCE_V1_HEADER.unpack_from(confidence_bytes, offset)
+        if payload_len != height * bytes_per_row:
+            raise ValueError(
+                f"confidence payload size {payload_len} != "
+                f"height*bytesPerRow {height * bytes_per_row}"
+            )
+        if fixed_header_len + payload_len != record_len:
+            raise ValueError("confidence record length does not match payload")
+        if bytes_per_row < width:
+            raise ValueError("confidence bytesPerRow is smaller than width")
+
+        payload_start = offset + fixed_header_len
+        raw = confidence_bytes[payload_start:payload_start + payload_len]
+        padded = np.frombuffer(raw, dtype=np.uint8).reshape(height, bytes_per_row)
+        records.append(
+            ConfidenceRecord(
+                t=t,
+                confidence=np.ascontiguousarray(padded[:, :width]),
+            )
+        )
         offset = record_end
     return records
 
