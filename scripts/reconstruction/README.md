@@ -6,6 +6,30 @@ Fuses multiple independent scan sessions of the same physical location
 recommended split (Open3D for registration, gsplat for splat training — that
 doc's own conclusion, this is its implementation).
 
+## Verified publication quality configuration
+
+Verified candidate publication has no built-in quality thresholds. Operators
+must configure all six bounds; a missing, non-numeric, non-finite, negative,
+or out-of-range value rejects the candidate rather than selecting a default:
+
+- `VERIFIED_MIN_IMAGE_SIMILARITY` (`0..1`)
+- `VERIFIED_MAX_DEPTH_ERROR` (`>=0`)
+- `VERIFIED_MAX_TEMPORAL_FLICKER` (`>=0`)
+- `VERIFIED_MAX_FLOATER_RATIO` (`0..1`)
+- `VERIFIED_MIN_RETAINED_COVERAGE` (`0..1`)
+- `VERIFIED_MAX_ASSET_SIZE_BYTES` (`>=0`)
+
+The six measurements also have explicit artifact bindings. Image similarity,
+depth error, and temporal flicker are respectively
+`aggregates.meanSsim`, `aggregates.meanDepthError`, and
+`aggregates.meanColorFlicker` in `validation-metrics.json`. Floater ratio is
+`qualityMetrics.floaterRatio` in `cleanup-report.json`; retained spatial
+coverage is `qualityMetrics.retainedCoverage` in `frame-audit.json`; asset
+size is the exact balanced PLY byte length. Missing fields stay missing and
+produce stable gate rejections. In particular, depth flicker is not depth
+error, removed-Gaussian counts are not floater ratio, and selected-frame
+counts are not retained spatial coverage.
+
 **Ingests the REAL mobile-side capture format** shipped in
 `iosApp/iosApp/ArSessionRecorder.swift` (Pillar 1 session capture,
 2026-07-07): per session, rotating chunks of HEVC video + a per-frame JSONL

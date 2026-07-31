@@ -2,6 +2,7 @@
 Postgres (data-postgres, :5432) -- SKIP LOCKED / lease-expiry behavior is
 Postgres-generic, so there's no reason to hit Neon from tests. Skipped
 entirely when the local container isn't reachable."""
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -627,6 +628,217 @@ def _complete_staged_receipt(cell: str, version: int, sha256: str):
     )
 
 
+class _PublicationCandidateFixture:
+    """Durable artifact fixture consumed by the real publication producer."""
+
+    publishable_policy = "balanced"
+    generation_id = "generation-4"
+
+    def __init__(self, root: Path, *, include_depth_error: bool = True):
+        self.raw = root / "splat_gsplat.ply"
+        self.conservative = root / "splat_conservative.ply"
+        self.balanced = root / "splat_balanced.ply"
+        self.diagnostic = root / "splat_diagnostic.ply"
+        self.cleanup_report = root / "cleanup-report.json"
+        self.evidence_artifact = root / "verified-evidence.npz"
+        self.poses = root / "poses.npy"
+        self.frame_audit = root / "frame-audit.json"
+        self.training_state = root / "training-state.json"
+        self.checkpoint = root / "checkpoint_latest.pt"
+        for path in (
+            self.raw,
+            self.conservative,
+            self.balanced,
+            self.diagnostic,
+            self.evidence_artifact,
+            self.poses,
+            self.checkpoint,
+        ):
+            path.write_bytes(path.name.encode())
+        self.cleanup_report.write_text(
+            json.dumps({"qualityMetrics": {"floaterRatio": 0.04}})
+        )
+        self.frame_audit.write_text(
+            json.dumps(
+                {
+                    "selectedFrames": 12,
+                    "rejectedFrames": {"blur": 2},
+                    "qualityMetrics": {"retainedCoverage": 0.92},
+                }
+            )
+        )
+        self.training_state.write_text(
+            json.dumps({"iterations": 30_000, "codeRevision": "fixture-revision"})
+        )
+        aggregates = {
+            "meanSsim": 0.95,
+            "meanColorFlicker": 0.01,
+            # This remains present when meanDepthError is omitted, proving
+            # the producer does not relabel temporal depth instability.
+            "meanDepthFlicker": 0.001,
+        }
+        if include_depth_error:
+            aggregates["meanDepthError"] = 0.02
+        self.validation_metrics = root / "validation-metrics.json"
+        self.validation_metrics.write_text(json.dumps({"aggregates": aggregates}))
+        self.contact_sheet = root / "validation-contact-sheet.jpg"
+        self.contact_sheet.write_bytes(b"jpeg")
+
+    @property
+    def publishable(self):
+        return self.balanced
+
+    @property
+    def balanced_bytes(self):
+        return self.balanced.read_bytes()
+
+
+def _set_passing_publication_thresholds(monkeypatch):
+    values = {
+        "VERIFIED_MIN_IMAGE_SIMILARITY": "0.90",
+        "VERIFIED_MAX_DEPTH_ERROR": "0.10",
+        "VERIFIED_MAX_TEMPORAL_FLICKER": "0.05",
+        "VERIFIED_MAX_FLOATER_RATIO": "0.10",
+        "VERIFIED_MIN_RETAINED_COVERAGE": "0.80",
+        "VERIFIED_MAX_ASSET_SIZE_BYTES": "2000",
+    }
+    for name, value in values.items():
+        monkeypatch.setenv(name, value)
+
+
+def _verified_fixture_result(tmp_path: Path, *, include_depth_error: bool = True):
+    from fuse_cell import FusionResult
+
+    candidate = _PublicationCandidateFixture(
+        tmp_path, include_depth_error=include_depth_error
+    )
+    result = FusionResult(accepted_session_ids=["sess-1"])
+    result.verified_candidate = candidate
+    result.verified_version = 4
+    result.validation_metrics = candidate.validation_metrics
+    result.validation_contact_sheet = candidate.contact_sheet
+    return result
+
+
+def test_real_artifacts_produce_canonical_metrics_manifest_and_pending_candidate(
+    db, monkeypatch, tmp_path
+):
+    """Catches the worker retaining a typed gate without a production producer."""
+    import gsplat_runner
+    import recon_worker
+
+    _dsn, conn = db
+    _enqueue(conn, "sess-1", "1:2")
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM reconstruction_jobs WHERE session_id='sess-1'")
+        job_id = cur.fetchone()[0]
+    conn.commit()
+    result = _verified_fixture_result(tmp_path)
+    sha256 = hashlib.sha256(result.verified_candidate.balanced_bytes).hexdigest()
+    staged_manifests = []
+
+    _set_passing_publication_thresholds(monkeypatch)
+    monkeypatch.setenv("REQUIRE_SCRUBBED_VIDEO", "0")
+    monkeypatch.setenv("RECON_TRAIN_SPLAT", "1")
+    monkeypatch.setenv("SPLAT_ENGINE", "gsplat")
+    monkeypatch.setattr(gsplat_runner, "available", lambda: True)
+    monkeypatch.setattr(
+        recon_worker.fuse_cell_module, "fuse_cell", lambda *_a, **_k: result
+    )
+    monkeypatch.setattr(
+        recon_worker, "compress_splat_for_web", lambda _data: (b"web", "spz")
+    )
+    monkeypatch.setattr(
+        recon_worker.fuse_cell_module,
+        "stage_verified_candidate_assets",
+        lambda _cell, _version, _candidate, manifest, **_kwargs:
+        staged_manifests.append(manifest)
+        or _complete_staged_receipt("1:2", 4, sha256),
+    )
+
+    recon_worker.process_job(conn, recon_worker.Job(job_id, "sess-1", "1:2", 1))
+
+    assert result.verified_metrics.to_dict() == {
+        "imageSimilarity": 0.95,
+        "depthError": 0.02,
+        "temporalFlicker": 0.01,
+        "floaterRatio": 0.04,
+        "retainedCoverage": 0.92,
+        "assetSizeBytes": len(result.verified_candidate.balanced_bytes),
+    }
+    assert result.publication_decision.to_dict() == {"publish": True, "reasons": []}
+    document = staged_manifests[0].to_dict()
+    assert result.verified_manifest is staged_manifests[0]
+    assert document["metrics"] == result.verified_metrics.to_dict()
+    assert document["auditStatistics"]["selectedFrames"] == 12
+    assert document["training"]["iterations"] == 30_000
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT processing_status, review_status, activated_at FROM reconstruction_assets"
+        )
+        assert cur.fetchone() == ("candidate", "pending", None)
+
+
+def test_missing_direct_metric_is_rejected_without_fabrication(
+    db, monkeypatch, tmp_path
+):
+    """Catches depth flicker or another proxy being relabeled as depth error."""
+    import gsplat_runner
+    import recon_worker
+
+    _dsn, conn = db
+    _enqueue(conn, "sess-1", "1:2")
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM reconstruction_jobs WHERE session_id='sess-1'")
+        job_id = cur.fetchone()[0]
+    conn.commit()
+    result = _verified_fixture_result(tmp_path, include_depth_error=False)
+    sha256 = hashlib.sha256(result.verified_candidate.balanced_bytes).hexdigest()
+
+    _set_passing_publication_thresholds(monkeypatch)
+    monkeypatch.setenv("REQUIRE_SCRUBBED_VIDEO", "0")
+    monkeypatch.setenv("RECON_TRAIN_SPLAT", "1")
+    monkeypatch.setenv("SPLAT_ENGINE", "gsplat")
+    monkeypatch.setattr(gsplat_runner, "available", lambda: True)
+    monkeypatch.setattr(
+        recon_worker.fuse_cell_module, "fuse_cell", lambda *_a, **_k: result
+    )
+    monkeypatch.setattr(
+        recon_worker, "compress_splat_for_web", lambda _data: (b"web", "spz")
+    )
+    monkeypatch.setattr(
+        recon_worker.fuse_cell_module,
+        "stage_verified_candidate_assets",
+        lambda *_a, **_k: _complete_staged_receipt("1:2", 4, sha256),
+    )
+
+    recon_worker.process_job(conn, recon_worker.Job(job_id, "sess-1", "1:2", 1))
+
+    assert result.verified_metrics.depth_error is None
+    assert result.publication_decision.reasons == ["depth-error-missing"]
+    with conn.cursor() as cur:
+        cur.execute("SELECT processing_status, rejection_reasons FROM reconstruction_assets")
+        assert cur.fetchone() == ("rejected", ["depth-error-missing"])
+
+
+def test_missing_threshold_configuration_fails_closed(monkeypatch, tmp_path):
+    """Catches an implicit/default threshold silently authorizing publication."""
+    import recon_worker
+
+    result = _verified_fixture_result(tmp_path)
+    for name in recon_worker.QUALITY_THRESHOLD_ENV:
+        monkeypatch.delenv(name, raising=False)
+
+    manifest, decision = recon_worker._verified_publication(result, "1:2")
+
+    assert decision.publish is False
+    assert decision.reasons == [
+        f"quality-threshold-missing:{name}"
+        for name in recon_worker.QUALITY_THRESHOLD_ENV
+    ]
+    assert manifest.to_dict()["decision"] == decision.to_dict()
+
+
 def test_process_job_records_verified_success_pending_without_legacy_completion(
     db, monkeypatch, tmp_path
 ):
@@ -725,14 +937,10 @@ def test_process_job_records_verified_success_pending_without_legacy_completion(
         assert cur.fetchone()[0] == "done"
 
 
-@pytest.mark.parametrize(
-    ("supplied_decision", "reason"),
-    [(None, "publication-decision-missing"), (object(), "publication-decision-invalid")],
-)
-def test_process_job_missing_or_invalid_decision_is_stably_rejected(
-    db, monkeypatch, tmp_path, supplied_decision, reason
+def test_process_job_invalid_precomputed_decision_is_stably_rejected(
+    db, monkeypatch, tmp_path
 ):
-    """Catches missing producer metrics/decision falling back to legacy publication."""
+    """Catches malformed precomputed output falling back to legacy publication."""
     import hashlib
     import gsplat_runner
     import recon_worker
@@ -750,7 +958,7 @@ def test_process_job_missing_or_invalid_decision_is_stably_rejected(
     result.verified_candidate = SimpleNamespace(balanced_bytes=candidate_bytes)
     result.verified_version = 4
     result.verified_manifest = None
-    result.publication_decision = supplied_decision
+    result.publication_decision = object()
     result.validation_metrics = tmp_path / "validation-metrics.json"
     result.validation_contact_sheet = tmp_path / "validation-contact-sheet.jpg"
     result.validation_metrics.write_text("{}")
@@ -796,7 +1004,7 @@ def test_process_job_missing_or_invalid_decision_is_stably_rejected(
         )
         status, reasons, activated_at = cur.fetchone()
     assert status == "rejected"
-    assert reasons == [reason]
+    assert reasons == ["publication-decision-invalid"]
     assert activated_at is None
 
 
@@ -830,6 +1038,82 @@ def test_review_activation_resume_publishes_pending_candidate(db):
         version, reconstructed_at = cur.fetchone()
     assert version == 4
     assert reconstructed_at is not None
+
+
+def test_normal_queue_poll_activates_reviewed_candidate_without_manual_flag(db):
+    """Catches --drain/--loop ignoring approvals when there is no queued job."""
+    import recon_worker
+
+    _dsn, conn = db
+    candidate = _insert_verified_asset(
+        conn,
+        version=4,
+        processing_status="candidate",
+        review_status="approved",
+        reviewed=True,
+    )
+
+    assert recon_worker.run_once(conn) is False
+    assert _active_verified_id(conn) == candidate
+
+
+def test_review_activation_scan_is_bounded_and_idempotent(db):
+    """Catches one queue poll doing unbounded approval work or replaying rows."""
+    import recon_worker
+
+    _dsn, conn = db
+    candidates = [
+        _insert_verified_asset(
+            conn,
+            cell=f"cell:{index}",
+            version=1,
+            processing_status="candidate",
+            review_status="approved",
+            reviewed=True,
+        )
+        for index in range(3)
+    ]
+
+    assert recon_worker.activate_reviewed_candidates(conn, limit=2) == 2
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT count(*) FROM reconstruction_assets WHERE processing_status='published'"
+        )
+        assert cur.fetchone()[0] == 2
+    assert recon_worker.activate_reviewed_candidates(conn, limit=2) == 1
+    assert recon_worker.activate_reviewed_candidates(conn, limit=2) == 0
+    assert all(
+        _active_verified_id(conn, f"cell:{index}") == candidate
+        for index, candidate in enumerate(candidates)
+    )
+
+
+def test_queue_cycle_scans_approvals_before_and_after_processing(monkeypatch):
+    """Catches an approval arriving during a job waiting until another poll."""
+    import recon_worker
+
+    events = []
+    job = recon_worker.Job(17, "sess-1", "1:2", 1)
+
+    class _Connection:
+        def transaction(self):
+            from contextlib import nullcontext
+            return nullcontext()
+
+    monkeypatch.setattr(
+        recon_worker,
+        "activate_reviewed_candidates",
+        lambda _conn, **_kwargs: events.append("activate") or 0,
+    )
+    monkeypatch.setattr(recon_worker, "claim_job", lambda _conn: job)
+    monkeypatch.setattr(
+        recon_worker,
+        "process_job",
+        lambda _conn, _job: events.append("process"),
+    )
+
+    assert recon_worker.run_once(_Connection()) is True
+    assert events == ["activate", "process", "activate"]
 
 
 
@@ -971,6 +1255,9 @@ def test_gpu_busy_defers_without_burning_attempts(monkeypatch):
     def record_defer(_conn, deferred_job, reason):
         outcomes.append((deferred_job.id, reason))
 
+    monkeypatch.setattr(
+        recon_worker, "activate_reviewed_candidates", lambda _conn: 0
+    )
     monkeypatch.setattr(recon_worker, "claim_job", lambda _conn: job)
     monkeypatch.setattr(recon_worker, "process_job", busy_process)
     monkeypatch.setattr(recon_worker, "defer_job", record_defer)

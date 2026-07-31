@@ -18,6 +18,11 @@ Env:
   REQUIRE_SCRUBBED_VIDEO  default '1' — jobs wait (defer, not fail) until the
                      privacy scrub pass has renditions for every video chunk
                      of the cell; '0' (or PREFER_SCRUBBED_VIDEO=0) disables
+  VERIFIED_MIN_IMAGE_SIMILARITY, VERIFIED_MAX_DEPTH_ERROR,
+  VERIFIED_MAX_TEMPORAL_FLICKER, VERIFIED_MAX_FLOATER_RATIO,
+  VERIFIED_MIN_RETAINED_COVERAGE, VERIFIED_MAX_ASSET_SIZE_BYTES
+                     all required, with no defaults, for automated verified
+                     candidate publication decisions
 
 Usage:
   python recon_worker.py --once            # process at most one job
@@ -32,13 +37,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import subprocess
 import sys
 import tempfile
 import time
 import traceback
+from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 
 import psycopg
 import requests
@@ -48,7 +56,12 @@ import r2_store
 from fuse_cell import FusionResult, ProducedAsset, StagedVerifiedCandidate
 from gpu_admission import GpuBusy
 from verified_manifest import build_manifest
-from verified_quality import PublicationDecision, QualityMetrics
+from verified_quality import (
+    PublicationDecision,
+    QualityMetrics,
+    QualityThresholds,
+    publication_decision,
+)
 
 # Must outlast the slowest job: gsplat training runs up to 3h (its
 # subprocess timeout in gsplat_runner) + fusion/download overhead. A lease
@@ -64,6 +77,19 @@ DEFAULT_WORLD_MIRROR_URL = "http://127.0.0.1:7027"
 # produced renditions for its chunks (scripts/privacy_scrub/ runs on a
 # 10-minute timer — see ops/systemd/gcc-privacy-scrub.timer).
 SCRUB_DEFER_MINUTES = 10
+# Keep approval work bounded so a backlog cannot starve reconstruction jobs.
+REVIEW_ACTIVATION_BATCH_SIZE = 25
+
+# Required, intentionally default-free automated publication bounds. Mapping
+# order is also the stable order used for configuration rejection reasons.
+QUALITY_THRESHOLD_ENV = {
+    "VERIFIED_MIN_IMAGE_SIMILARITY": ("min_image_similarity", 0.0, 1.0),
+    "VERIFIED_MAX_DEPTH_ERROR": ("max_depth_error", 0.0, None),
+    "VERIFIED_MAX_TEMPORAL_FLICKER": ("max_temporal_flicker", 0.0, None),
+    "VERIFIED_MAX_FLOATER_RATIO": ("max_floater_ratio", 0.0, 1.0),
+    "VERIFIED_MIN_RETAINED_COVERAGE": ("min_retained_coverage", 0.0, 1.0),
+    "VERIFIED_MAX_ASSET_SIZE_BYTES": ("max_asset_size_bytes", 0.0, None),
+}
 
 CLAIM_SQL = f"""
 UPDATE reconstruction_jobs
@@ -535,8 +561,12 @@ def activate_verified_candidate(
     return True
 
 
-def activate_reviewed_candidates(conn) -> int:
-    """Resume candidates whose attributed pilot approval arrived asynchronously."""
+def activate_reviewed_candidates(
+    conn, *, limit: int = REVIEW_ACTIVATION_BATCH_SIZE
+) -> int:
+    """Resume one bounded batch of asynchronously approved candidates."""
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+        raise ValueError("review activation limit must be a positive integer")
     with conn.cursor() as cur:
         cur.execute(
             """SELECT id, source_scan_coverage_event_ids
@@ -544,7 +574,9 @@ def activate_reviewed_candidates(conn) -> int:
                WHERE asset_kind='verified' AND processing_status='candidate'
                  AND review_status='approved' AND reviewed_at IS NOT NULL
                  AND reviewed_by IS NOT NULL AND btrim(reviewed_by)<>''
-               ORDER BY id"""
+               ORDER BY id
+               LIMIT %s""",
+            (limit,),
         )
         rows = cur.fetchall()
     conn.commit()
@@ -567,11 +599,111 @@ def activate_reviewed_candidates(conn) -> int:
     return activated
 
 
+def _json_mapping(path: str | os.PathLike[str], *, name: str) -> dict:
+    try:
+        document = json.loads(Path(path).read_text())
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as error:
+        raise ValueError(f"{name} is unreadable") from error
+    if not isinstance(document, dict):
+        raise ValueError(f"{name} must contain a JSON object")
+    return document
+
+
+def _nested_mapping(document: Mapping, name: str) -> Mapping:
+    value = document.get(name)
+    return value if isinstance(value, Mapping) else {}
+
+
+def _quality_thresholds_from_env() -> tuple[QualityThresholds | None, list[str]]:
+    values: dict[str, float] = {}
+    reasons: list[str] = []
+    for env_name, (attribute, minimum, maximum) in QUALITY_THRESHOLD_ENV.items():
+        raw = os.environ.get(env_name)
+        if raw is None or not raw.strip():
+            reasons.append(f"quality-threshold-missing:{env_name}")
+            continue
+        try:
+            value = float(raw)
+        except ValueError:
+            reasons.append(f"quality-threshold-invalid:{env_name}")
+            continue
+        if (
+            not math.isfinite(value)
+            or value < minimum
+            or (maximum is not None and value > maximum)
+        ):
+            reasons.append(f"quality-threshold-invalid:{env_name}")
+            continue
+        values[attribute] = value
+    if reasons:
+        return None, reasons
+    return QualityThresholds(**values), []
+
+
+def _produce_verified_publication(result: FusionResult, cell: str):
+    """Build the gate inputs from durable artifacts and populate ``result``.
+
+    Bindings are deliberately semantic and direct: validation SSIM, validation
+    depth error, validation RGB flicker, cleanup-reported floater ratio,
+    frame-audit-reported retained spatial coverage, and balanced asset bytes.
+    A missing direct measurement remains ``None`` for publication_decision;
+    unrelated counts or depth-flicker values are never substituted.
+    """
+    candidate = result.verified_candidate
+    validation = _json_mapping(
+        result.validation_metrics, name="validation metrics"
+    )
+    cleanup = _json_mapping(candidate.cleanup_report, name="cleanup report")
+    frame_audit = _json_mapping(candidate.frame_audit, name="frame audit")
+    training_state = _json_mapping(candidate.training_state, name="training state")
+    aggregates = _nested_mapping(validation, "aggregates")
+    cleanup_quality = _nested_mapping(cleanup, "qualityMetrics")
+    audit_quality = _nested_mapping(frame_audit, "qualityMetrics")
+    balanced_bytes = candidate.balanced_bytes
+    if not isinstance(balanced_bytes, bytes):
+        raise ValueError("verified balanced candidate bytes are unavailable")
+
+    metrics = QualityMetrics(
+        image_similarity=aggregates.get("meanSsim"),
+        depth_error=aggregates.get("meanDepthError"),
+        temporal_flicker=aggregates.get("meanColorFlicker"),
+        floater_ratio=cleanup_quality.get("floaterRatio"),
+        retained_coverage=audit_quality.get("retainedCoverage"),
+        asset_size_bytes=len(balanced_bytes),
+    )
+    thresholds, threshold_reasons = _quality_thresholds_from_env()
+    decision = (
+        PublicationDecision(False, threshold_reasons)
+        if thresholds is None
+        else publication_decision(metrics, thresholds)
+    )
+    manifest = build_manifest(
+        candidate,
+        cell_ids=[cell],
+        source_session_ids=result.accepted_session_ids,
+        audit_statistics=frame_audit,
+        training=training_state,
+        metrics=metrics,
+        review_state={"status": "pending"},
+        decision=decision,
+    )
+    result.verified_metrics = metrics
+    result.publication_decision = decision
+    result.verified_manifest = manifest
+    return manifest, decision
+
+
 def _verified_publication(result: FusionResult, cell: str):
     """Normalize producer-owned metrics/decision, failing closed when absent."""
     candidate = result.verified_candidate
     supplied_decision = result.publication_decision
     metrics = result.verified_metrics
+    if (
+        supplied_decision is None
+        and metrics is None
+        and result.verified_manifest is None
+    ):
+        return _produce_verified_publication(result, cell)
     invalid_reason: str | None = None
     if supplied_decision is None:
         invalid_reason = "publication-decision-missing"
@@ -838,6 +970,7 @@ def _record_outcome(conn, fn, *args) -> None:
 def run_once(conn) -> bool:
     """One claim/process cycle. True if a job was processed (successfully or
     not), False when the queue is empty."""
+    activate_reviewed_candidates(conn)
     with conn.transaction():
         job = claim_job(conn)
     if job is None:
@@ -857,6 +990,8 @@ def run_once(conn) -> bool:
         _safe_rollback(conn)
         traceback.print_exc()
         _record_outcome(conn, fail_job, job, err)
+    finally:
+        activate_reviewed_candidates(conn)
     return True
 
 
@@ -871,7 +1006,7 @@ def main() -> None:
     group.add_argument(
         "--activate-reviewed",
         action="store_true",
-        help="atomically activate every attributed approved verified candidate",
+        help="atomically activate one bounded batch of approved verified candidates",
     )
     args = parser.parse_args()
 
