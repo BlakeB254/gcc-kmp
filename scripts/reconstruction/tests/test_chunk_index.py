@@ -89,6 +89,7 @@ def test_chunk_keys_by_session_returns_indexed_capture_artifacts(db):
     dsn, conn = db
     _session(conn, "env-a", "4646:-7218")
     _chunk(conn, "env-a", "4646:-7218", "raw/4646:-7218/env-a/capture/chunk-0.bin", "bin")
+    _chunk(conn, "env-a", "4646:-7218", "raw/4646:-7218/env-a/capture/chunk-0.confidence", "confidence")
     _chunk(conn, "env-a", "4646:-7218", "raw/4646:-7218/env-a/capture/chunk-0.jsonl", "jsonl")
     _chunk(conn, "env-a", "4646:-7218", "raw/4646:-7218/env-a/capture/chunk-0.mov", "mov")
 
@@ -97,6 +98,7 @@ def test_chunk_keys_by_session_returns_indexed_capture_artifacts(db):
     assert set(keys) == {"env-a"}
     assert keys["env-a"] == [
         "raw/4646:-7218/env-a/capture/chunk-0.bin",
+        "raw/4646:-7218/env-a/capture/chunk-0.confidence",
         "raw/4646:-7218/env-a/capture/chunk-0.jsonl",
         "raw/4646:-7218/env-a/capture/chunk-0.mov",
     ]

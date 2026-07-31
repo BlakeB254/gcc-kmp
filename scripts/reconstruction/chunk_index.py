@@ -50,7 +50,7 @@ ORDER BY c.session_id, c.r2_key
 # Capture artifacts only. The index also holds photos, manifests and event
 # logs for the same session; those are not chunks and must never reach
 # fuse_cell._group_chunks_by_index.
-_CAPTURE_SUFFIXES = (".bin", ".jsonl", ".mov")
+_CAPTURE_SUFFIXES = (".bin", ".confidence", ".jsonl", ".mov")
 
 
 def _is_capture_artifact(key: str) -> bool:
