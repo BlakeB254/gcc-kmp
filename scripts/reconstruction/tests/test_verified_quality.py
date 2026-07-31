@@ -63,6 +63,17 @@ def test_missing_and_nonfinite_metrics_are_rejected_without_trainer_status():
     assert decision.reasons == ["image-similarity-missing", "depth-error-invalid"]
 
 
+def test_serialized_metric_mapping_has_the_same_decision_as_typed_metrics():
+    """Catches a manifest metric round-trip silently becoming six missing metrics."""
+    typed_metrics = metrics(floater_ratio=0.22, retained_coverage=0.70)
+
+    typed_decision = publication_decision(typed_metrics, thresholds())
+    serialized_decision = publication_decision(typed_metrics.to_dict(), thresholds())
+
+    assert serialized_decision == typed_decision
+    assert serialized_decision.reasons == ["floater-ratio", "retained-coverage"]
+
+
 def test_quality_module_stays_cpu_only():
     """Catches a validation decision importing a CUDA-owning dependency."""
     assert "torch" not in sys.modules

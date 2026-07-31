@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from pathlib import Path
 import sys
+
+import pytest
 
 from verified_manifest import build_manifest
 from verified_quality import QualityMetrics, QualityThresholds, publication_decision
@@ -148,6 +151,33 @@ def test_manifest_refuses_non_verified_or_missing_candidate_files(tmp_path):
         assert "verified balanced candidate" in str(error)
     else:
         raise AssertionError("unverified candidate was accepted")
+
+
+@pytest.mark.parametrize(
+    ("invalid_value", "serialized_raw"),
+    [(math.nan, "NaN"), (math.inf, "+Infinity"), (-math.inf, "-Infinity")],
+)
+def test_rejected_nonfinite_metric_round_trips_in_the_audit_manifest(
+    tmp_path, invalid_value, serialized_raw
+):
+    """Catches a rejected NaN/Infinity candidate losing its audit manifest."""
+    candidate = candidate_fixture(tmp_path)
+    metrics = passing_metrics()
+    metrics = QualityMetrics(
+        image_similarity=metrics.image_similarity,
+        depth_error=invalid_value,
+        temporal_flicker=metrics.temporal_flicker,
+        floater_ratio=metrics.floater_ratio,
+        retained_coverage=metrics.retained_coverage,
+        asset_size_bytes=metrics.asset_size_bytes,
+    )
+    decision = publication_decision(metrics, thresholds())
+
+    document = json.loads(build_manifest(candidate, metrics=metrics, decision=decision).to_json())
+
+    assert document["decision"] == {"publish": False, "reasons": ["depth-error-invalid"]}
+    assert document["metrics"]["depthError"] is None
+    assert document["metrics"]["invalidValues"]["depthError"] == serialized_raw
 
 
 def test_manifest_module_stays_cpu_only():

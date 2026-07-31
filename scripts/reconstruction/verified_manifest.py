@@ -9,6 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import json
+import math
+from numbers import Real
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Mapping
@@ -51,6 +53,29 @@ def _plain(value: Any) -> Any:
 
 def _canonical_json(value: Any) -> str:
     return json.dumps(_plain(value), sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+
+def _nonfinite_label(value: Any) -> str | None:
+    if isinstance(value, bool) or not isinstance(value, Real) or math.isfinite(float(value)):
+        return None
+    if math.isnan(float(value)):
+        return "NaN"
+    return "+Infinity" if value > 0 else "-Infinity"
+
+
+def _serializable_metrics(values: Mapping[str, Any] | None) -> Mapping[str, Any] | None:
+    """Preserve rejected non-finite observations without emitting invalid JSON."""
+    if values is None:
+        return None
+    serialized = dict(values)
+    invalid_values: dict[str, str] = {}
+    for name, value in serialized.items():
+        if (label := _nonfinite_label(value)) is not None:
+            serialized[name] = None
+            invalid_values[str(name)] = label
+    if invalid_values:
+        serialized["invalidValues"] = invalid_values
+    return serialized
 
 
 def _candidate_file(candidate: Any, name: str) -> Path:
@@ -204,7 +229,7 @@ def build_manifest(
             recipe_revision=recipe_revision,
             training=_json_value(normalized_training),
             cleanup_report=_json_value(cleanup),
-            metrics=None if metric_values is None else _json_value(metric_values),
+            metrics=_json_value(_serializable_metrics(metric_values)),
             review_state=_json_value(review_state or {"status": "pending"}),
             decision=_json_value(decision_values),
             asset_path=asset_path,

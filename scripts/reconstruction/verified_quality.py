@@ -23,6 +23,7 @@ class QualityMetrics:
     asset_size_bytes: int | float | None = None
 
     def to_dict(self) -> dict[str, float | int | None]:
+        """Return the canonical camelCase schema used in persisted manifests."""
         return {
             "imageSimilarity": self.image_similarity,
             "depthError": self.depth_error,
@@ -57,12 +58,12 @@ class PublicationDecision:
 
 
 _METRIC_RULES = (
-    ("image_similarity", "image-similarity", "min_image_similarity", "min", 0.0, 1.0),
-    ("depth_error", "depth-error", "max_depth_error", "max", 0.0, None),
-    ("temporal_flicker", "temporal-flicker", "max_temporal_flicker", "max", 0.0, None),
-    ("floater_ratio", "floater-ratio", "max_floater_ratio", "max", 0.0, 1.0),
-    ("retained_coverage", "retained-coverage", "min_retained_coverage", "min", 0.0, 1.0),
-    ("asset_size_bytes", "asset-size", "max_asset_size_bytes", "max", 0.0, None),
+    ("image_similarity", "imageSimilarity", "image-similarity", "min_image_similarity", "min", 0.0, 1.0),
+    ("depth_error", "depthError", "depth-error", "max_depth_error", "max", 0.0, None),
+    ("temporal_flicker", "temporalFlicker", "temporal-flicker", "max_temporal_flicker", "max", 0.0, None),
+    ("floater_ratio", "floaterRatio", "floater-ratio", "max_floater_ratio", "max", 0.0, 1.0),
+    ("retained_coverage", "retainedCoverage", "retained-coverage", "min_retained_coverage", "min", 0.0, 1.0),
+    ("asset_size_bytes", "assetSizeBytes", "asset-size", "max_asset_size_bytes", "max", 0.0, None),
 )
 
 
@@ -70,6 +71,12 @@ def _attribute_or_key(values: Any, name: str) -> Any:
     if isinstance(values, Mapping):
         return values.get(name)
     return getattr(values, name, None)
+
+
+def _metric_value(metrics: Any, attribute_name: str, json_name: str) -> Any:
+    if isinstance(metrics, Mapping):
+        return metrics.get(json_name)
+    return getattr(metrics, attribute_name, None)
 
 
 def _valid_number(value: Any, *, minimum: float, maximum: float | None) -> bool:
@@ -83,7 +90,7 @@ def _valid_number(value: Any, *, minimum: float, maximum: float | None) -> bool:
 
 def _validated_thresholds(thresholds: Any) -> dict[str, float]:
     normalized: dict[str, float] = {}
-    for _metric_name, _reason, threshold_name, _direction, minimum, maximum in _METRIC_RULES:
+    for _metric_name, _json_name, _reason, threshold_name, _direction, minimum, maximum in _METRIC_RULES:
         value = _attribute_or_key(thresholds, threshold_name)
         if not _valid_number(value, minimum=minimum, maximum=maximum):
             raise ValueError(f"invalid quality threshold: {threshold_name}")
@@ -101,8 +108,8 @@ def publication_decision(metrics: QualityMetrics | Mapping[str, Any] | Any,
     """
     validated_thresholds = _validated_thresholds(thresholds)
     reasons: list[str] = []
-    for metric_name, reason, threshold_name, direction, minimum, maximum in _METRIC_RULES:
-        value = _attribute_or_key(metrics, metric_name)
+    for metric_name, json_name, reason, threshold_name, direction, minimum, maximum in _METRIC_RULES:
+        value = _metric_value(metrics, metric_name, json_name)
         if value is None:
             reasons.append(f"{reason}-missing")
             continue
