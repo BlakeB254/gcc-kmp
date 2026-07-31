@@ -154,6 +154,17 @@ def test_returned_cleanup_candidates_are_immutable():
         result.components["view_support"][0] = 0.0
 
 
+def test_result_carries_caller_verified_source_vertex_identity():
+    """Catches cleanup evidence losing its binding to one PLY vertex order."""
+    fingerprint = "a" * 64
+
+    result = score_gaussians(
+        replace(two_view_facade_with_one_floater(), source_vertex_sha256=fingerprint)
+    )
+
+    assert result.source_vertex_sha256 == fingerprint
+
+
 def test_lidar_proximity_selects_the_strongest_confidence_weighted_observation():
     inputs = _two_view_inputs(
         positions=np.array([[0.0, 0.0, 5.0]]),

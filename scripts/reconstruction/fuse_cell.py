@@ -619,7 +619,10 @@ def fuse_cell(
             import gsplat_runner  # deferred: keeps plyfile/torch-venv
             # checks out of point-cloud-only callers (e.g. the test suite).
 
-            splat_bytes, trainer_reason = gsplat_runner.train_gsplat_for_cell(cell_id, result, manifests_by_session_id)
+            candidate, trainer_reason = gsplat_runner.train_gsplat_for_cell(
+                cell_id, result, manifests_by_session_id
+            )
+            splat_bytes = candidate.balanced_bytes if candidate is not None else None
         else:
             import splat_train
 

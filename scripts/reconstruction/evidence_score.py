@@ -55,6 +55,7 @@ class EvidenceInputs:
     observed_pixels: np.ndarray | None = None
     component_sizes: np.ndarray | None = None
     corridor_points: np.ndarray | None = None
+    source_vertex_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -64,6 +65,7 @@ class EvidenceResult:
     conservative_mask: np.ndarray
     balanced_mask: np.ndarray
     diagnostic_mask: np.ndarray
+    source_vertex_sha256: str | None = None
 
 
 def _as_float(name: str, value: np.ndarray, shape_tail: tuple[int, ...]) -> np.ndarray:
@@ -331,4 +333,5 @@ def score_gaussians(inputs: EvidenceInputs) -> EvidenceResult:
         conservative_mask=_readonly(np.asarray(conservative, dtype=bool)),
         balanced_mask=_readonly(np.asarray(balanced, dtype=bool)),
         diagnostic_mask=_readonly(np.asarray(diagnostic, dtype=bool)),
+        source_vertex_sha256=inputs.source_vertex_sha256,
     )

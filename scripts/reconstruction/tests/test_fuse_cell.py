@@ -384,12 +384,17 @@ def test_fuse_cell_splat_skip_reason_records_trainer_failure(monkeypatch):
 def test_fuse_cell_splat_skip_reason_none_when_splat_produced(monkeypatch):
     from fuse_cell import fuse_cell
     import gsplat_runner
+    from types import SimpleNamespace
 
     _mock_cell_with_one_session(monkeypatch, run_version=1)
-    monkeypatch.setattr(gsplat_runner, "train_gsplat_for_cell", lambda *a, **k: (b"fake-splat-ply", None))
+    candidate = SimpleNamespace(balanced_bytes=b"fake-splat-ply")
+    monkeypatch.setattr(
+        gsplat_runner, "train_gsplat_for_cell", lambda *a, **k: (candidate, None)
+    )
     result = fuse_cell("1:2", api_base_url=None, train_splat=True, require_activation_for_splat=False)
     assert result.splat_skip_reason is None
-    assert any(a.asset_type == "splat" for a in result.assets)
+    splat_asset = next(asset for asset in result.assets if asset.asset_type == "splat")
+    assert splat_asset.data == b"fake-splat-ply"
 
 
 # ── World-registration path (scan-splat-registration-contract, PR #149) ──

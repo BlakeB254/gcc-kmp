@@ -7,7 +7,7 @@ recon_worker.py's complete_cell() writes it into
 reconstruction_jobs.splat_skip_reason (varchar(32), migration 0039).
 
 Reason vocabulary (exact strings; keep in sync with gsplat_runner.py and
-splat_train.py's trainer contracts, `-> tuple[bytes | None, str | None]`):
+splat_train.py's trainer contracts):
   "no-video-frames"  trainer found zero posed frames to train from
   "too-few-frames"   trainer found more than zero but fewer than 8 posed
                      frames
@@ -17,6 +17,13 @@ splat_train.py's trainer contracts, `-> tuple[bytes | None, str | None]`):
                      indicating a cross-session registration failure
   "training-failed"  venv missing / empty merged points / training
                      subprocess rc != 0 / missing output file
+  "evidence-missing" no serialized captured-evidence artifact exists
+  "evidence-malformed" artifact cannot be decoded or recomputed by Task 3
+  "evidence-incomplete" artifact lacks confidence or required provenance
+  "evidence-source-mismatch" artifact does not match raw PLY / vertex order
+  "evidence-generation-mismatch" artifact belongs to another durable retry
+  "cleanup-failed"  verified cleanup subprocess returned nonzero
+  "cleanup-incomplete" three variants/report/candidate validation incomplete
   "disabled"         splat_wanted was falsy (train_splat off, no accepted
                      sessions, or the activation gate held it back) -- no
                      trainer ran at all

@@ -19,6 +19,7 @@ dataset and shuttles bytes. Env:
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import dataclass
 import hashlib
 import io
 import json
@@ -31,11 +32,18 @@ import sys
 import av
 import numpy as np
 from PIL import Image
+from plyfile import PlyData
 
 import chunk_io
 import r2_store
 from frame_audit import FrameRecord, audit_frames
 from fuse_cell import FusionResult, _group_chunks_by_index
+from verified_evidence import (
+    ARTIFACT_NAME,
+    EvidenceArtifactError,
+    candidate_source_checksums,
+    load_verified_evidence_artifact,
+)
 
 GSPLAT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "gsplat_train"))
 GSPLAT_PYTHON = os.path.join(GSPLAT_DIR, ".venv", "bin", "python")
@@ -46,58 +54,46 @@ MIN_NOVEL_VIEW_BASELINE_METERS = 2.0
 MAX_CELL_POSE_SPAN_METERS = 40.0
 
 
-class VerifiedCandidate(bytes):
-    """Balanced publishable bytes plus immutable paths to all verification artifacts.
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
-    Subclassing ``bytes`` preserves the current reconstruction caller contract
-    while replacing an anonymous successful payload with a named candidate.
-    The byte value is always read from ``balanced``; no other policy is
-    publishable through this object.
-    """
+
+def _ply_vertex_count(path: Path) -> int:
+    try:
+        return len(PlyData.read(path)["vertex"].data)
+    except (OSError, ValueError, KeyError) as error:
+        raise ValueError(f"cleanup report references invalid PLY: {path}") from error
+
+
+@dataclass(frozen=True, init=False)
+class VerifiedCandidate:
+    """Validated composition of one immutable cleanup generation."""
+
+    raw: Path
+    conservative: Path
+    balanced: Path
+    diagnostic: Path
+    cleanup_report: Path
+    evidence_artifact: Path
+    poses: Path
+    frame_audit: Path
+    training_state: Path
+    checkpoint: Path
+    generation_id: str
+    _balanced_sha256: str
 
     publishable_policy = "balanced"
 
-    def __new__(
-        cls,
-        balanced_bytes: bytes,
-        *,
-        raw: Path,
-        conservative: Path,
-        balanced: Path,
-        diagnostic: Path,
-        cleanup_report: Path,
-        poses: Path,
-        frame_audit: Path,
-        training_state: Path,
-        checkpoint: Path,
-    ):
-        candidate = super().__new__(cls, balanced_bytes)
-        object.__setattr__(
-            candidate,
-            "_artifacts",
-            (
-                Path(raw),
-                Path(conservative),
-                Path(balanced),
-                Path(diagnostic),
-                Path(cleanup_report),
-                Path(poses),
-                Path(frame_audit),
-                Path(training_state),
-                Path(checkpoint),
-            ),
-        )
-        object.__setattr__(candidate, "_sealed", True)
-        return candidate
-
-    def __setattr__(self, name, value):
-        if getattr(self, "_sealed", False):
-            raise AttributeError("VerifiedCandidate is immutable")
-        object.__setattr__(self, name, value)
+    def __init__(self):
+        raise TypeError("VerifiedCandidate must be constructed from validated staging")
 
     @classmethod
     def from_staging(cls, staging_dir: str | os.PathLike[str]) -> "VerifiedCandidate":
-        staging = Path(staging_dir)
+        staging = Path(staging_dir).expanduser().resolve()
         manifest = staging / "candidate-manifest"
         paths = {
             "raw": staging / "splat_gsplat.ply",
@@ -105,6 +101,7 @@ class VerifiedCandidate(bytes):
             "balanced": staging / "splat_balanced.ply",
             "diagnostic": staging / "splat_diagnostic.ply",
             "cleanup_report": staging / "cleanup-report.json",
+            "evidence_artifact": staging / ARTIFACT_NAME,
             "poses": manifest / "poses.npy",
             "frame_audit": manifest / "frame-audit.json",
             "training_state": manifest / "training-state.json",
@@ -112,50 +109,142 @@ class VerifiedCandidate(bytes):
         }
         missing = [str(path) for path in paths.values() if not path.is_file()]
         if missing:
-            raise FileNotFoundError(
-                "verified candidate is incomplete: " + ", ".join(missing)
-            )
-        return cls(paths["balanced"].read_bytes(), **paths)
-
-    @property
-    def raw(self) -> Path:
-        return self._artifacts[0]
-
-    @property
-    def conservative(self) -> Path:
-        return self._artifacts[1]
-
-    @property
-    def balanced(self) -> Path:
-        return self._artifacts[2]
-
-    @property
-    def diagnostic(self) -> Path:
-        return self._artifacts[3]
-
-    @property
-    def cleanup_report(self) -> Path:
-        return self._artifacts[4]
-
-    @property
-    def poses(self) -> Path:
-        return self._artifacts[5]
-
-    @property
-    def frame_audit(self) -> Path:
-        return self._artifacts[6]
-
-    @property
-    def training_state(self) -> Path:
-        return self._artifacts[7]
-
-    @property
-    def checkpoint(self) -> Path:
-        return self._artifacts[8]
+            raise ValueError("cleanup report candidate is incomplete: " + ", ".join(missing))
+        try:
+            report = json.loads(paths["cleanup_report"].read_text())
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            raise ValueError("cleanup report is unreadable") from error
+        if report.get("schemaVersion") != 1:
+            raise ValueError("cleanup report schema version is invalid")
+        required_sections = (
+            "counts",
+            "policyThresholds",
+            "componentScoreHistograms",
+            "removedReasonCounts",
+            "verifiedEvidence",
+        )
+        if any(not isinstance(report.get(name), dict) for name in required_sections):
+            raise ValueError("cleanup report is incomplete")
+        source = report.get("source")
+        if not isinstance(source, dict):
+            raise ValueError("cleanup report source is invalid")
+        if source.get("path") != str(paths["raw"]):
+            raise ValueError("cleanup report source path does not match raw PLY")
+        if source.get("sha256") != _file_sha256(paths["raw"]):
+            raise ValueError("cleanup report source checksum does not match raw PLY")
+        if source.get("count") != _ply_vertex_count(paths["raw"]):
+            raise ValueError("cleanup report source count does not match raw PLY")
+        outputs = report.get("outputs")
+        if not isinstance(outputs, dict) or set(outputs) != {
+            "conservative", "balanced", "diagnostic"
+        }:
+            raise ValueError("cleanup report outputs are invalid")
+        output_checksums: dict[str, str] = {}
+        output_counts: dict[str, int] = {}
+        for policy in ("conservative", "balanced", "diagnostic"):
+            entry = outputs.get(policy)
+            path = paths[policy]
+            if not isinstance(entry, dict) or entry.get("path") != str(path):
+                raise ValueError(f"cleanup report {policy} path is invalid")
+            checksum = _file_sha256(path)
+            if entry.get("sha256") != checksum:
+                raise ValueError(f"cleanup report {policy} checksum is invalid")
+            if entry.get("count") != _ply_vertex_count(path):
+                raise ValueError(f"cleanup report {policy} count is invalid")
+            if entry.get("publishable") is not (policy == "balanced"):
+                raise ValueError(f"cleanup report {policy} publishability is invalid")
+            output_checksums[policy] = checksum
+            output_counts[policy] = entry["count"]
+        expected_counts = {"source": source["count"], **output_counts}
+        if report["counts"] != expected_counts:
+            raise ValueError("cleanup report aggregate counts are invalid")
+        if not (
+            output_counts["diagnostic"]
+            <= output_counts["balanced"]
+            <= output_counts["conservative"]
+            <= source["count"]
+        ):
+            raise ValueError("cleanup report policy counts are not nested")
+        thresholds = report["policyThresholds"]
+        removed_reasons = report["removedReasonCounts"]
+        for policy in ("conservative", "balanced", "diagnostic"):
+            if not isinstance(thresholds.get(policy), dict) or not {
+                "camHeight", "belowMargin", "aboveCap", "corridor"
+            } <= set(thresholds[policy]):
+                raise ValueError("cleanup report policy thresholds are incomplete")
+            if not isinstance(removed_reasons.get(policy), dict) or not {
+                "policy-mask-rejected",
+                "below-ground",
+                "above-cap",
+                "outside-corridor",
+            } <= set(removed_reasons[policy]):
+                raise ValueError("cleanup report removal reasons are incomplete")
+        expected_checksums = candidate_source_checksums(staging)
+        artifact = load_verified_evidence_artifact(
+            paths["evidence_artifact"],
+            raw_ply_path=paths["raw"],
+            expected_source_checksums=expected_checksums,
+        )
+        evidence_report = report.get("verifiedEvidence")
+        expected_evidence_report = {
+            "path": str(artifact.path),
+            "sha256": artifact.sha256,
+            "schemaVersion": artifact.schema_version,
+            "rawPlySha256": artifact.raw_ply_sha256,
+            "vertexOrderSha256": artifact.vertex_order_sha256,
+            "sourceChecksums": artifact.source_checksums,
+            "provenance": artifact.provenance,
+        }
+        if evidence_report != expected_evidence_report:
+            raise ValueError("cleanup report verified evidence is invalid")
+        if report.get("generationId") != artifact.generation_id:
+            raise ValueError("cleanup report generation does not match evidence")
+        histograms = report["componentScoreHistograms"]
+        if set(histograms) != set(artifact.result.components):
+            raise ValueError("cleanup report component histograms are incomplete")
+        for histogram in histograms.values():
+            if (
+                not isinstance(histogram, dict)
+                or not isinstance(histogram.get("edges"), list)
+                or not isinstance(histogram.get("counts"), list)
+                or len(histogram["edges"]) != len(histogram["counts"]) + 1
+                or sum(histogram["counts"]) != source["count"]
+            ):
+                raise ValueError("cleanup report component histogram is invalid")
+        for root_name, manifest_name in (
+            ("poses.npy", "poses"),
+            ("frame-audit.json", "frame_audit"),
+            ("training-state.json", "training_state"),
+            ("checkpoint_latest.pt", "checkpoint"),
+        ):
+            if _file_sha256(staging / root_name) != _file_sha256(paths[manifest_name]):
+                raise ValueError("cleanup report candidate metadata spans multiple generations")
+        candidate = object.__new__(cls)
+        for name, path in paths.items():
+            object.__setattr__(candidate, name, path)
+        object.__setattr__(candidate, "generation_id", artifact.generation_id)
+        object.__setattr__(candidate, "_balanced_sha256", output_checksums["balanced"])
+        return candidate
 
     @property
     def publishable(self) -> Path:
         return self.balanced
+
+    @property
+    def balanced_bytes(self) -> bytes:
+        if _file_sha256(self.balanced) != self._balanced_sha256:
+            raise ValueError("balanced checksum changed after candidate validation")
+        return self.balanced.read_bytes()
+
+
+def verified_candidate_result(
+    staging_dir: str | os.PathLike[str],
+) -> tuple[VerifiedCandidate | None, str | None]:
+    """Fail closed unless the complete staged generation validates."""
+    try:
+        return VerifiedCandidate.from_staging(staging_dir), None
+    except (ValueError, EvidenceArtifactError):
+        return None, "cleanup-incomplete"
 
 
 def _build_train_command(
@@ -203,7 +292,11 @@ def _durable_training_workspace(
     staging_dir: str | os.PathLike[str] | None,
 ):
     """Yield a caller-visible workspace without deleting it on any exit path."""
-    path = Path(staging_dir) if staging_dir is not None else candidate_staging_dir(cell_id)
+    path = (
+        Path(staging_dir).expanduser().resolve()
+        if staging_dir is not None
+        else candidate_staging_dir(cell_id).expanduser().resolve()
+    )
     path.mkdir(parents=True, exist_ok=True)
     yield str(path)
 
@@ -428,16 +521,16 @@ def train_gsplat_for_cell(
     session_manifests_by_id: dict[str, dict],
     *,
     staging_dir: str | os.PathLike[str] | None = None,
+    evidence_artifact_path: str | os.PathLike[str] | None = None,
 ) -> tuple[VerifiedCandidate | None, str | None]:
     """Train one splat for the whole cell: every accepted session's frames,
     posed through its fusion transform into the shared cell frame, with the
     already-merged cell point cloud as gaussian init. Returns
-    (VerifiedCandidate, None) on success, or (None, reason) when gsplat isn't set up or
-    training fails -- the point-cloud asset is unaffected either way. reason
-    is one of splat_outcome.py's vocabulary: "no-video-frames",
-    "too-few-frames", or "training-failed". The exported dataset, checkpoints,
+    (VerifiedCandidate, None) on success, or (None, reason) when training,
+    captured evidence, cleanup, or candidate validation fails. The point-cloud
+    asset is unaffected either way. The exported dataset, raw PLY, checkpoints,
     and candidate metadata remain at ``staging_dir`` (or
-    :func:`candidate_staging_dir`) for recovery and Task 4 packaging."""
+    :func:`candidate_staging_dir`) for recovery and later evidence production."""
     if not available():
         print(f"gsplat_runner: no venv at {GSPLAT_PYTHON} -- run gsplat_train/setup.sh", file=sys.stderr)
         return None, "training-failed"
@@ -518,44 +611,53 @@ def train_gsplat_for_cell(
             tmp, os.path.join(tmp, "candidate-manifest")
         )
 
-        # Post-training cleanup: haze / fog-sheet / off-surface-floater
-        # prune + ground and corridor crops (clean_splat.py, numpy-only).
-        # Cleanup cannot cost the finished raw training artifact: it remains
-        # durably staged. It also cannot publish raw, because balanced is the
-        # only policy permitted through VerifiedCandidate.
-        clean_ply = os.path.join(tmp, "splat_clean.ply")
+        # Cleanup consumes only a serialized Task 3 artifact produced from
+        # captured observations. This runner never infers visibility, RGB
+        # observations, pixels, or LiDAR confidence from the staged files.
+        candidate_checksums = candidate_source_checksums(tmp)
+        staged_evidence_path = Path(tmp) / ARTIFACT_NAME
+        requested_evidence_path = (
+            Path(evidence_artifact_path).expanduser().resolve()
+            if evidence_artifact_path is not None
+            else staged_evidence_path
+        )
+        try:
+            load_verified_evidence_artifact(
+                requested_evidence_path,
+                raw_ply_path=out_ply,
+                expected_source_checksums=candidate_checksums,
+            )
+        except EvidenceArtifactError as error:
+            print(f"gsplat_runner: cell {cell_id}: {error}", file=sys.stderr)
+            return None, error.reason
+        if requested_evidence_path != staged_evidence_path:
+            shutil.copy2(requested_evidence_path, staged_evidence_path)
+        reconstruction_dir = str(Path(__file__).resolve().parent)
+        existing_pythonpath = env.get("PYTHONPATH")
+        env["PYTHONPATH"] = (
+            reconstruction_dir
+            if not existing_pythonpath
+            else os.pathsep.join((reconstruction_dir, existing_pythonpath))
+        )
         cproc = subprocess.run(
             [GSPLAT_PYTHON, os.path.join(GSPLAT_DIR, "clean_splat.py"),
              "--ply", out_ply, "--points", os.path.join(tmp, "init_points.npy"),
-             "--poses", os.path.join(tmp, "poses.npy"), "--out", clean_ply],
+             "--poses", os.path.join(tmp, "poses.npy"),
+             "--evidence-artifact", str(staged_evidence_path),
+             "--out-dir", tmp],
             env=env, timeout=1800,
         )
-        if cproc.returncode != 0 or not os.path.exists(clean_ply):
+        if cproc.returncode != 0:
             print(
                 f"gsplat_runner: cell {cell_id}: cleanup failed (rc={cproc.returncode}); "
                 "raw training output retained but not publishable",
                 file=sys.stderr,
             )
-            return None, "training-failed"
-        try:
-            return VerifiedCandidate.from_staging(tmp), None
-        except FileNotFoundError as error:
-            # Keep the established cleanup subprocess seam compatible during
-            # rolling upgrades: an older worker can return its balanced
-            # ``--out`` bytes, but still cannot expose raw as publishable.
-            # The Task 4 cleanup in this checkout always takes the strict path.
-            print(f"gsplat_runner: legacy cleanup artifact set: {error}", file=sys.stderr)
-            manifest = Path(tmp) / "candidate-manifest"
-            balanced = Path(clean_ply)
-            return VerifiedCandidate(
-                balanced.read_bytes(),
-                raw=Path(out_ply),
-                conservative=balanced,
-                balanced=balanced,
-                diagnostic=balanced,
-                cleanup_report=Path(tmp) / "cleanup-report.json",
-                poses=manifest / "poses.npy",
-                frame_audit=manifest / "frame-audit.json",
-                training_state=manifest / "training-state.json",
-                checkpoint=manifest / "checkpoint_latest.pt",
-            ), None
+            return None, "cleanup-failed"
+        candidate, candidate_reason = verified_candidate_result(tmp)
+        if candidate is None:
+            print(
+                f"gsplat_runner: cell {cell_id}: incomplete cleanup artifacts",
+                file=sys.stderr,
+            )
+        return candidate, candidate_reason

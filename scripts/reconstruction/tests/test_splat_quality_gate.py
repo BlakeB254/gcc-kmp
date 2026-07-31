@@ -132,15 +132,15 @@ def test_durable_staging_survives_timeout_and_retry_resumes(tmp_path, monkeypatc
             (staging / "checkpoint_latest.pt").write_bytes(b"completed")
             (staging / "training-state.json").write_text(json.dumps({"status": "completed"}))
         else:
-            output.write_bytes(b"clean-ply")
+            raise AssertionError("cleanup must not run without verified evidence")
         return type("Result", (), {"returncode": 0})()
 
     monkeypatch.setattr(gsplat_runner.subprocess, "run", successful_retry)
-    splat, reason = gsplat_runner.train_gsplat_for_cell(
+    candidate, reason = gsplat_runner.train_gsplat_for_cell(
         "cell", fusion, {"session": {}}, staging_dir=staging
     )
 
-    assert (splat, reason) == (b"clean-ply", None)
+    assert (candidate, reason) == (None, "evidence-missing")
     assert ["--resume", str(staging)] == commands[0][
         commands[0].index("--resume"):commands[0].index("--resume") + 2
     ]
@@ -148,6 +148,26 @@ def test_durable_staging_survives_timeout_and_retry_resumes(tmp_path, monkeypatc
     assert {
         path.name for path in candidate.iterdir()
     } == {"poses.npy", "frame-audit.json", "training-state.json", "checkpoint_latest.pt"}
+
+
+def test_caller_provided_staging_path_is_absolute_and_survives_cwd_change(
+    tmp_path, monkeypatch
+):
+    """Catches a retry path changing identity when the worker cwd changes."""
+    original = tmp_path / "original"
+    other = tmp_path / "other"
+    original.mkdir()
+    other.mkdir()
+    monkeypatch.chdir(original)
+
+    with gsplat_runner._durable_training_workspace("cell", Path("candidate")) as path:
+        resolved = Path(path)
+        monkeypatch.chdir(other)
+        (resolved / "marker").write_text("durable")
+
+    assert resolved.is_absolute()
+    assert resolved == original / "candidate"
+    assert (resolved / "marker").read_text() == "durable"
 
 
 def test_default_candidate_staging_is_deterministic_and_cell_scoped(tmp_path, monkeypatch):
