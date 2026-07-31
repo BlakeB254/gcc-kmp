@@ -29,6 +29,7 @@ from PIL import Image
 
 import chunk_io
 import r2_store
+from frame_audit import FrameRecord, audit_frames
 from fuse_cell import FusionResult, _group_chunks_by_index
 
 GSPLAT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "gsplat_train"))
@@ -101,17 +102,19 @@ def available() -> bool:
 
 
 def _export_session_frames(manifest: dict, T_cell: np.ndarray, frames_dir: str,
-                           start_index: int, budget: int) -> tuple[list, list, int]:
+                           start_index: int, budget: int) -> tuple[list, list, int, list[dict]]:
     """Sample up to `budget` posed frames from one session's chunks, writing
-    jpgs into frames_dir and returning (poses_cv, intrinsics, next_index)."""
+    jpgs into frames_dir and returning (poses_cv, intrinsics, next_index,
+    serialized_frame_audits)."""
     chunks = _group_chunks_by_index(manifest.get("captureChunks") or [])
     chunks = {i: k for i, k in sorted(chunks.items()) if "mov" in k and "jsonl" in k}
     if not chunks:
-        return [], [], start_index
+        return [], [], start_index, []
     per_chunk = max(1, budget // len(chunks))
 
     poses, intrinsics, n = [], [], start_index
-    for kinds in chunks.values():
+    audits: list[dict] = []
+    for chunk_index, kinds in chunks.items():
         if n - start_index >= budget:
             break
         if r2_store.is_configured() and r2_store.object_exists(
@@ -123,25 +126,63 @@ def _export_session_frames(manifest: dict, T_cell: np.ndarray, frames_dir: str,
         _header, sidecar = chunk_io.parse_sidecar(r2_store.download_bytes(kinds["jsonl"]))
         if not sidecar:
             continue
-        # Contract gate: only NORMAL-tracking frames may train the splat --
-        # LIMITED spans (fast turns, low light) carry mis-posed cameras.
-        usable = [i for i, f in enumerate(sidecar) if f.tracking == 0]
-        if not usable:
-            continue
-        candidate_count = min(len(usable), max(per_chunk, per_chunk * 2))
+        confidence_records = (
+            chunk_io.parse_confidence_chunk(r2_store.download_bytes(kinds["confidence"]))
+            if "confidence" in kinds
+            else []
+        )
+        candidate_count = min(len(sidecar), max(per_chunk, per_chunk * 2))
         idxs = [
-            usable[j]
+            j
             for j in np.unique(
-                np.linspace(0, len(usable) - 1, candidate_count, dtype=int)
+                np.linspace(0, len(sidecar) - 1, candidate_count, dtype=int)
             )
         ]
         imgs = chunk_io.extract_video_frames_at(video, [sidecar[i].t_video for i in idxs])
         valid = [(i, img) for i, img in zip(idxs, imgs) if img is not None]
-        selected = select_training_frame_indices(
-            [img for _i, img in valid], budget=per_chunk
-        )
-        for selected_index in selected:
-            i, img = valid[selected_index]
+        records: list[FrameRecord] = []
+        for i, img in valid:
+            frame = sidecar[i]
+            depth_confidence_fraction = None
+            if confidence_records:
+                confidence_record = min(
+                    confidence_records, key=lambda record: abs(record.t - frame.t)
+                )
+                if abs(confidence_record.t - frame.t) <= 0.2:
+                    depth_confidence_fraction = float(
+                        np.mean(confidence_record.confidence >= 1)
+                    )
+            exposure_ev = None
+            if (
+                frame.exposure_duration_seconds is not None
+                and frame.iso is not None
+                and frame.exposure_duration_seconds > 0
+                and frame.iso > 0
+            ):
+                exposure_ev = float(
+                    np.log2(100.0 / (frame.exposure_duration_seconds * frame.iso))
+                )
+            records.append(FrameRecord(
+                index=i,
+                position=frame.camera_transform[:3, 3],
+                tracking=frame.tracking,
+                sharpness=_frame_sharpness(img),
+                exposure_ev=exposure_ev,
+                depth_confidence_fraction=depth_confidence_fraction,
+            ))
+        audit = audit_frames(records, budget=per_chunk)
+        audits.append({
+            "chunk": chunk_index,
+            "selectedIndices": audit.selected_indices,
+            "rejections": {str(index): reasons for index, reasons in audit.rejections.items()},
+            "baselineMeters": audit.baseline_meters,
+            "normalTrackingFraction": audit.normal_tracking_fraction,
+            "depthCoverageFraction": audit.depth_coverage_fraction,
+        })
+        selected = set(audit.selected_indices)
+        for i, img in valid:
+            if i not in selected:
+                continue
             f = sidecar[i]
             poses.append(T_cell @ f.camera_transform @ GL_TO_CV)
             intrinsics.append(np.array([[f.intrinsics.fx, 0, f.intrinsics.cx],
@@ -149,7 +190,7 @@ def _export_session_frames(manifest: dict, T_cell: np.ndarray, frames_dir: str,
                                         [0, 0, 1]], dtype=np.float64))
             Image.fromarray(img).save(os.path.join(frames_dir, f"{n:04d}.jpg"), quality=92)
             n += 1
-    return poses, intrinsics, n
+    return poses, intrinsics, n, audits
 
 
 def train_gsplat_for_cell(
@@ -174,15 +215,16 @@ def train_gsplat_for_cell(
         frames_dir = os.path.join(tmp, "frames")
         os.makedirs(frames_dir)
         budget = max(1, MAX_TOTAL_FRAMES // len(fusion_result.accepted_session_ids))
-        poses, intrinsics, n = [], [], 0
+        poses, intrinsics, n, frame_audits = [], [], 0, []
         for sid in fusion_result.accepted_session_ids:
             manifest = session_manifests_by_id.get(sid)
             if manifest is None:
                 continue
-            p, K, n = _export_session_frames(
+            p, K, n, audits = _export_session_frames(
                 manifest, fusion_result.session_transforms[sid], frames_dir, n, budget)
             poses.extend(p)
             intrinsics.extend(K)
+            frame_audits.extend(audits)
         if n == 0:
             print(f"gsplat_runner: cell {cell_id}: no posed frames")
             return None, "no-video-frames"
@@ -198,6 +240,8 @@ def train_gsplat_for_cell(
             return None, quality_reason
 
         sample = Image.open(os.path.join(frames_dir, "0000.jpg"))
+        with open(os.path.join(tmp, "frame-audit.json"), "w") as fh:
+            json.dump({"version": 1, "audits": frame_audits}, fh, indent=2)
         np.save(os.path.join(tmp, "poses.npy"), np.stack(poses).astype(np.float64))
         np.save(os.path.join(tmp, "intrinsics.npy"), np.stack(intrinsics).astype(np.float64))
         np.save(os.path.join(tmp, "init_points.npy"), fusion_result.merged_points.astype(np.float32))
