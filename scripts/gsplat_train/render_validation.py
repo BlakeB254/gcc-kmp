@@ -304,6 +304,7 @@ def validation_view_spec_from_dict(
         raise ValueError("recorded and withheld must be a disjoint complete partition")
 
     interpolated: list[InterpolatedView] = []
+    seen_interpolated: set[tuple[int, int, float]] = set()
     raw_interpolated = document.get("interpolated", [])
     if not isinstance(raw_interpolated, list):
         raise ValueError("validation interpolated must be a list")
@@ -323,7 +324,11 @@ def validation_view_spec_from_dict(
             or not 0.0 < float(alpha) < 1.0
         ):
             raise ValueError("invalid interpolated validation view")
-        interpolated.append(InterpolatedView(start, end, float(alpha)))
+        identity = (start, end, float(alpha))
+        if identity in seen_interpolated:
+            raise ValueError("validation contains duplicate interpolated view")
+        seen_interpolated.add(identity)
+        interpolated.append(InterpolatedView(*identity))
 
     standardized: list[StandardizedView] = []
     raw_standardized = document.get("standardized", [])
@@ -590,158 +595,377 @@ def build_contact_sheet(
     return column_labels + tuple(row_labels)
 
 
-_METRICS_REPORT_PROVENANCE = object()
+@dataclass(frozen=True)
+class _ArraySnapshot:
+    shape: tuple[int, ...]
+    values: bytes
 
 
 @dataclass(frozen=True)
-class _CapturedMetricEvidence:
+class _CapturedComparisonSnapshot:
     frame_id: str
     kind: str
     frame_index: int
-    mse: float
-    ssim: float
+    ground_truth: _ArraySnapshot
+    balanced_render: _ArraySnapshot
 
 
-class ValidationMetricsReport:
-    """Sealed evidence produced only from captured pixel comparisons."""
+@dataclass(frozen=True)
+class _InterpolatedComparisonSnapshot:
+    start_index: int
+    end_index: int
+    alpha: float
+    color_frames: tuple[_ArraySnapshot, ...]
+    depth_frames: tuple[_ArraySnapshot, ...]
 
-    __slots__ = (
-        "_captured",
-        "_evidence_sha256",
-        "_expected_captured_count",
-        "_interpolated",
-        "_provenance",
-        "_view_spec_json",
+
+@dataclass(frozen=True)
+class ValidationMetricSnapshots:
+    """Immutable pixel/depth evidence; no derived metric is accepted here."""
+
+    captured: tuple[_CapturedComparisonSnapshot, ...]
+    interpolated: tuple[_InterpolatedComparisonSnapshot, ...]
+
+
+_CAPTURED_COMPARISON_FIELDS = frozenset(
+    ("frame_id", "kind", "frame_index", "ground_truth", "balanced_render")
+)
+_INTERPOLATED_COMPARISON_FIELDS = frozenset(
+    ("start_index", "end_index", "alpha", "color_frames", "depth_frames")
+)
+
+
+def _snapshot_image(value: Any, *, name: str) -> _ArraySnapshot:
+    normalized = np.ascontiguousarray(_normalized_image(value, name=name))
+    return _ArraySnapshot(
+        shape=tuple(int(dimension) for dimension in normalized.shape),
+        values=normalized.tobytes(order="C"),
     )
 
-    def __init__(self, *_args, **_kwargs):
-        raise TypeError("use build_validation_metrics_report")
+
+def _snapshot_depth(value: Any, *, name: str) -> _ArraySnapshot:
+    array = np.asarray(value)
+    if (
+        array.ndim != 2
+        or array.size == 0
+        or not np.issubdtype(array.dtype, np.number)
+    ):
+        raise ValueError(f"{name} must be a non-empty numeric HxW depth array")
+    copied = np.ascontiguousarray(array, dtype=np.float64)
+    if not np.isfinite(copied).all():
+        raise ValueError(f"{name} must contain only finite depth values")
+    return _ArraySnapshot(
+        shape=tuple(int(dimension) for dimension in copied.shape),
+        values=copied.tobytes(order="C"),
+    )
 
 
-def _metrics_report_evidence_sha256(report: ValidationMetricsReport) -> str:
-    payload = {
-        "expectedCapturedCount": report._expected_captured_count,
-        "captured": [
-            {
-                "frameId": item.frame_id,
-                "kind": item.kind,
-                "frameIndex": item.frame_index,
-                "mse": item.mse,
-                "ssim": item.ssim,
-            }
-            for item in report._captured
-        ],
-        "interpolated": [dict(item) for item in report._interpolated],
-        "viewSpec": report._view_spec_json,
-    }
-    encoded = json.dumps(
-        payload, sort_keys=True, separators=(",", ":"), allow_nan=False
-    ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
-
-
-def _finite_metric_mapping(value: Any, *, name: str) -> dict[str, Any]:
+def _strict_comparison_mapping(
+    value: Any, *, fields: frozenset[str], name: str
+) -> dict[str, Any]:
     if not isinstance(value, Mapping):
-        raise ValueError(f"{name} must be a metric mapping")
-    copied: dict[str, Any] = {}
-    for key, item in value.items():
-        if not isinstance(key, str):
-            raise ValueError(f"{name} metric keys must be strings")
-        if isinstance(item, bool) or not isinstance(item, Real):
-            raise ValueError(f"{name} metric {key} must be numeric")
-        numeric = float(item)
-        if not math.isfinite(numeric):
-            raise ValueError(f"{name} metric {key} must be finite")
-        if key in ("startIndex", "endIndex"):
-            if not isinstance(item, Integral):
-                raise ValueError(f"{name} metric {key} must be an integer")
-            copied[key] = int(item)
-        else:
-            copied[key] = numeric
+        raise ValueError(f"{name} must be a mapping")
+    copied = dict(value)
+    if set(copied) != fields:
+        raise ValueError(f"{name} fields must be exactly {sorted(fields)}")
     return copied
 
 
-def build_validation_metrics_report(
-    captured_rows: Sequence[Mapping[str, Any]],
+def snapshot_validation_comparisons(
+    captured_comparisons: Sequence[Mapping[str, Any]],
     *,
-    interpolated_metrics: Sequence[Mapping[str, Any]] = (),
-    view_spec: ValidationViewSpec | None = None,
-) -> ValidationMetricsReport:
-    """Build sealed metrics evidence by comparing the supplied captured pixels."""
-    if not captured_rows:
-        raise ValueError("validation metrics require at least one captured comparison")
-    captured: list[_CapturedMetricEvidence] = []
-    frame_ids: set[str] = set()
-    for row in captured_rows:
-        if not isinstance(row, Mapping):
-            raise ValueError("captured comparison must be a mapping")
-        frame_id = row.get("frame_id")
-        kind = row.get("kind")
-        frame_index = row.get("frame_index")
-        if not isinstance(frame_id, str) or not frame_id or frame_id in frame_ids:
-            raise ValueError("captured comparison frame IDs must be unique")
+    interpolated_comparisons: Sequence[Mapping[str, Any]] = (),
+) -> ValidationMetricSnapshots:
+    """Copy raw comparison arrays into immutable normalized byte snapshots."""
+    if isinstance(captured_comparisons, (str, bytes)) or not isinstance(
+        captured_comparisons, Sequence
+    ):
+        raise ValueError("captured comparisons must be a sequence")
+    captured: list[_CapturedComparisonSnapshot] = []
+    for value in captured_comparisons:
+        row = _strict_comparison_mapping(
+            value, fields=_CAPTURED_COMPARISON_FIELDS, name="captured comparison"
+        )
+        frame_id = row["frame_id"]
+        kind = row["kind"]
+        frame_index = row["frame_index"]
+        if not isinstance(frame_id, str) or not frame_id:
+            raise ValueError("captured comparison frame ID is invalid")
         if not isinstance(kind, str) or not kind:
             raise ValueError("captured comparison kind is invalid")
         if isinstance(frame_index, bool) or not isinstance(frame_index, Integral):
             raise ValueError("captured comparison frame index is invalid")
-        frame_ids.add(frame_id)
-        metrics = captured_image_metrics(
-            row.get("ground_truth"), row.get("balanced_render")
+        ground_truth = _snapshot_image(
+            row["ground_truth"], name="captured ground_truth"
         )
-        captured.append(_CapturedMetricEvidence(
-            frame_id=frame_id,
-            kind=kind,
-            frame_index=int(frame_index),
-            mse=float(metrics["mse"]),
-            ssim=float(metrics["ssim"]),
-        ))
-
-    report = object.__new__(ValidationMetricsReport)
-    report._captured = tuple(captured)
-    report._expected_captured_count = len(captured)
-    report._interpolated = tuple(
-        tuple(sorted(_finite_metric_mapping(metrics, name="interpolated").items()))
-        for metrics in interpolated_metrics
-    )
-    report._view_spec_json = (
-        json.dumps(
-            view_spec.to_dict(), sort_keys=True, separators=(",", ":"), allow_nan=False
+        balanced_render = _snapshot_image(
+            row["balanced_render"], name="captured balanced_render"
         )
-        if view_spec is not None
-        else None
-    )
-    report._provenance = _METRICS_REPORT_PROVENANCE
-    report._evidence_sha256 = _metrics_report_evidence_sha256(report)
-    return report
+        if ground_truth.shape != balanced_render.shape:
+            raise ValueError(
+                "captured ground_truth and balanced_render must have the same shape"
+            )
+        captured.append(
+            _CapturedComparisonSnapshot(
+                frame_id=frame_id,
+                kind=kind,
+                frame_index=int(frame_index),
+                ground_truth=ground_truth,
+                balanced_render=balanced_render,
+            )
+        )
+
+    if isinstance(interpolated_comparisons, (str, bytes)) or not isinstance(
+        interpolated_comparisons, Sequence
+    ):
+        raise ValueError("interpolated comparisons must be a sequence")
+    interpolated: list[_InterpolatedComparisonSnapshot] = []
+    for value in interpolated_comparisons:
+        row = _strict_comparison_mapping(
+            value,
+            fields=_INTERPOLATED_COMPARISON_FIELDS,
+            name="interpolated comparison",
+        )
+        start_index = row["start_index"]
+        end_index = row["end_index"]
+        alpha = row["alpha"]
+        if (
+            isinstance(start_index, bool)
+            or not isinstance(start_index, Integral)
+            or isinstance(end_index, bool)
+            or not isinstance(end_index, Integral)
+            or isinstance(alpha, bool)
+            or not isinstance(alpha, Real)
+            or not math.isfinite(float(alpha))
+        ):
+            raise ValueError("interpolated comparison identity is invalid")
+        color_values = row["color_frames"]
+        depth_values = row["depth_frames"]
+        if (
+            isinstance(color_values, (str, bytes))
+            or not isinstance(color_values, Sequence)
+            or isinstance(depth_values, (str, bytes))
+            or not isinstance(depth_values, Sequence)
+            or len(color_values) != 3
+            or len(depth_values) != 3
+        ):
+            raise ValueError(
+                "interpolated comparison requires three color and depth frames"
+            )
+        colors = tuple(
+            _snapshot_image(frame, name="interpolated color frame")
+            for frame in color_values
+        )
+        depths = tuple(
+            _snapshot_depth(frame, name="interpolated depth frame")
+            for frame in depth_values
+        )
+        if len({frame.shape for frame in colors}) != 1:
+            raise ValueError("interpolated color frames must have the same shape")
+        if len({frame.shape for frame in depths}) != 1:
+            raise ValueError("interpolated depth frames must have the same shape")
+        if any(color.shape[:2] != depth.shape for color, depth in zip(colors, depths)):
+            raise ValueError("interpolated color and depth frame shapes must align")
+        interpolated.append(
+            _InterpolatedComparisonSnapshot(
+                start_index=int(start_index),
+                end_index=int(end_index),
+                alpha=float(alpha),
+                color_frames=colors,
+                depth_frames=depths,
+            )
+        )
+    return ValidationMetricSnapshots(tuple(captured), tuple(interpolated))
 
 
-def _validation_metrics_document(report: ValidationMetricsReport) -> dict[str, Any]:
+def _copy_array_snapshot(value: Any, *, name: str) -> _ArraySnapshot:
+    if not isinstance(value, _ArraySnapshot):
+        raise ValueError(f"{name} must be an immutable array snapshot")
+    shape = tuple(value.shape)
     if (
-        type(report) is not ValidationMetricsReport
-        or report._provenance is not _METRICS_REPORT_PROVENANCE
+        not shape
+        or any(
+            isinstance(dimension, bool)
+            or not isinstance(dimension, Integral)
+            or int(dimension) < 1
+            for dimension in shape
+        )
+        or not isinstance(value.values, bytes)
     ):
-        raise ValueError("write_validation_metrics requires a validated metrics report")
-    if report._evidence_sha256 != _metrics_report_evidence_sha256(report):
-        raise ValueError("validated metrics report evidence integrity check failed")
+        raise ValueError(f"{name} snapshot is invalid")
+    return _ArraySnapshot(tuple(int(dimension) for dimension in shape), value.values)
+
+
+def _copy_metric_snapshots(value: Any) -> ValidationMetricSnapshots:
+    """Take a writer-owned copy before validation and metric computation."""
+    if not isinstance(value, ValidationMetricSnapshots):
+        raise ValueError(
+            "write_validation_metrics requires immutable pixel/depth snapshots"
+        )
+    try:
+        captured_values = tuple(value.captured)
+        interpolated_values = tuple(value.interpolated)
+    except (AttributeError, TypeError) as error:
+        raise ValueError("validation metric snapshots are invalid") from error
+
+    captured: list[_CapturedComparisonSnapshot] = []
+    for item in captured_values:
+        if not isinstance(item, _CapturedComparisonSnapshot):
+            raise ValueError("captured metric snapshot is invalid")
+        captured.append(
+            _CapturedComparisonSnapshot(
+                frame_id=item.frame_id,
+                kind=item.kind,
+                frame_index=item.frame_index,
+                ground_truth=_copy_array_snapshot(
+                    item.ground_truth, name="captured ground_truth"
+                ),
+                balanced_render=_copy_array_snapshot(
+                    item.balanced_render, name="captured balanced_render"
+                ),
+            )
+        )
+
+    interpolated: list[_InterpolatedComparisonSnapshot] = []
+    for item in interpolated_values:
+        if not isinstance(item, _InterpolatedComparisonSnapshot):
+            raise ValueError("interpolated metric snapshot is invalid")
+        interpolated.append(
+            _InterpolatedComparisonSnapshot(
+                start_index=item.start_index,
+                end_index=item.end_index,
+                alpha=item.alpha,
+                color_frames=tuple(
+                    _copy_array_snapshot(frame, name="interpolated color frame")
+                    for frame in tuple(item.color_frames)
+                ),
+                depth_frames=tuple(
+                    _copy_array_snapshot(frame, name="interpolated depth frame")
+                    for frame in tuple(item.depth_frames)
+                ),
+            )
+        )
+    return ValidationMetricSnapshots(tuple(captured), tuple(interpolated))
+
+
+def _array_from_snapshot(
+    snapshot: _ArraySnapshot, *, name: str, depth: bool = False
+) -> np.ndarray:
+    expected_size = math.prod(snapshot.shape) * np.dtype(np.float64).itemsize
+    if len(snapshot.values) != expected_size:
+        raise ValueError(f"{name} snapshot byte length does not match its shape")
+    array = np.frombuffer(snapshot.values, dtype=np.float64).reshape(snapshot.shape)
+    if not np.isfinite(array).all():
+        raise ValueError(f"{name} snapshot must contain only finite values")
+    if depth:
+        if array.ndim != 2:
+            raise ValueError(f"{name} snapshot must be an HxW depth array")
+    elif array.ndim not in (2, 3) or (
+        array.ndim == 3 and array.shape[2] not in (1, 3, 4)
+    ):
+        raise ValueError(f"{name} snapshot must be an HxW or HxWxC image")
+    if not depth and (array.min() < 0.0 or array.max() > 1.0):
+        raise ValueError(f"{name} snapshot pixels must be in [0, 1]")
+    return array
+
+
+def _validated_metrics_view_spec(value: Any) -> ValidationViewSpec:
+    if isinstance(value, ValidationViewSpec):
+        document = value.to_dict()
+    elif isinstance(value, Mapping):
+        document = dict(value)
+    else:
+        raise ValueError("validation metrics require the persisted validation view spec")
+    try:
+        persisted = json.loads(json.dumps(document, allow_nan=False))
+    except (TypeError, ValueError) as error:
+        raise ValueError("persisted validation view spec is invalid") from error
+    recorded = persisted.get("recorded")
+    withheld = persisted.get("withheld")
+    if not isinstance(recorded, list) or not isinstance(withheld, list):
+        raise ValueError("persisted validation view spec is invalid")
+    frame_count = len(recorded) + len(withheld)
+    return validation_view_spec_from_dict(persisted, frame_count=frame_count)
+
+
+def _validation_metrics_document(
+    snapshots: ValidationMetricSnapshots, view_spec: Any
+) -> dict[str, Any]:
+    evidence = _copy_metric_snapshots(snapshots)
+    spec = _validated_metrics_view_spec(view_spec)
+
+    expected_captured = {
+        *(("recorded", index) for index in spec.recorded),
+        *(("withheld", index) for index in spec.withheld),
+    }
+    actual_captured: list[tuple[str, int]] = []
+    frame_ids: set[str] = set()
+    for item in evidence.captured:
+        if (
+            not isinstance(item.frame_id, str)
+            or not item.frame_id
+            or item.frame_id in frame_ids
+            or not isinstance(item.kind, str)
+            or isinstance(item.frame_index, bool)
+            or not isinstance(item.frame_index, Integral)
+        ):
+            raise ValueError("validation metrics require exact captured coverage")
+        frame_ids.add(item.frame_id)
+        actual_captured.append((item.kind, int(item.frame_index)))
     if (
-        report._expected_captured_count < 1
-        or len(report._captured) != report._expected_captured_count
+        len(actual_captured) != len(expected_captured)
+        or len(set(actual_captured)) != len(actual_captured)
+        or set(actual_captured) != expected_captured
     ):
-        raise ValueError("validated metrics report frame count is inconsistent")
+        raise ValueError("validation metrics require exact captured coverage")
+
+    if evidence.interpolated:
+        expected_interpolated = {
+            (view.start_index, view.end_index, view.alpha)
+            for view in spec.interpolated
+        }
+        actual_interpolated: list[tuple[int, int, float]] = []
+        for item in evidence.interpolated:
+            if (
+                isinstance(item.start_index, bool)
+                or not isinstance(item.start_index, Integral)
+                or isinstance(item.end_index, bool)
+                or not isinstance(item.end_index, Integral)
+                or isinstance(item.alpha, bool)
+                or not isinstance(item.alpha, Real)
+                or not math.isfinite(float(item.alpha))
+            ):
+                raise ValueError("validation metrics require exact interpolated coverage")
+            actual_interpolated.append(
+                (int(item.start_index), int(item.end_index), float(item.alpha))
+            )
+        if (
+            len(actual_interpolated) != len(expected_interpolated)
+            or len(set(actual_interpolated)) != len(actual_interpolated)
+            or set(actual_interpolated) != expected_interpolated
+        ):
+            raise ValueError("validation metrics require exact interpolated coverage")
 
     serialized_captured: list[dict[str, Any]] = []
     mses: list[float] = []
     similarities: list[float] = []
-    for metrics in report._captured:
-        mse = float(metrics.mse)
-        ssim = float(metrics.ssim)
-        if not math.isfinite(mse) or mse < 0.0 or not math.isfinite(ssim):
-            raise ValueError("validated metrics report contains invalid captured metrics")
+    for item in evidence.captured:
+        ground_truth = _array_from_snapshot(
+            item.ground_truth, name="captured ground_truth"
+        )
+        balanced_render = _array_from_snapshot(
+            item.balanced_render, name="captured balanced_render"
+        )
+        if ground_truth.shape != balanced_render.shape:
+            raise ValueError("captured comparison images must have the same shape")
+        metrics = captured_image_metrics(ground_truth, balanced_render)
+        mse = float(metrics["mse"])
+        ssim = float(metrics["ssim"])
         psnr: float | str = "Infinity" if mse == 0.0 else -10.0 * math.log10(mse)
         serialized_captured.append({
-            "frameId": metrics.frame_id,
-            "kind": metrics.kind,
-            "frameIndex": metrics.frame_index,
+            "frameId": item.frame_id,
+            "kind": item.kind,
+            "frameIndex": int(item.frame_index),
             "mse": mse,
             "psnr": psnr,
             "ssim": ssim,
@@ -755,8 +979,41 @@ def _validation_metrics_document(report: ValidationMetricsReport) -> dict[str, A
         "meanPsnr": "Infinity" if mean_mse == 0.0 else -10.0 * math.log10(mean_mse),
         "meanSsim": float(np.mean(similarities)),
     }
-    if report._interpolated:
-        interpolation_documents = [dict(item) for item in report._interpolated]
+    if evidence.interpolated:
+        interpolation_documents: list[dict[str, Any]] = []
+        for item in evidence.interpolated:
+            if len(item.color_frames) != 3 or len(item.depth_frames) != 3:
+                raise ValueError(
+                    "interpolated comparison requires three color and depth frames"
+                )
+            colors = tuple(
+                _array_from_snapshot(frame, name="interpolated color frame")
+                for frame in item.color_frames
+            )
+            depths = tuple(
+                _array_from_snapshot(
+                    frame, name="interpolated depth frame", depth=True
+                )
+                for frame in item.depth_frames
+            )
+            if len({frame.shape for frame in colors}) != 1:
+                raise ValueError("interpolated color frames must have the same shape")
+            if len({frame.shape for frame in depths}) != 1:
+                raise ValueError("interpolated depth frames must have the same shape")
+            if any(
+                color.shape[:2] != depth.shape
+                for color, depth in zip(colors, depths)
+            ):
+                raise ValueError("interpolated color and depth frame shapes must align")
+            metrics = interpolation_flicker_metrics(colors, depths)
+            interpolation_documents.append(
+                {
+                    "startIndex": int(item.start_index),
+                    "endIndex": int(item.end_index),
+                    "alpha": float(item.alpha),
+                    **metrics,
+                }
+            )
         color = [item["color_flicker"] for item in interpolation_documents]
         depth = [item["depth_flicker"] for item in interpolation_documents]
         aggregates["meanColorFlicker"] = float(np.mean(color))
@@ -764,21 +1021,23 @@ def _validation_metrics_document(report: ValidationMetricsReport) -> dict[str, A
     else:
         interpolation_documents = []
     document: dict[str, Any] = {
-        "expectedCapturedCount": report._expected_captured_count,
+        "expectedCapturedCount": len(expected_captured),
         "captured": serialized_captured,
         "interpolated": interpolation_documents,
         "aggregates": aggregates,
+        "viewSpec": spec.to_dict(),
     }
-    if report._view_spec_json is not None:
-        document["viewSpec"] = json.loads(report._view_spec_json)
     return document
 
 
 def write_validation_metrics(
-    report: ValidationMetricsReport, output_path: str | Path
-) -> None:
-    """Serialize only sealed, internally recomputed validation evidence."""
-    document = _validation_metrics_document(report)
+    snapshots: ValidationMetricSnapshots,
+    output_path: str | Path,
+    *,
+    view_spec: ValidationViewSpec | Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate exact persisted coverage and write pixel-recomputed metrics."""
+    document = _validation_metrics_document(snapshots, view_spec)
     output = Path(output_path).expanduser()
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w", encoding="utf-8") as stream:
@@ -790,6 +1049,7 @@ def write_validation_metrics(
             allow_nan=False,
         )
         stream.write("\n")
+    return document
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -916,7 +1176,6 @@ def main(argv: Sequence[str] | None = None) -> None:
         for index in indices:
             color, _depth = render_pose(poses[index], intrinsics[index])
             ground_truth = np.asarray(Image.open(data_dir / "frames" / f"{index:04d}.jpg"))
-            metrics = captured_image_metrics(ground_truth, color)
             frame_id = f"{kind}-{index:04d}"
             Image.fromarray(_uint8_rgb(color)).save(output_dir / f"{frame_id}.png")
             captured_rows.append({
@@ -925,10 +1184,9 @@ def main(argv: Sequence[str] | None = None) -> None:
                 "frame_index": index,
                 "ground_truth": ground_truth,
                 "balanced_render": color,
-                **metrics,
             })
 
-    interpolation_metrics: list[dict[str, Any]] = []
+    interpolation_comparisons: list[dict[str, Any]] = []
     for view in spec.interpolated:
         colors_path: list[np.ndarray] = []
         depths_path: list[np.ndarray] = []
@@ -957,20 +1215,33 @@ def main(argv: Sequence[str] | None = None) -> None:
                     output_dir
                     / f"interpolated-{view.start_index:04d}-{view.end_index:04d}.png"
                 )
-        metrics = interpolation_flicker_metrics(colors_path, depths_path)
-        interpolation_metrics.append({
-            "startIndex": view.start_index,
-            "endIndex": view.end_index,
+        interpolation_comparisons.append({
+            "start_index": view.start_index,
+            "end_index": view.end_index,
             "alpha": view.alpha,
-            **metrics,
+            "color_frames": colors_path,
+            "depth_frames": depths_path,
         })
 
-    metrics_report = build_validation_metrics_report(
+    metric_snapshots = snapshot_validation_comparisons(
         captured_rows,
-        interpolated_metrics=interpolation_metrics,
+        interpolated_comparisons=interpolation_comparisons,
+    )
+    metrics_document = write_validation_metrics(
+        metric_snapshots,
+        output_dir / "validation-metrics.json",
         view_spec=spec,
     )
-    write_validation_metrics(metrics_report, output_dir / "validation-metrics.json")
+    by_identity = {
+        (item["kind"], item["frameIndex"]): item
+        for item in metrics_document["captured"]
+    }
+    for row in captured_rows:
+        metrics = by_identity[(row["kind"], row["frame_index"])]
+        row["psnr"] = (
+            float("inf") if metrics["psnr"] == "Infinity" else metrics["psnr"]
+        )
+        row["ssim"] = metrics["ssim"]
     build_contact_sheet(captured_rows, output_dir / "validation-contact-sheet.jpg")
 
 

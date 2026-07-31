@@ -1,7 +1,6 @@
 """CPU-only contracts for deterministic reconstruction validation views."""
 from __future__ import annotations
 
-import copy
 import importlib
 import json
 import sys
@@ -14,13 +13,14 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import render_validation as validation_module  # noqa: E402
 from render_validation import (  # noqa: E402
     aggregate_captured_metrics,
-    build_validation_metrics_report,
     build_contact_sheet,
     build_view_spec,
     captured_image_metrics,
     interpolation_flicker_metrics,
+    snapshot_validation_comparisons,
     validation_view_spec_from_dict,
     write_validation_metrics,
 )
@@ -30,6 +30,61 @@ def linear_camera_path(count: int, spacing: float = 0.25) -> np.ndarray:
     poses = np.repeat(np.eye(4, dtype=np.float64)[None], count, axis=0)
     poses[:, 0, 3] = np.arange(count) * spacing
     return poses
+
+
+def eight_frame_validation_spec():
+    return validation_view_spec_from_dict(
+        {
+            "recorded": [0, 1, 2, 3, 5, 6, 7],
+            "withheld": [4],
+            "interpolated": [
+                {"startIndex": 0, "endIndex": 1, "alpha": 0.5},
+                {"startIndex": 6, "endIndex": 7, "alpha": 0.5},
+            ],
+            "standardized": [],
+        },
+        frame_count=8,
+    )
+
+
+def complete_captured_comparisons():
+    image = np.zeros((4, 4, 3), dtype=np.float64)
+    rows = []
+    for index in range(8):
+        kind = "withheld" if index == 4 else "recorded"
+        rows.append(
+            {
+                "frame_id": f"{kind}-{index:04d}",
+                "kind": kind,
+                "frame_index": index,
+                "ground_truth": image.copy(),
+                "balanced_render": image.copy(),
+            }
+        )
+    return rows
+
+
+def complete_interpolated_comparisons():
+    rows = []
+    for start_index, end_index in ((0, 1), (6, 7)):
+        rows.append(
+            {
+                "start_index": start_index,
+                "end_index": end_index,
+                "alpha": 0.5,
+                "color_frames": (
+                    np.zeros((2, 2, 3), dtype=np.float64),
+                    np.full((2, 2, 3), 0.25, dtype=np.float64),
+                    np.full((2, 2, 3), 0.5, dtype=np.float64),
+                ),
+                "depth_frames": (
+                    np.ones((2, 2), dtype=np.float64),
+                    np.full((2, 2), 1.25, dtype=np.float64),
+                    np.full((2, 2), 1.5, dtype=np.float64),
+                ),
+            }
+        )
+    return rows
 
 
 def test_view_spec_separates_arc_length_recorded_and_every_fifth_withheld_pose():
@@ -153,82 +208,279 @@ def test_validation_metrics_serialize_identical_view_psnr_explicitly(tmp_path):
     """Catches perfect-view infinite PSNR producing invalid or unwritable JSON."""
     output = tmp_path / "validation-metrics.json"
 
-    image = np.full((4, 4, 3), 0.25, dtype=np.float64)
-    report = build_validation_metrics_report([{
-        "frame_id": "recorded-0000",
-        "kind": "recorded",
-        "frame_index": 0,
-        "ground_truth": image,
-        "balanced_render": image.copy(),
-    }])
-    write_validation_metrics(report, output)
+    snapshots = snapshot_validation_comparisons(complete_captured_comparisons())
+    write_validation_metrics(snapshots, output, view_spec=eight_frame_validation_spec())
 
-    assert json.loads(output.read_text()) == {
-        "aggregates": {"meanMse": 0.0, "meanPsnr": "Infinity", "meanSsim": 1.0},
-        "captured": [{
-            "frameId": "recorded-0000",
-            "frameIndex": 0,
-            "kind": "recorded",
-            "mse": 0.0,
-            "psnr": "Infinity",
-            "ssim": 1.0,
-        }],
-        "expectedCapturedCount": 1,
-        "interpolated": [],
+    document = json.loads(output.read_text())
+    assert document["aggregates"] == {
+        "meanMse": 0.0,
+        "meanPsnr": "Infinity",
+        "meanSsim": 1.0,
     }
+    assert document["captured"][0] == {
+        "frameId": "recorded-0000",
+        "frameIndex": 0,
+        "kind": "recorded",
+        "mse": 0.0,
+        "psnr": "Infinity",
+        "ssim": 1.0,
+    }
+    assert document["expectedCapturedCount"] == 8
+    assert len(document["captured"]) == 8
+    assert document["interpolated"] == []
+    assert document["viewSpec"] == {
+        "recorded": [0, 1, 2, 3, 5, 6, 7],
+        "withheld": [4],
+        "interpolated": [
+            {"startIndex": 0, "endIndex": 1, "alpha": 0.5},
+            {"startIndex": 6, "endIndex": 7, "alpha": 0.5},
+        ],
+        "standardized": [],
+    }
+
+
+def test_metrics_writer_rejects_forged_private_report_even_with_checksum(tmp_path):
+    """Catches the old object.__new__/private-symbol checksum forgery API."""
+    if hasattr(validation_module, "ValidationMetricsReport"):
+        report_type = validation_module.ValidationMetricsReport
+        evidence_type = validation_module._CapturedMetricEvidence
+        forged = object.__new__(report_type)
+        forged._captured = tuple(
+            evidence_type(
+                frame_id=f"recorded-{index:04d}",
+                kind="recorded",
+                frame_index=index,
+                mse=0.0,
+                ssim=1.0,
+            )
+            for index in range(8)
+        )
+        forged._expected_captured_count = 8
+        forged._interpolated = ()
+        forged._view_spec_json = None
+        forged._provenance = validation_module._METRICS_REPORT_PROVENANCE
+        forged._evidence_sha256 = validation_module._metrics_report_evidence_sha256(
+            forged
+        )
+        writer_arguments = {}
+    else:
+        forged = object()
+        writer_arguments = {"view_spec": eight_frame_validation_spec()}
+
+    with pytest.raises((TypeError, ValueError)):
+        write_validation_metrics(
+            forged, tmp_path / "validation-metrics.json", **writer_arguments
+        )
+
+
+def test_metrics_writer_rejects_incomplete_one_of_eight_captured_coverage(tmp_path):
+    """Catches expected coverage being set tautologically from caller rows."""
+    snapshots = snapshot_validation_comparisons(
+        complete_captured_comparisons()[:1]
+    )
+
+    with pytest.raises(ValueError, match="exact captured coverage"):
+        write_validation_metrics(
+            snapshots,
+            tmp_path / "validation-metrics.json",
+            view_spec=eight_frame_validation_spec(),
+        )
+
+
+def test_metrics_writer_rejects_extra_frame_index_999(tmp_path):
+    """Catches extra comparisons outside the persisted validation partition."""
+    rows = complete_captured_comparisons()
+    rows.append(
+        {
+            "frame_id": "recorded-0999",
+            "kind": "recorded",
+            "frame_index": 999,
+            "ground_truth": np.zeros((4, 4, 3), dtype=np.float64),
+            "balanced_render": np.zeros((4, 4, 3), dtype=np.float64),
+        }
+    )
+    snapshots = snapshot_validation_comparisons(rows)
+
+    with pytest.raises(ValueError, match="exact captured coverage"):
+        write_validation_metrics(
+            snapshots,
+            tmp_path / "validation-metrics.json",
+            view_spec=eight_frame_validation_spec(),
+        )
 
 
 @pytest.mark.parametrize(
-    "document",
+    "mutate_rows",
     [
-        {"captured": [{"psnr": float("nan")}]},
-        {"captured": [{"psnr": -float("inf")}]},
-        {"captured": [{"psnr": float("inf")}]},
-        {"captured": [{"ssim": float("inf")}]},
-        {"captured": [{"psnr": [float("inf")]}]},
-        {"aggregates": {"meanPsnr": float("inf")}},
-        {"captured": [{"psnr": "Infinity"}]},
+        lambda rows: rows.__setitem__(7, dict(rows[0])),
+        lambda rows: rows[4].__setitem__("kind", "recorded"),
     ],
+    ids=("duplicate-transplant", "wrong-kind"),
 )
-def test_validation_metrics_reject_unapproved_nonfinite_values(tmp_path, document):
-    """Catches arbitrary non-finite metrics being disguised as JSON strings."""
-    with pytest.raises(ValueError, match="validated metrics report"):
-        write_validation_metrics(document, tmp_path / "validation-metrics.json")
+def test_metrics_writer_rejects_duplicate_transplanted_or_wrong_kind_comparison(
+    tmp_path, mutate_rows
+):
+    """Catches duplicate evidence or a captured frame moved to the wrong split."""
+    rows = complete_captured_comparisons()
+    mutate_rows(rows)
+    snapshots = snapshot_validation_comparisons(rows)
+
+    with pytest.raises(ValueError, match="exact captured coverage"):
+        write_validation_metrics(
+            snapshots,
+            tmp_path / "validation-metrics.json",
+            view_spec=eight_frame_validation_spec(),
+        )
 
 
-def test_metrics_writer_rejects_forged_or_transplanted_public_mappings(tmp_path):
-    """Catches a caller transplanting a perfect marker or aggregate into a report."""
+@pytest.mark.parametrize(
+    "mutate_rows",
+    [
+        lambda rows: rows.pop(),
+        lambda rows: rows.append(dict(rows[0])),
+        lambda rows: rows[0].__setitem__("end_index", 2),
+        lambda rows: rows[0].__setitem__("alpha", 0.25),
+    ],
+    ids=("missing", "duplicate", "wrong-pair", "wrong-alpha"),
+)
+def test_metrics_writer_requires_exact_interpolated_pair_coverage_when_emitted(
+    tmp_path, mutate_rows
+):
+    """Catches incomplete, duplicate, or transplanted interpolation flicker evidence."""
+    interpolation_rows = complete_interpolated_comparisons()
+    mutate_rows(interpolation_rows)
+    snapshots = snapshot_validation_comparisons(
+        complete_captured_comparisons(),
+        interpolated_comparisons=interpolation_rows,
+    )
+
+    with pytest.raises(ValueError, match="exact interpolated coverage"):
+        write_validation_metrics(
+            snapshots,
+            tmp_path / "validation-metrics.json",
+            view_spec=eight_frame_validation_spec(),
+        )
+
+
+def test_metric_snapshots_reject_bad_shapes_types_and_nonfinite_depth():
+    """Catches malformed pixels or depth entering authoritative metric evidence."""
+    captured = complete_captured_comparisons()
+    captured[0]["balanced_render"] = np.zeros((3, 4, 3), dtype=np.float64)
+    with pytest.raises(ValueError, match="same shape"):
+        snapshot_validation_comparisons(captured)
+
+    captured = complete_captured_comparisons()
+    captured[0]["ground_truth"] = np.zeros((4, 4, 3), dtype=np.bool_)
+    with pytest.raises(ValueError, match="numeric pixels"):
+        snapshot_validation_comparisons(captured)
+
+    interpolation = complete_interpolated_comparisons()
+    interpolation[0]["depth_frames"][1][0, 0] = float("nan")
+    with pytest.raises(ValueError, match="finite depth"):
+        snapshot_validation_comparisons(
+            complete_captured_comparisons(),
+            interpolated_comparisons=interpolation,
+        )
+
+
+def test_metrics_writer_uses_immutable_snapshots_after_source_arrays_mutate(tmp_path):
+    """Catches caller mutation changing pixels after the evidence boundary."""
+    rows = complete_captured_comparisons()
+    caller_render = rows[0]["balanced_render"]
+    snapshots = snapshot_validation_comparisons(rows)
+    caller_render[...] = 1.0
+    rows[0]["ground_truth"][...] = 0.5
+
+    output = tmp_path / "validation-metrics.json"
+    write_validation_metrics(
+        snapshots, output, view_spec=eight_frame_validation_spec()
+    )
+
+    first = json.loads(output.read_text())["captured"][0]
+    assert first["mse"] == 0.0
+    assert first["psnr"] == "Infinity"
+    assert first["ssim"] == 1.0
+
+
+def test_metrics_writer_recomputes_interpolation_flicker_from_snapshots(tmp_path):
+    """Catches caller-supplied derived flicker metrics bypassing pixel evidence."""
+    snapshots = snapshot_validation_comparisons(
+        complete_captured_comparisons(),
+        interpolated_comparisons=complete_interpolated_comparisons(),
+    )
+    output = tmp_path / "validation-metrics.json"
+
+    write_validation_metrics(
+        snapshots, output, view_spec=eight_frame_validation_spec()
+    )
+
+    document = json.loads(output.read_text())
+    assert document["interpolated"] == [
+        {
+            "alpha": 0.5,
+            "color_flicker": 0.25,
+            "depth_flicker": 0.25,
+            "endIndex": 1,
+            "startIndex": 0,
+        },
+        {
+            "alpha": 0.5,
+            "color_flicker": 0.25,
+            "depth_flicker": 0.25,
+            "endIndex": 7,
+            "startIndex": 6,
+        },
+    ]
+    assert document["aggregates"]["meanColorFlicker"] == 0.25
+    assert document["aggregates"]["meanDepthFlicker"] == 0.25
+
+
+def test_writer_rejects_caller_supplied_derived_metric_fields():
+    """Catches a reserved Infinity token bypassing recomputation from pixels."""
+    rows = complete_captured_comparisons()
+    rows[0]["psnr"] = "Infinity"
+
+    with pytest.raises(ValueError, match="fields"):
+        snapshot_validation_comparisons(rows)
+
+
+def test_mixed_pixel_evidence_keeps_aggregate_psnr_finite(tmp_path):
+    """Catches a single perfect frame contaminating a mixed aggregate with Infinity."""
+    rows = complete_captured_comparisons()
+    rows[7]["balanced_render"] = np.full((4, 4, 3), 0.5, dtype=np.float64)
+    snapshots = snapshot_validation_comparisons(rows)
+    output = tmp_path / "validation-metrics.json"
+
+    write_validation_metrics(
+        snapshots, output, view_spec=eight_frame_validation_spec()
+    )
+
+    document = json.loads(output.read_text())
+    assert document["captured"][7]["psnr"] == pytest.approx(6.0205999133)
+    assert document["aggregates"]["meanMse"] == pytest.approx(0.03125)
+    assert document["aggregates"]["meanPsnr"] == pytest.approx(15.0514997832)
+    assert np.isfinite(document["aggregates"]["meanPsnr"])
+
+
+def test_old_derived_document_shape_is_not_an_accepted_writer_api(tmp_path):
+    """Catches a caller passing precomputed MSE/SSIM/Infinity as evidence."""
     forged = {
-        "expectedCapturedCount": 2,
+        "expectedCapturedCount": 8,
         "captured": [{"mse": 0.0, "psnr": "Infinity", "ssim": 1.0}],
-        "aggregates": {"meanMse": 0.0, "meanPsnr": "Infinity", "meanSsim": 1.0},
+        "interpolated": [],
+        "aggregates": {
+            "meanMse": 0.0,
+            "meanPsnr": "Infinity",
+            "meanSsim": 1.0,
+        },
     }
 
-    with pytest.raises(ValueError, match="validated metrics report"):
-        write_validation_metrics(forged, tmp_path / "validation-metrics.json")
-
-
-def test_metrics_writer_rejects_evidence_transplanted_between_sealed_reports(tmp_path):
-    """Catches copying perfect evidence into another otherwise valid report shell."""
-    image = np.zeros((4, 4, 3), dtype=np.float64)
-    perfect_rows = [
-        {
-            "frame_id": f"recorded-{index}",
-            "kind": "recorded",
-            "frame_index": index,
-            "ground_truth": image,
-            "balanced_render": image.copy(),
-        }
-        for index in range(2)
-    ]
-    mixed_rows = [dict(row) for row in perfect_rows]
-    mixed_rows[1]["balanced_render"] = np.full_like(image, 0.5)
-    perfect_report = build_validation_metrics_report(perfect_rows)
-    transplanted = copy.copy(build_validation_metrics_report(mixed_rows))
-    transplanted._captured = perfect_report._captured
-
-    with pytest.raises(ValueError, match="evidence integrity"):
-        write_validation_metrics(transplanted, tmp_path / "validation-metrics.json")
+    with pytest.raises((TypeError, ValueError)):
+        write_validation_metrics(
+            forged,
+            tmp_path / "validation-metrics.json",
+            view_spec=eight_frame_validation_spec(),
+        )
 
 
 def test_psnr_aggregate_uses_mse_so_perfect_and_imperfect_frames_stay_finite():
@@ -241,57 +493,6 @@ def test_psnr_aggregate_uses_mse_so_perfect_and_imperfect_frames_stay_finite():
 
     assert aggregate["meanPsnr"] == pytest.approx(9.0308998699)
     assert np.isfinite(aggregate["meanPsnr"])
-
-
-def test_all_perfect_psnr_aggregate_has_verified_infinity_provenance(tmp_path):
-    """Catches aggregate infinity being accepted without all-perfect frame evidence."""
-    image = np.zeros((4, 4, 3), dtype=np.float64)
-    rows = [
-        {
-            "frame_id": f"recorded-{index:04d}",
-            "kind": "recorded",
-            "frame_index": index,
-            "ground_truth": image,
-            "balanced_render": image.copy(),
-        }
-        for index in range(2)
-    ]
-    report = build_validation_metrics_report(rows)
-    output = tmp_path / "validation-metrics.json"
-    write_validation_metrics(report, output)
-
-    assert json.loads(output.read_text())["aggregates"]["meanPsnr"] == "Infinity"
-
-
-def test_validated_report_recomputes_mixed_aggregate_from_actual_pixels(tmp_path):
-    """Catches transplanted per-frame infinity contaminating a mixed report aggregate."""
-    reference = np.zeros((4, 4, 3), dtype=np.float64)
-    rows = [
-        {
-            "frame_id": "withheld-0004",
-            "kind": "withheld",
-            "frame_index": 4,
-            "ground_truth": reference,
-            "balanced_render": reference.copy(),
-        },
-        {
-            "frame_id": "withheld-0009",
-            "kind": "withheld",
-            "frame_index": 9,
-            "ground_truth": reference,
-            "balanced_render": np.full_like(reference, 0.5),
-            "psnr": float("inf"),
-        },
-    ]
-    report = build_validation_metrics_report(rows)
-    output = tmp_path / "validation-metrics.json"
-
-    write_validation_metrics(report, output)
-
-    document = json.loads(output.read_text())
-    assert document["captured"][0]["psnr"] == "Infinity"
-    assert document["captured"][1]["psnr"] == pytest.approx(6.0205999133)
-    assert document["aggregates"]["meanPsnr"] == pytest.approx(9.0308998699)
 
 
 def test_pose_validation_rejects_a_non_homogeneous_last_row():
@@ -352,6 +553,15 @@ def test_persisted_spec_rejects_an_empty_withheld_partition():
 
     with pytest.raises(ValueError, match="nonempty withheld partition"):
         validation_view_spec_from_dict(document, frame_count=4)
+
+
+def test_persisted_spec_rejects_duplicate_interpolated_pairs():
+    """Catches an ambiguous expected flicker-coverage set in persisted evidence."""
+    document = eight_frame_validation_spec().to_dict()
+    document["interpolated"].append(dict(document["interpolated"][0]))
+
+    with pytest.raises(ValueError, match="duplicate interpolated"):
+        validation_view_spec_from_dict(document, frame_count=8)
 
 
 def test_contact_sheet_has_explicit_column_and_frame_metric_labels(tmp_path):
