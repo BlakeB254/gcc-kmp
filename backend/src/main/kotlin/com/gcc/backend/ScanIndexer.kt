@@ -13,7 +13,8 @@ import org.slf4j.LoggerFactory
  *                                       @Serializable EnvScanManifest itself)
  *   every artifact the manifest names ->  a `capture_chunks` row (idempotent
  *                                          on r2_key), sized from the listing
- *   reconstructed/{cellId}/{v}/…     ->  a `reconstruction_assets` row
+ *   reconstructed/{cellId}/{v}/…     ->  a `reconstruction_assets` row,
+ *                                       except verified-candidate/ lifecycle bundles
  *
  * The manifest is self-describing (it lists its own photoKeys, captureChunks,
  * objectCapture; older manifests may also carry the retired capturedFrames), so indexing follows the manifest rather than
@@ -190,22 +191,31 @@ class ScanIndexer(
         return if (m.contains("iphone") || m.contains("ipad") || m.contains("ipod")) "ios" else null
     }
 
-    private data class ReconKey(val cell: String, val version: Int, val assetType: String, val format: String)
-
-    /** `reconstructed/{cellId}/{version}/{assetType}.{format}` */
-    private fun parseReconstructedKey(key: String): ReconKey? {
-        val parts = key.split('/')
-        if (parts.size < 4) return null
-        val cell = parts[1].takeIf { it.matches(CELL_ID_PATTERN) } ?: return null
-        val version = parts[2].toIntOrNull() ?: return null
-        val file = parts.last()
-        val assetType = file.substringBeforeLast('.').takeIf { it.isNotEmpty() } ?: return null
-        val format = file.substringAfterLast('.', "").lowercase().takeIf { it.isNotEmpty() } ?: return null
-        return ReconKey(cell, version, assetType, format)
-    }
-
     companion object {
         private val CELL_ID_PATTERN = Regex("""^-?\d+:-?\d+$""")
+
+        internal data class ReconKey(
+            val cell: String,
+            val version: Int,
+            val assetType: String,
+            val format: String,
+        )
+
+        /** `reconstructed/{cellId}/{version}/{assetType}.{format}`.
+         * Candidate bundles are lifecycle-owned by recon_worker and must not
+         * be mirrored as published legacy reconstruction rows. */
+        internal fun parseReconstructedKey(key: String): ReconKey? {
+            val parts = key.split('/')
+            if (parts.size < 4 || parts.getOrNull(3) == "verified-candidate") return null
+            val cell = parts[1].takeIf { it.matches(CELL_ID_PATTERN) } ?: return null
+            val version = parts[2].toIntOrNull() ?: return null
+            val file = parts.last()
+            val assetType = file.substringBeforeLast('.')
+                .takeIf { it.isNotEmpty() } ?: return null
+            val format = file.substringAfterLast('.', "").lowercase()
+                .takeIf { it.isNotEmpty() } ?: return null
+            return ReconKey(cell, version, assetType, format)
+        }
 
         /**
          * Fraction of the session actually covered by encoded video, as a

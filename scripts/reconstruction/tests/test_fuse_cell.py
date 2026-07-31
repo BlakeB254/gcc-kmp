@@ -378,11 +378,12 @@ def test_verified_candidate_stages_complete_immutable_bundle(monkeypatch, tmp_pa
         asset_sha256=hashlib.sha256(b"balanced-ply").hexdigest(),
     )
     uploaded = {}
-    monkeypatch.setattr(r2_store, "object_exists", lambda _key: False)
     monkeypatch.setattr(
         r2_store,
-        "upload_bytes",
-        lambda key, data, content_type: uploaded.__setitem__(key, (data, content_type)),
+        "upload_bytes_if_absent",
+        lambda key, data, content_type, sha256: uploaded.__setitem__(
+            key, (data, content_type, sha256)
+        ),
     )
 
     staged = fuse_cell_module.stage_verified_candidate_assets(
@@ -409,6 +410,10 @@ def test_verified_candidate_stages_complete_immutable_bundle(monkeypatch, tmp_pa
     }
     checksums = json.loads(uploaded[prefix + "checksums.json"][0])
     assert set(checksums) == set(uploaded) - {prefix + "checksums.json"}
+    assert all(
+        sha256 == hashlib.sha256(data).hexdigest()
+        for data, _content_type, sha256 in uploaded.values()
+    )
     assert staged.r2_key == prefix + "verified.ply"
     assert staged.artifact_keys == tuple(uploaded)
 
@@ -438,12 +443,12 @@ def test_verified_candidate_retry_refuses_to_overwrite_different_bytes(
         to_json=lambda: '{"kind":"verified"}',
         asset_sha256=hashlib.sha256(candidate_path.read_bytes()).hexdigest(),
     )
-    monkeypatch.setattr(r2_store, "object_exists", lambda _key: True)
-    monkeypatch.setattr(r2_store, "download_bytes", lambda _key: b"different-generation")
     monkeypatch.setattr(
         r2_store,
-        "upload_bytes",
-        lambda *_args, **_kwargs: pytest.fail("immutable object was overwritten"),
+        "upload_bytes_if_absent",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            ValueError("SHA-256/size mismatch")
+        ),
     )
 
     with pytest.raises(ValueError, match="immutable verified candidate key"):
@@ -506,8 +511,30 @@ def test_fuse_cell_splat_skip_reason_none_when_splat_produced(monkeypatch):
     )
     result = fuse_cell("1:2", api_base_url=None, train_splat=True, require_activation_for_splat=False)
     assert result.splat_skip_reason is None
-    splat_asset = next(asset for asset in result.assets if asset.asset_type == "splat")
-    assert splat_asset.data == b"fake-splat-ply"
+    assert result.verified_candidate is candidate
+    assert result.verified_version == 1
+    assert not any(asset.asset_type == "splat" for asset in result.assets)
+
+
+def test_verified_gsplat_candidate_is_not_written_to_legacy_splat_key(monkeypatch):
+    """Catches ScanIndexer-visible splat.ply publication before verified review."""
+    from fuse_cell import fuse_cell
+    import gsplat_runner
+
+    uploaded = _mock_cell_with_one_session(monkeypatch, run_version=9)
+    candidate = SimpleNamespace(balanced_bytes=b"verified-balanced")
+    monkeypatch.setattr(
+        gsplat_runner, "train_gsplat_for_cell", lambda *a, **k: (candidate, None)
+    )
+
+    result = fuse_cell(
+        "1:2", api_base_url=None, train_splat=True, require_activation_for_splat=False
+    )
+
+    assert result.verified_candidate is candidate
+    assert result.verified_version == 9
+    assert "reconstructed/1:2/9/splat.ply" not in uploaded
+    assert not any(asset.asset_type == "splat" for asset in result.assets)
 
 
 # ── World-registration path (scan-splat-registration-contract, PR #149) ──

@@ -2,6 +2,7 @@
 Postgres (data-postgres, :5432) -- SKIP LOCKED / lease-expiry behavior is
 Postgres-generic, so there's no reason to hit Neon from tests. Skipped
 entirely when the local container isn't reachable."""
+import json
 import os
 from pathlib import Path
 import sys
@@ -264,6 +265,7 @@ def _insert_verified_asset(
     active: bool = False,
     reviewed: bool = False,
     decision_publish: bool = True,
+    source_session_ids: list[str] | None = None,
 ):
     with conn.cursor() as cur:
         cur.execute(
@@ -272,7 +274,7 @@ def _insert_verified_asset(
                   source_scan_coverage_event_ids, activated_at, asset_kind,
                   processing_status, review_status, reviewed_at, reviewed_by,
                   manifest, asset_sha256)
-               VALUES (%s, 'splat', 'ply', %s, %s, '[]'::jsonb,
+               VALUES (%s, 'splat', 'ply', %s, %s, %s::jsonb,
                        CASE WHEN %s THEN now() END, 'verified', %s, %s,
                        CASE WHEN %s THEN now() END,
                        CASE WHEN %s THEN 'pilot@example.test' END,
@@ -282,6 +284,7 @@ def _insert_verified_asset(
                 cell,
                 f"reconstructed/{cell}/{version}/verified-candidate/verified.ply",
                 version,
+                json.dumps(source_session_ids or []),
                 active,
                 processing_status,
                 review_status,
@@ -479,7 +482,10 @@ def test_verified_candidate_content_columns_cannot_be_mutated(db):
     """Catches direct SQL changing the bytes/provenance identity of a candidate row."""
     _dsn, conn = db
     candidate = _insert_verified_asset(
-        conn, version=4, processing_status="candidate"
+        conn,
+        version=4,
+        processing_status="candidate",
+        source_session_ids=["sess-1"],
     )
     with pytest.raises(psycopg.errors.RaiseException, match="immutable"):
         with conn.cursor() as cur:
@@ -598,6 +604,235 @@ def test_verified_asset_migration_is_idempotent_and_enforces_one_active_per_cell
     conn.rollback()
 
 
+def _complete_staged_receipt(cell: str, version: int, sha256: str):
+    from fuse_cell import StagedVerifiedCandidate
+
+    prefix = f"reconstructed/{cell}/{version}/verified-candidate/"
+    names = (
+        "verified.ply",
+        "verified.spz",
+        "manifest.json",
+        "frame-audit.json",
+        "cleanup-report.json",
+        "validation-metrics.json",
+        "validation-contact-sheet.jpg",
+        "checksums.json",
+    )
+    return StagedVerifiedCandidate(
+        cell_id=cell,
+        version=version,
+        r2_key=prefix + "verified.ply",
+        asset_sha256=sha256,
+        artifact_keys=tuple(prefix + name for name in names),
+    )
+
+
+def test_process_job_records_verified_success_pending_without_legacy_completion(
+    db, monkeypatch, tmp_path
+):
+    """Catches a validated gsplat falling through complete_cell and becoming active."""
+    import hashlib
+    import gsplat_runner
+    import recon_worker
+    from fuse_cell import FusionResult
+    from verified_quality import PublicationDecision, QualityMetrics
+
+    _dsn, conn = db
+    _enqueue(conn, "sess-1", "1:2")
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM reconstruction_jobs WHERE session_id='sess-1'")
+        job_id = cur.fetchone()[0]
+    conn.commit()
+    candidate_bytes = b"verified-balanced"
+    candidate = SimpleNamespace(balanced_bytes=candidate_bytes)
+    decision = PublicationDecision(publish=True, reasons=[])
+    quality_metrics = QualityMetrics(
+        image_similarity=0.95,
+        depth_error=0.02,
+        temporal_flicker=0.01,
+        floater_ratio=0.04,
+        retained_coverage=0.92,
+        asset_size_bytes=len(candidate_bytes),
+    )
+    sha256 = hashlib.sha256(candidate_bytes).hexdigest()
+    document = {
+        "kind": "verified",
+        "cellIds": ["1:2"],
+        "decision": decision.to_dict(),
+        "metrics": quality_metrics.to_dict(),
+        "checksums": {"assetSha256": sha256},
+    }
+    manifest = SimpleNamespace(
+        to_dict=lambda: document,
+        to_json=lambda: __import__("json").dumps(document),
+        asset_sha256=sha256,
+    )
+    metrics = tmp_path / "validation-metrics.json"
+    contact = tmp_path / "validation-contact-sheet.jpg"
+    metrics.write_text("{}")
+    contact.write_bytes(b"jpeg")
+    result = FusionResult(
+        accepted_session_ids=["sess-1"],
+        merged_points=np.zeros((0, 3)),
+        merged_colors=np.zeros((0, 3)),
+    )
+    result.verified_candidate = candidate
+    result.verified_version = 4
+    result.verified_manifest = manifest
+    result.publication_decision = decision
+    result.verified_metrics = quality_metrics
+    result.validation_metrics = metrics
+    result.validation_contact_sheet = contact
+    staged_calls = []
+
+    monkeypatch.setenv("REQUIRE_SCRUBBED_VIDEO", "0")
+    monkeypatch.setenv("RECON_TRAIN_SPLAT", "1")
+    monkeypatch.setenv("SPLAT_ENGINE", "gsplat")
+    monkeypatch.setattr(gsplat_runner, "available", lambda: True)
+    monkeypatch.setattr(recon_worker.fuse_cell_module, "fuse_cell", lambda *_a, **_k: result)
+    monkeypatch.setattr(recon_worker, "compress_splat_for_web", lambda _data: (b"web", "spz"))
+    monkeypatch.setattr(
+        recon_worker.fuse_cell_module,
+        "stage_verified_candidate_assets",
+        lambda *args, **kwargs: staged_calls.append((args, kwargs))
+        or _complete_staged_receipt("1:2", 4, sha256),
+    )
+    monkeypatch.setattr(
+        recon_worker,
+        "complete_cell",
+        lambda *_a, **_k: pytest.fail("verified candidate used legacy completion"),
+    )
+    monkeypatch.setattr(
+        recon_worker,
+        "activate_verified_candidate",
+        lambda *_a, **_k: pytest.fail("pending candidate activated before review"),
+    )
+
+    recon_worker.process_job(conn, recon_worker.Job(job_id, "sess-1", "1:2", 1))
+
+    assert len(staged_calls) == 1
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT asset_kind, processing_status, review_status, activated_at
+               FROM reconstruction_assets"""
+        )
+        assert cur.fetchone() == ("verified", "candidate", "pending", None)
+        cur.execute(
+            "SELECT reconstruction_version, reconstructed_at FROM scan_sessions WHERE session_id='sess-1'"
+        )
+        assert cur.fetchone() == (None, None)
+        cur.execute("SELECT status FROM reconstruction_jobs WHERE id=%s", (job_id,))
+        assert cur.fetchone()[0] == "done"
+
+
+@pytest.mark.parametrize(
+    ("supplied_decision", "reason"),
+    [(None, "publication-decision-missing"), (object(), "publication-decision-invalid")],
+)
+def test_process_job_missing_or_invalid_decision_is_stably_rejected(
+    db, monkeypatch, tmp_path, supplied_decision, reason
+):
+    """Catches missing producer metrics/decision falling back to legacy publication."""
+    import hashlib
+    import gsplat_runner
+    import recon_worker
+    from fuse_cell import FusionResult
+
+    _dsn, conn = db
+    _enqueue(conn, "sess-1", "1:2")
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM reconstruction_jobs WHERE session_id='sess-1'")
+        job_id = cur.fetchone()[0]
+    conn.commit()
+    candidate_bytes = b"verified-balanced"
+    sha256 = hashlib.sha256(candidate_bytes).hexdigest()
+    result = FusionResult(accepted_session_ids=["sess-1"])
+    result.verified_candidate = SimpleNamespace(balanced_bytes=candidate_bytes)
+    result.verified_version = 4
+    result.verified_manifest = None
+    result.publication_decision = supplied_decision
+    result.validation_metrics = tmp_path / "validation-metrics.json"
+    result.validation_contact_sheet = tmp_path / "validation-contact-sheet.jpg"
+    result.validation_metrics.write_text("{}")
+    result.validation_contact_sheet.write_bytes(b"jpeg")
+
+    def rejected_manifest(_candidate, **kwargs):
+        decision = kwargs["decision"]
+        document = {
+            "kind": "verified",
+            "cellIds": ["1:2"],
+            "decision": decision.to_dict(),
+            "checksums": {"assetSha256": sha256},
+        }
+        return SimpleNamespace(
+            to_dict=lambda: document,
+            to_json=lambda: __import__("json").dumps(document),
+            asset_sha256=sha256,
+        )
+
+    monkeypatch.setenv("REQUIRE_SCRUBBED_VIDEO", "0")
+    monkeypatch.setenv("RECON_TRAIN_SPLAT", "1")
+    monkeypatch.setenv("SPLAT_ENGINE", "gsplat")
+    monkeypatch.setattr(gsplat_runner, "available", lambda: True)
+    monkeypatch.setattr(recon_worker.fuse_cell_module, "fuse_cell", lambda *_a, **_k: result)
+    monkeypatch.setattr(recon_worker, "build_manifest", rejected_manifest, raising=False)
+    monkeypatch.setattr(recon_worker, "compress_splat_for_web", lambda _data: (b"web", "spz"))
+    monkeypatch.setattr(
+        recon_worker.fuse_cell_module,
+        "stage_verified_candidate_assets",
+        lambda *_a, **_k: _complete_staged_receipt("1:2", 4, sha256),
+    )
+    monkeypatch.setattr(
+        recon_worker,
+        "complete_cell",
+        lambda *_a, **_k: pytest.fail("invalid verified result used legacy completion"),
+    )
+
+    recon_worker.process_job(conn, recon_worker.Job(job_id, "sess-1", "1:2", 1))
+
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT processing_status, rejection_reasons, activated_at FROM reconstruction_assets"
+        )
+        status, reasons, activated_at = cur.fetchone()
+    assert status == "rejected"
+    assert reasons == [reason]
+    assert activated_at is None
+
+
+def test_review_activation_resume_publishes_pending_candidate(db):
+    """Catches an approved candidate having no worker path to resume activation."""
+    import recon_worker
+
+    _dsn, conn = db
+    _enqueue(conn, "sess-1", "1:2")
+    old = _insert_verified_asset(
+        conn, version=3, processing_status="published", active=True
+    )
+    candidate = _insert_verified_asset(
+        conn,
+        version=4,
+        processing_status="candidate",
+        source_session_ids=["sess-1"],
+    )
+    recon_worker.review_verified_candidate(
+        conn, candidate, approved=True, reviewed_by="pilot@example.test"
+    )
+
+    assert recon_worker.activate_reviewed_candidates(conn) == 1
+    assert _active_verified_id(conn) == candidate
+    with conn.cursor() as cur:
+        cur.execute("SELECT processing_status FROM reconstruction_assets WHERE id=%s", (old,))
+        assert cur.fetchone()[0] == "superseded"
+        cur.execute(
+            "SELECT reconstruction_version, reconstructed_at FROM scan_sessions WHERE session_id='sess-1'"
+        )
+        version, reconstructed_at = cur.fetchone()
+    assert version == 4
+    assert reconstructed_at is not None
+
+
+
 # --- compress_splat_for_web fallback logic (subprocess mocked; no DB) ---
 
 class _FakeProc:
@@ -713,6 +948,7 @@ def test_gpu_busy_defers_without_burning_attempts(monkeypatch):
         fake_fuse_cell = types.ModuleType("fuse_cell")
         fake_fuse_cell.FusionResult = type("FusionResult", (), {})
         fake_fuse_cell.ProducedAsset = type("ProducedAsset", (), {})
+        fake_fuse_cell.StagedVerifiedCandidate = type("StagedVerifiedCandidate", (), {})
         fake_fuse_cell.fuse_cell = lambda *_args, **_kwargs: None
         monkeypatch.setitem(sys.modules, "fuse_cell", fake_fuse_cell)
         monkeypatch.setitem(sys.modules, "r2_store", types.ModuleType("r2_store"))

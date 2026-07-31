@@ -26,6 +26,7 @@ Usage:
                                             # queue is empty, then exit 0
                                             # (systemd timer mode -- see
                                             # ops/systemd/gcc-recon-worker.timer)
+  python recon_worker.py --activate-reviewed # activate attributed approvals
 """
 from __future__ import annotations
 
@@ -46,6 +47,8 @@ import fuse_cell as fuse_cell_module
 import r2_store
 from fuse_cell import FusionResult, ProducedAsset, StagedVerifiedCandidate
 from gpu_admission import GpuBusy
+from verified_manifest import build_manifest
+from verified_quality import PublicationDecision, QualityMetrics
 
 # Must outlast the slowest job: gsplat training runs up to 3h (its
 # subprocess timeout in gsplat_runner) + fusion/download overhead. A lease
@@ -532,6 +535,128 @@ def activate_verified_candidate(
     return True
 
 
+def activate_reviewed_candidates(conn) -> int:
+    """Resume candidates whose attributed pilot approval arrived asynchronously."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT id, source_scan_coverage_event_ids
+               FROM reconstruction_assets
+               WHERE asset_kind='verified' AND processing_status='candidate'
+                 AND review_status='approved' AND reviewed_at IS NOT NULL
+                 AND reviewed_by IS NOT NULL AND btrim(reviewed_by)<>''
+               ORDER BY id"""
+        )
+        rows = cur.fetchall()
+    conn.commit()
+    activated = 0
+    for candidate_id, source_value in rows:
+        if isinstance(source_value, list):
+            source_ids = [value for value in source_value if isinstance(value, str)]
+        elif isinstance(source_value, dict):
+            source_ids = [
+                value
+                for value in source_value.get("sessions", [])
+                if isinstance(value, str)
+            ]
+        else:
+            source_ids = []
+        if activate_verified_candidate(
+            conn, candidate_id, source_session_ids=source_ids
+        ):
+            activated += 1
+    return activated
+
+
+def _verified_publication(result: FusionResult, cell: str):
+    """Normalize producer-owned metrics/decision, failing closed when absent."""
+    candidate = result.verified_candidate
+    supplied_decision = result.publication_decision
+    metrics = result.verified_metrics
+    invalid_reason: str | None = None
+    if supplied_decision is None:
+        invalid_reason = "publication-decision-missing"
+    elif not isinstance(supplied_decision, PublicationDecision):
+        invalid_reason = "publication-decision-invalid"
+    elif not isinstance(metrics, QualityMetrics) or any(
+        value is None for value in metrics.to_dict().values()
+    ):
+        invalid_reason = "publication-decision-invalid"
+
+    if invalid_reason is not None:
+        decision = PublicationDecision(False, [invalid_reason])
+        manifest = build_manifest(
+            candidate,
+            cell_ids=[cell],
+            source_session_ids=result.accepted_session_ids,
+            metrics=None,
+            review_state={"status": "pending"},
+            decision=decision,
+        )
+        return manifest, decision
+
+    decision = supplied_decision
+    manifest = result.verified_manifest
+    if manifest is None:
+        manifest = build_manifest(
+            candidate,
+            cell_ids=[cell],
+            source_session_ids=result.accepted_session_ids,
+            metrics=metrics,
+            review_state={"status": "pending"},
+            decision=decision,
+        )
+    try:
+        document = manifest.to_dict()
+        manifest_valid = (
+            document.get("kind") == "verified"
+            and document.get("decision") == decision.to_dict()
+            and document.get("metrics") == metrics.to_dict()
+        )
+    except (AttributeError, TypeError, ValueError):
+        manifest_valid = False
+    if not manifest_valid:
+        decision = PublicationDecision(False, ["publication-decision-invalid"])
+        manifest = build_manifest(
+            candidate,
+            cell_ids=[cell],
+            source_session_ids=result.accepted_session_ids,
+            metrics=None,
+            review_state={"status": "pending"},
+            decision=decision,
+        )
+    return manifest, decision
+
+
+def _finish_candidate_jobs(conn, cell: str, splat_skip_reason: str | None) -> None:
+    with conn.transaction():
+        with conn.cursor() as cur:
+            cur.execute(
+                """UPDATE reconstruction_jobs
+                   SET status='done', completed_at=now(), updated_at=now(),
+                       splat_skip_reason=%s
+                   WHERE location_cell_id=%s AND status IN ('queued', 'leased')""",
+                (splat_skip_reason, cell),
+            )
+
+
+def _record_verified_completion(
+    conn,
+    result: FusionResult,
+    staged: StagedVerifiedCandidate,
+    manifest,
+    decision: PublicationDecision,
+) -> int:
+    candidate_id = record_verified_candidate(
+        conn,
+        staged,
+        manifest,
+        decision,
+        source_session_ids=result.accepted_session_ids,
+    )
+    _finish_candidate_jobs(conn, staged.cell_id, result.splat_skip_reason)
+    return candidate_id
+
+
 def _world_mirror_healthy(base_url: str) -> bool:
     try:
         resp = requests.get(f"{base_url}/health", timeout=10)
@@ -614,6 +739,46 @@ def process_job(conn, job: Job) -> None:
         require_activation_for_splat=require_activation,
         gpu_job_id=job.id,
     )
+
+    if result.verified_candidate is not None:
+        if result.verified_version is None:
+            raise RuntimeError("verified candidate has no immutable version")
+        compressed = compress_splat_for_web(result.verified_candidate.balanced_bytes)
+        if compressed is None:
+            raise RuntimeError("verified candidate web asset could not be produced")
+        web_asset, web_format = compressed
+        manifest, decision = _verified_publication(result, job.location_cell_id)
+        staged = fuse_cell_module.stage_verified_candidate_assets(
+            job.location_cell_id,
+            result.verified_version,
+            result.verified_candidate,
+            manifest,
+            web_asset=web_asset,
+            web_format=web_format,
+            validation_metrics=result.validation_metrics,
+            contact_sheet=result.validation_contact_sheet,
+        )
+        try:
+            candidate_id = _record_verified_completion(
+                conn, result, staged, manifest, decision
+            )
+        except psycopg.OperationalError:
+            print(
+                "db connection lost before candidate recording -- retrying on a fresh one",
+                file=sys.stderr,
+            )
+            with psycopg.connect(os.environ["DATABASE_URL"]) as fresh:
+                candidate_id = _record_verified_completion(
+                    fresh, result, staged, manifest, decision
+                )
+        print(
+            f"job {job.id} done: cell {job.location_cell_id} verified candidate "
+            f"{candidate_id} v{staged.version}, status="
+            f"{'pending-review' if decision.publish else 'rejected'}, "
+            f"accepted={result.accepted_session_ids}, "
+            f"rejected={result.rejected_session_ids}"
+        )
+        return
 
     assets = list(result.assets)
     splat = next((a for a in assets if a.asset_type == "splat" and a.data), None)
@@ -703,6 +868,11 @@ def main() -> None:
                        help="poll forever, sleeping SECONDS (default 60) when idle")
     group.add_argument("--drain", action="store_true",
                        help="process jobs until the queue is empty, then exit (systemd timer mode)")
+    group.add_argument(
+        "--activate-reviewed",
+        action="store_true",
+        help="atomically activate every attributed approved verified candidate",
+    )
     args = parser.parse_args()
 
     dsn = os.environ.get("DATABASE_URL")
@@ -711,6 +881,9 @@ def main() -> None:
 
     conn = psycopg.connect(dsn)
     try:
+        if args.activate_reviewed:
+            print(f"activated {activate_reviewed_candidates(conn)} reviewed candidate(s)")
+            return
         if args.once:
             processed = run_once(conn)
             print("queue empty" if not processed else "done")

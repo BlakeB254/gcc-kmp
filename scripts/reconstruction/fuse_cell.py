@@ -138,6 +138,15 @@ class FusionResult:
     # vocabulary; recon_worker.py's complete_cell() writes this into
     # reconstruction_jobs.splat_skip_reason (migration 0039).
     splat_skip_reason: str | None = None
+    # A gsplat VerifiedCandidate is not a published legacy splat. The worker
+    # stages it under verified-candidate/ and records its review lifecycle.
+    verified_candidate: object | None = None
+    verified_version: int | None = None
+    verified_manifest: object | None = None
+    verified_metrics: object | None = None
+    publication_decision: object | None = None
+    validation_metrics: Path | None = None
+    validation_contact_sheet: Path | None = None
 
 
 def fuse_sessions(sessions: list[SessionFusionInput]) -> FusionResult:
@@ -556,12 +565,16 @@ def _verified_candidate_key(cell_id: str, version: int, filename: str) -> str:
 def _upload_immutable_verified_object(
     key: str, data: bytes, *, content_type: str
 ) -> None:
-    """Retry identical uploads, but never replace bytes at a candidate key."""
-    if r2_store.object_exists(key):
-        if r2_store.download_bytes(key) != data:
-            raise ValueError(f"immutable verified candidate key already exists: {key}")
-        return
-    r2_store.upload_bytes(key, data, content_type=content_type)
+    """Atomically create a key; a racing retry must have identical bytes."""
+    try:
+        r2_store.upload_bytes_if_absent(
+            key,
+            data,
+            content_type=content_type,
+            sha256=hashlib.sha256(data).hexdigest(),
+        )
+    except ValueError as error:
+        raise ValueError(f"immutable verified candidate key conflict: {key}") from error
 
 
 def _read_required_candidate_file(candidate, attribute: str) -> bytes:
@@ -763,6 +776,17 @@ def fuse_cell(
                 cell_id, result, manifests_by_session_id, gpu_job_id=gpu_job_id
             )
             splat_bytes = candidate.balanced_bytes if candidate is not None else None
+            if candidate is not None:
+                result.verified_candidate = candidate
+                balanced_path = getattr(candidate, "balanced", None)
+                if balanced_path is not None:
+                    candidate_root = Path(balanced_path).parent
+                    result.validation_metrics = (
+                        candidate_root / "validation/validation-metrics.json"
+                    )
+                    result.validation_contact_sheet = (
+                        candidate_root / "validation/validation-contact-sheet.jpg"
+                    )
         else:
             import splat_train
 
@@ -780,11 +804,29 @@ def fuse_cell(
     if splat_wanted:
         if splat_bytes is not None:
             version = _run_version()
-            splat_key = _write_bytes_to_r2(cell_id, "splat", "ply", splat_bytes, version)
-            result.assets.append(ProducedAsset("splat", "ply", splat_key, version, splat_bytes))
-            print(f"cell {cell_id}: wrote {splat_key}")
-            if api_base_url:
-                _record_provenance(cell_id, splat_key, "splat", "ply", activated=result.activated, api_base_url=api_base_url)
+            if result.verified_candidate is not None:
+                result.verified_version = version
+                print(
+                    f"cell {cell_id}: verified candidate ready for immutable staging "
+                    f"and pilot review (v{version})"
+                )
+            else:
+                splat_key = _write_bytes_to_r2(
+                    cell_id, "splat", "ply", splat_bytes, version
+                )
+                result.assets.append(
+                    ProducedAsset("splat", "ply", splat_key, version, splat_bytes)
+                )
+                print(f"cell {cell_id}: wrote {splat_key}")
+                if api_base_url:
+                    _record_provenance(
+                        cell_id,
+                        splat_key,
+                        "splat",
+                        "ply",
+                        activated=result.activated,
+                        api_base_url=api_base_url,
+                    )
         else:
             print(f"cell {cell_id}: no session produced a usable splat -- point cloud is still written")
 

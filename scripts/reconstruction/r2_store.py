@@ -9,12 +9,14 @@ credentials serves both the app and this pipeline):
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 from dataclasses import dataclass
 
 import boto3
+from botocore.exceptions import ClientError
 
 _LOCATION_CELL_ID_PATTERN = re.compile(r"^-?\d+:-?\d+$")
 
@@ -166,6 +168,54 @@ def download_video_bytes(raw_key: str) -> bytes:
 def upload_bytes(key: str, data: bytes, content_type: str) -> None:
     c = client()
     c.put_object(Bucket=bucket_name(), Key=key, Body=data, ContentType=content_type)
+
+
+def upload_bytes_if_absent(
+    key: str,
+    data: bytes,
+    *,
+    content_type: str,
+    sha256: str,
+) -> None:
+    """Atomically create an immutable object, accepting only exact retries.
+
+    R2 implements S3 conditional writes. ``If-None-Match: *`` closes the
+    HEAD/PUT race: only one writer can create a key. A losing identical writer
+    verifies the actual object bytes; a different generation fails closed.
+    """
+    actual_sha256 = hashlib.sha256(data).hexdigest()
+    if sha256 != actual_sha256:
+        raise ValueError("conditional upload SHA-256 does not match payload")
+    c = client()
+    bucket = bucket_name()
+    try:
+        c.put_object(
+            Bucket=bucket,
+            Key=key,
+            Body=data,
+            ContentType=content_type,
+            IfNoneMatch="*",
+            Metadata={"sha256": sha256, "size": str(len(data))},
+        )
+        return
+    except ClientError as error:
+        response = error.response if isinstance(error.response, dict) else {}
+        code = str(response.get("Error", {}).get("Code", ""))
+        status = response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+        if code not in {"PreconditionFailed", "412"} and status != 412:
+            raise
+
+    response = c.get_object(Bucket=bucket, Key=key)
+    body = response["Body"]
+    try:
+        existing = body.read()
+    finally:
+        body.close()
+    existing_sha256 = hashlib.sha256(existing).hexdigest()
+    if len(existing) != len(data) or existing_sha256 != sha256:
+        raise ValueError(
+            f"immutable object SHA-256/size mismatch after conditional create: {key}"
+        )
 
 
 def reconstructed_asset_key(cell_id: str, version: int, asset_type: str, fmt: str) -> str:
