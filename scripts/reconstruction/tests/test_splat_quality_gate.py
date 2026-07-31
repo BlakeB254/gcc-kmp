@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import subprocess
+from types import SimpleNamespace
 
 import numpy as np
 from PIL import Image
@@ -10,6 +11,7 @@ import pytest
 
 import gsplat_runner
 from fuse_cell import FusionResult
+from gpu_admission import GpuBusy, GpuReservation
 
 
 def _poses(points: list[tuple[float, float, float]]) -> np.ndarray:
@@ -111,6 +113,75 @@ def test_runner_export_rejects_tiny_dataset_before_training(tmp_path, monkeypatc
     assert candidate is None
     assert reason == "too-few-frames"
     assert not (tmp_path / "validation-view-spec.json").exists()
+
+
+def test_validation_dispatch_starts_only_while_gpu_reservation_is_held(tmp_path, monkeypatch):
+    """Removing validation admission would launch CUDA while a contender can lock."""
+    lock_path = tmp_path / "gpu.lock"
+    candidate = SimpleNamespace(balanced=tmp_path / "splat_balanced.ply")
+    candidate.balanced.write_bytes(b"balanced")
+    launched = []
+
+    def fake_run(command, **_kwargs):
+        launched.append(command)
+        metadata = json.loads(lock_path.read_text())
+        assert metadata["owner"] == "validation"
+        assert metadata["jobId"] == "job-17"
+        assert metadata["command"].endswith("render_validation.py --ply " + str(candidate.balanced)
+                                         + " --data " + str(tmp_path)
+                                         + " --manifest " + str(tmp_path / "validation-manifest.json")
+                                         + " --out " + str(tmp_path / "validation"))
+        with pytest.raises(GpuBusy, match="validation"):
+            with GpuReservation(lock_path).acquire("contender"):
+                pass
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setenv("GCC_GPU_LOCK_PATH", str(lock_path))
+    monkeypatch.setattr(gsplat_runner.subprocess, "run", fake_run)
+
+    result = gsplat_runner._run_validation_subprocess(
+        candidate, tmp_path, {}, gpu_job_id="job-17"
+    )
+
+    assert result.returncode == 0
+    assert launched[0][1].endswith("render_validation.py")
+    assert "--ply" in launched[0]
+
+
+def test_busy_validation_dispatch_does_not_launch_subprocess(tmp_path, monkeypatch):
+    """Changing validation admission ordering would initialize CUDA while busy."""
+    lock_path = tmp_path / "gpu.lock"
+    candidate = SimpleNamespace(balanced=tmp_path / "splat_balanced.ply")
+    candidate.balanced.write_bytes(b"balanced")
+    launched = []
+    monkeypatch.setenv("GCC_GPU_LOCK_PATH", str(lock_path))
+    monkeypatch.setattr(
+        gsplat_runner.subprocess, "run", lambda *_args, **_kwargs: launched.append(True)
+    )
+
+    with GpuReservation(lock_path).acquire("validation"):
+        with pytest.raises(GpuBusy, match="validation"):
+            gsplat_runner._run_validation_subprocess(candidate, tmp_path, {}, gpu_job_id=17)
+
+    assert launched == []
+
+
+def test_validation_failure_retains_balanced_candidate_but_fails_closed(tmp_path, monkeypatch):
+    """Changing validation failure to publishable would replace a last good asset."""
+    candidate = SimpleNamespace(balanced=tmp_path / "splat_balanced.ply")
+    candidate.balanced.write_bytes(b"verified-balanced-candidate")
+    monkeypatch.setattr(
+        gsplat_runner,
+        "_run_validation_subprocess",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=1),
+    )
+
+    result, reason = gsplat_runner._validated_candidate(
+        candidate, tmp_path, {}, cell_id="1:2", gpu_job_id=17
+    )
+
+    assert (result, reason) == (None, "validation-failed")
+    assert candidate.balanced.read_bytes() == b"verified-balanced-candidate"
 
 
 def test_durable_staging_survives_timeout_and_retry_resumes(tmp_path, monkeypatch):

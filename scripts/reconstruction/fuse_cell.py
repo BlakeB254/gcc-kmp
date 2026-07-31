@@ -630,7 +630,10 @@ def fuse_cell(
 
             # The legacy world-mirror trainer is still GPU-owning.  Keep its
             # fallback path under the same host-wide admission contract.
-            with GpuReservation(job_id=gpu_job_id).acquire("reconstruction"):
+            with GpuReservation(
+                job_id=gpu_job_id,
+                command="splat_train.train_splat_for_cell",
+            ).acquire("reconstruction"):
                 splat_bytes, trainer_reason = splat_train.train_splat_for_cell(
                     cell_id, result, manifests_by_session_id
                 )

@@ -743,7 +743,7 @@ def test_successful_runner_returns_verified_candidate_without_losing_resume_stag
                 source_checksums=candidate_source_checksums(staging),
                 provenance={"producer": "captured-observation-projector"},
             )
-        else:
+        elif command[1].endswith("clean_splat.py"):
             artifact = load_verified_evidence_artifact(
                 command[command.index("--evidence-artifact") + 1],
                 raw_ply_path=command[command.index("--ply") + 1],
@@ -757,6 +757,10 @@ def test_successful_runner_returns_verified_candidate_without_losing_resume_stag
                 poses_path=command[command.index("--poses") + 1],
                 verified_evidence=artifact,
             )
+        elif command[1].endswith("render_validation.py"):
+            pass
+        else:
+            raise AssertionError(f"unexpected subprocess: {command}")
         return type("Result", (), {"returncode": 0})()
 
     monkeypatch.setattr(gsplat_runner, "available", lambda: True)

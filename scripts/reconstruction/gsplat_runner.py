@@ -51,6 +51,7 @@ from gpu_admission import GpuReservation
 
 GSPLAT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "gsplat_train"))
 GSPLAT_PYTHON = os.path.join(GSPLAT_DIR, ".venv", "bin", "python")
+VALIDATION_RENDERER = os.path.join(GSPLAT_DIR, "render_validation.py")
 MAX_TOTAL_FRAMES = 160
 # ARKit camera convention is GL (-Z forward, +Y up); gsplat wants OpenCV.
 GL_TO_CV = np.diag([1.0, -1.0, -1.0, 1.0])
@@ -328,6 +329,63 @@ def _durable_training_workspace(
     )
     path.mkdir(parents=True, exist_ok=True)
     yield str(path)
+
+
+def _run_validation_subprocess(
+    candidate: VerifiedCandidate,
+    staging_dir: str | os.PathLike[str],
+    env: dict[str, str],
+    *,
+    gpu_job_id: str | int | None,
+):
+    """Render a balanced candidate only while the GPU reservation is held.
+
+    The output directory is durable: a failed validation remains diagnosable,
+    but its candidate is not returned for publication.
+    """
+    staging = Path(staging_dir)
+    manifest = staging / "validation-manifest.json"
+    manifest.write_text('{"frameSemanticTags": []}\n', encoding="utf-8")
+    command = [
+        GSPLAT_PYTHON,
+        VALIDATION_RENDERER,
+        "--ply",
+        str(candidate.balanced),
+        "--data",
+        str(staging),
+        "--manifest",
+        str(manifest),
+        "--out",
+        str(staging / "validation"),
+    ]
+    # render_validation.main imports torch/gsplat only after this subprocess
+    # starts; a busy reservation therefore prevents CUDA initialization.
+    with GpuReservation(
+        job_id=gpu_job_id, command=" ".join(command)
+    ).acquire("validation"):
+        return subprocess.run(command, env=env, timeout=1800)
+
+
+def _validated_candidate(
+    candidate: VerifiedCandidate,
+    staging_dir: str | os.PathLike[str],
+    env: dict[str, str],
+    *,
+    cell_id: str,
+    gpu_job_id: str | int | None,
+) -> tuple[VerifiedCandidate | None, str | None]:
+    """Fail closed on renderer failure without deleting candidate evidence."""
+    validation = _run_validation_subprocess(
+        candidate, staging_dir, env, gpu_job_id=gpu_job_id
+    )
+    if validation.returncode != 0:
+        print(
+            f"gsplat_runner: cell {cell_id}: validation failed "
+            f"(rc={validation.returncode}); candidate retained but not publishable",
+            file=sys.stderr,
+        )
+        return None, "validation-failed"
+    return candidate, None
 
 
 def _stage_verified_training_metadata(
@@ -635,9 +693,12 @@ def train_gsplat_for_cell(
         )
         # The child imports torch and initializes CUDA in train_gsplat.main;
         # acquire before spawning so a busy GPU starts no CUDA process at all.
-        with GpuReservation(job_id=gpu_job_id).acquire("reconstruction"):
+        train_command = _build_train_command(tmp, iters, max_gaussians, resume=resume)
+        with GpuReservation(
+            job_id=gpu_job_id, command=" ".join(train_command)
+        ).acquire("reconstruction"):
             proc = subprocess.run(
-                _build_train_command(tmp, iters, max_gaussians, resume=resume),
+                train_command,
                 env=env, timeout=3 * 3600,
             )
         out_ply = os.path.join(tmp, "splat_gsplat.ply")
@@ -697,4 +758,10 @@ def train_gsplat_for_cell(
                 f"gsplat_runner: cell {cell_id}: incomplete cleanup artifacts",
                 file=sys.stderr,
             )
-        return candidate, candidate_reason
+            return None, candidate_reason
+        if candidate_reason is not None:
+            return None, candidate_reason
+
+        return _validated_candidate(
+            candidate, tmp, env, cell_id=cell_id, gpu_job_id=gpu_job_id
+        )

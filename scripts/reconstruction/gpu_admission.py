@@ -121,7 +121,16 @@ class GpuReservation:
         reservation_id = str(uuid4())
         self._handle = handle
         self._reservation_id = reservation_id
-        self._write_metadata(handle, self._metadata(owner, reservation_id))
+        try:
+            self._write_metadata(handle, self._metadata(owner, reservation_id))
+        except Exception:
+            self._handle = None
+            self._reservation_id = None
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            finally:
+                handle.close()
+            raise
         try:
             yield self
         finally:
