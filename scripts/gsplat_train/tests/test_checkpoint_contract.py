@@ -37,6 +37,26 @@ def _load_trainer_without_torch():
             sys.modules["torch"] = previous
 
 
+def _cpu_torch_python() -> Path:
+    """Prefer the test interpreter, then configured/repository-local gsplat Python."""
+    if importlib.util.find_spec("torch") is not None:
+        return Path(sys.executable)
+    configured = os.environ.get("GCC_GSPLAT_TEST_PYTHON")
+    if configured:
+        return Path(configured)
+    common_dir = subprocess.run(
+        ["git", "rev-parse", "--git-common-dir"],
+        cwd=TRAINER_PATH.parent,
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
+    repository = (TRAINER_PATH.parent / common_dir).resolve().parent
+    python = repository / "scripts" / "gsplat_train" / ".venv" / "bin" / "python"
+    assert python.is_file(), f"set GCC_GSPLAT_TEST_PYTHON; not found: {python}"
+    return python
+
+
 def test_verified_defaults_freeze_poses_and_enable_checkpoints():
     """Catches verified training silently enabling pose drift or losing recovery."""
     trainer = _load_trainer_without_torch()
@@ -132,6 +152,56 @@ def test_dataset_fingerprint_covers_frozen_poses_and_captured_inputs(tmp_path):
     assert first.frozen_poses_sha256 != second.frozen_poses_sha256
 
 
+def test_training_config_fingerprint_covers_recipe_and_exposure_optimizer_mode():
+    """Catches resume treating behavior-changing trainer settings as equivalent."""
+    trainer = _load_trainer_without_torch()
+    enabled = trainer.training_config(trainer.parse_args(["--data", "/tmp/data"]))
+    disabled = trainer.training_config(trainer.parse_args([
+        "--data", "/tmp/data",
+        "--exposure-lr", "0",
+        "--sh-degree", "2",
+        "--depth-weight", "0.1",
+        "--depth-ds", "4",
+        "--warmup", "500",
+        "--max-gaussians", "1234",
+    ]))
+
+    assert enabled["poseMode"] == "frozen"
+    assert enabled["optimizerLearningRates"]["exposure"] == 0.001
+    assert disabled["optimizerLearningRates"]["exposure"] is None
+    assert disabled["shDegree"] == 2
+    assert disabled["depth"] == {"weight": 0.1, "downsample": 4}
+    assert disabled["warmupIterations"] == 500
+    assert disabled["maxGaussians"] == 1234
+    assert (
+        trainer.training_config_sha256(enabled)
+        != trainer.training_config_sha256(disabled)
+    )
+
+
+def test_resume_rejects_training_config_mismatch_before_checkpoint_load(tmp_path):
+    """Catches recovery applying state from a different optimizer or recipe."""
+    trainer = _load_trainer_without_torch()
+    old_config = {"recipeRevision": "old", "optimizerLearningRates": {"exposure": None}}
+    new_config = {"recipeRevision": "new", "optimizerLearningRates": {"exposure": 0.001}}
+    (tmp_path / "checkpoint_latest.pt").write_bytes(b"must-not-be-loaded")
+    (tmp_path / "training-state.json").write_text(json.dumps({
+        "checkpoint": "checkpoint_latest.pt",
+        "datasetSha256": "dataset",
+        "frozenPosesSha256": "poses",
+        "trainingConfig": old_config,
+        "trainingConfigSha256": trainer.training_config_sha256(old_config),
+    }))
+
+    with pytest.raises(ValueError, match="training configuration"):
+        trainer.validate_resume(
+            tmp_path,
+            dataset_sha256="dataset",
+            frozen_poses_sha256="poses",
+            training_config_sha256=trainer.training_config_sha256(new_config),
+        )
+
+
 def test_checkpoint_round_trip_is_atomic_and_keeps_cuda_uninitialized(tmp_path):
     """Catches incomplete recovery state, torn latest files, or CUDA initialization."""
     code = f"""
@@ -167,6 +237,7 @@ path = module.checkpoint_training(
     strategy_state={{'state': {{'scene_scale': torch.tensor(2.0)}}, 'refine_stop_iter': 9}},
     auxiliary_parameters={{'exposure': exposure}},
     auxiliary_optimizers={{'exposure': exposure_optimizer}},
+    training_config={{'recipeRevision': 'verified-frozen-v1', 'exposureLR': 0.001}},
 )
 loaded = module.load_checkpoint(path)
 assert loaded['iteration'] == 12
@@ -179,6 +250,8 @@ assert torch.equal(loaded['gaussian_parameters']['means'], torch.tensor([[1.0, 2
 assert set(loaded['optimizer_states']) == {{'means', 'exposure'}}
 assert loaded['scheduler_state']['last_epoch'] == scheduler.state_dict()['last_epoch']
 assert loaded['strategy_state']['refine_stop_iter'] == 9
+assert loaded['training_config'] == {{'recipeRevision': 'verified-frozen-v1', 'exposureLR': 0.001}}
+assert loaded['training_config_sha256'] == module.training_config_sha256(loaded['training_config'])
 module.restore_rng_state(loaded['rng_state'])
 assert torch.equal(torch.get_rng_state(), expected_torch_rng)
 assert (root / 'checkpoint_12.pt').is_file()
@@ -187,12 +260,14 @@ assert not list(root.glob('*.tmp'))
 state = __import__('json').loads((root / 'training-state.json').read_text())
 assert state['iteration'] == 12
 assert state['checkpoint'] == 'checkpoint_latest.pt'
+assert state['trainingConfig'] == loaded['training_config']
+assert state['trainingConfigSha256'] == loaded['training_config_sha256']
 assert not torch.cuda.is_initialized()
 print('cuda_initialized_before=False after=False')
 """
     env = os.environ.copy()
     env["CUDA_VISIBLE_DEVICES"] = ""
-    python = Path("/home/codex450/cdx/dev-projects/gcc/scripts/gsplat_train/.venv/bin/python")
+    python = _cpu_torch_python()
     proc = subprocess.run(
         [str(python), "-c", code], env=env, text=True, capture_output=True, check=False
     )
@@ -254,6 +329,7 @@ def test_runner_stages_exact_trajectory_audit_and_training_state(tmp_path):
         "poses.npy": b"exact-frozen-trajectory",
         "frame-audit.json": b'{"audits": []}',
         "training-state.json": b'{"status": "completed"}',
+        "checkpoint_latest.pt": b"recoverable-checkpoint",
     }
     for name, content in expected.items():
         (dataset / name).write_bytes(content)

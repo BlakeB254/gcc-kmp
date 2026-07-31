@@ -18,6 +18,8 @@ dataset and shuttles bytes. Env:
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
+import hashlib
 import io
 import json
 import os
@@ -25,7 +27,6 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
-import tempfile
 
 import av
 import numpy as np
@@ -45,18 +46,54 @@ MIN_NOVEL_VIEW_BASELINE_METERS = 2.0
 MAX_CELL_POSE_SPAN_METERS = 40.0
 
 
-def _build_train_command(data_dir: str, iters: str, max_gaussians: str) -> list[str]:
+def _build_train_command(
+    data_dir: str,
+    iters: str,
+    max_gaussians: str,
+    *,
+    resume: str | None = None,
+) -> list[str]:
     """Build the explicit verified-publication trainer contract."""
-    return [
+    command = [
         GSPLAT_PYTHON,
         os.path.join(GSPLAT_DIR, "train_gsplat.py"),
         "--data", data_dir,
         "--iters", iters,
         "--max-gaussians", max_gaussians,
         "--out", "splat_gsplat.ply",
+    ]
+    if resume is not None:
+        command.extend(["--resume", resume])
+    command.extend([
         "--pose-mode", "frozen",
         "--checkpoint-every", "1000",
-    ]
+    ])
+    return command
+
+
+def candidate_staging_dir(cell_id: str) -> Path:
+    """Return the durable per-cell seam that Task 4 can wrap in a candidate."""
+    configured = os.environ.get("GCC_GSPLAT_STAGING_ROOT")
+    if configured:
+        root = Path(configured).expanduser()
+    else:
+        state_home = Path(
+            os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state")
+        ).expanduser()
+        root = state_home / "gcc" / "gsplat-candidates"
+    cell_key = hashlib.sha256(cell_id.encode("utf-8")).hexdigest()
+    return root / cell_key
+
+
+@contextmanager
+def _durable_training_workspace(
+    cell_id: str,
+    staging_dir: str | os.PathLike[str] | None,
+):
+    """Yield a caller-visible workspace without deleting it on any exit path."""
+    path = Path(staging_dir) if staging_dir is not None else candidate_staging_dir(cell_id)
+    path.mkdir(parents=True, exist_ok=True)
+    yield str(path)
 
 
 def _stage_verified_training_metadata(
@@ -67,7 +104,12 @@ def _stage_verified_training_metadata(
     source = Path(dataset_dir)
     destination = Path(staging_dir)
     destination.mkdir(parents=True, exist_ok=True)
-    for name in ("poses.npy", "frame-audit.json", "training-state.json"):
+    for name in (
+        "poses.npy",
+        "frame-audit.json",
+        "training-state.json",
+        "checkpoint_latest.pt",
+    ):
         shutil.copy2(source / name, destination / name)
 
 
@@ -272,6 +314,8 @@ def train_gsplat_for_cell(
     cell_id: str,
     fusion_result: FusionResult,
     session_manifests_by_id: dict[str, dict],
+    *,
+    staging_dir: str | os.PathLike[str] | None = None,
 ) -> tuple[bytes | None, str | None]:
     """Train one splat for the whole cell: every accepted session's frames,
     posed through its fusion transform into the shared cell frame, with the
@@ -279,16 +323,20 @@ def train_gsplat_for_cell(
     (bytes, None) on success, or (None, reason) when gsplat isn't set up or
     training fails -- the point-cloud asset is unaffected either way. reason
     is one of splat_outcome.py's vocabulary: "no-video-frames",
-    "too-few-frames", or "training-failed"."""
+    "too-few-frames", or "training-failed". The exported dataset, checkpoints,
+    and candidate metadata remain at ``staging_dir`` (or
+    :func:`candidate_staging_dir`) for recovery and Task 4 packaging."""
     if not available():
         print(f"gsplat_runner: no venv at {GSPLAT_PYTHON} -- run gsplat_train/setup.sh", file=sys.stderr)
         return None, "training-failed"
     if fusion_result.merged_points.shape[0] == 0:
         return None, "training-failed"
 
-    with tempfile.TemporaryDirectory(prefix="gsplat_") as tmp:
+    with _durable_training_workspace(cell_id, staging_dir) as tmp:
         frames_dir = os.path.join(tmp, "frames")
-        os.makedirs(frames_dir)
+        Path(frames_dir).mkdir(parents=True, exist_ok=True)
+        for stale_frame in Path(frames_dir).glob("*.jpg"):
+            stale_frame.unlink()
         budget = max(1, MAX_TOTAL_FRAMES // len(fusion_result.accepted_session_ids))
         poses, intrinsics, n, frame_audits = [], [], 0, []
         for sid in fusion_result.accepted_session_ids:
@@ -340,8 +388,14 @@ def train_gsplat_for_cell(
             f"{iters} iters, cap {max_gaussians} gaussians..."
         )
         env = dict(os.environ, TORCH_CUDA_ARCH_LIST="12.0;12.1")
+        resume = (
+            tmp
+            if os.path.isfile(os.path.join(tmp, "checkpoint_latest.pt"))
+            and os.path.isfile(os.path.join(tmp, "training-state.json"))
+            else None
+        )
         proc = subprocess.run(
-            _build_train_command(tmp, iters, max_gaussians),
+            _build_train_command(tmp, iters, max_gaussians, resume=resume),
             env=env, timeout=3 * 3600,
         )
         out_ply = os.path.join(tmp, "splat_gsplat.ply")

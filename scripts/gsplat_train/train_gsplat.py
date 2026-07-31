@@ -38,6 +38,22 @@ import numpy as np
 from PIL import Image
 
 
+TRAINING_RECIPE_REVISION = "verified-frozen-v1"
+OPTIMIZER_LEARNING_RATES = {
+    "means": 1.6e-3,
+    "scales": 5e-3,
+    "quats": 1e-3,
+    "opacities": 5e-2,
+    "sh0": 2.5e-3,
+    "shN": 2.5e-3 / 20,
+}
+MEANS_SCHEDULER_FINAL_FRACTION = 0.01
+STRATEGY_GROW_GRAD2D = 4e-4
+INITIAL_SCALE_METERS = 0.03
+INITIAL_OPACITY = 0.7
+SH_DEGREE_INTERVAL = 1000
+
+
 @dataclass(frozen=True)
 class DatasetFingerprints:
     dataset_sha256: str
@@ -81,6 +97,61 @@ def dataset_fingerprints(data_dir: str | os.PathLike[str]) -> DatasetFingerprint
     )
 
 
+def training_config(args: argparse.Namespace) -> dict:
+    """Return every behavior-affecting value needed to validate recovery."""
+    exposure_lr = args.exposure_lr if args.exposure_lr > 0 else None
+    refine_stop_iteration = min(9000, max(1000, int(args.iters * 0.3)))
+    return {
+        "recipeRevision": TRAINING_RECIPE_REVISION,
+        "poseMode": args.pose_mode,
+        "iterations": args.iters,
+        "shDegree": args.sh_degree,
+        "shDegreeInterval": SH_DEGREE_INTERVAL,
+        "maxInitialGaussians": args.max_init,
+        "maxGaussians": args.max_gaussians,
+        "depth": {"weight": args.depth_weight, "downsample": args.depth_ds},
+        "warmupIterations": args.warmup,
+        "checkpointEvery": args.checkpoint_every,
+        "optimizerLearningRates": {
+            **OPTIMIZER_LEARNING_RATES,
+            "exposure": exposure_lr,
+        },
+        "meansSchedule": {"finalFraction": MEANS_SCHEDULER_FINAL_FRACTION},
+        "strategy": {
+            "growGrad2d": STRATEGY_GROW_GRAD2D,
+            "refineStopIteration": refine_stop_iteration,
+        },
+        "initialization": {
+            "scaleMeters": INITIAL_SCALE_METERS,
+            "opacity": INITIAL_OPACITY,
+        },
+        "rasterization": {
+            "mode": "antialiased",
+            "packed": False,
+            "depthMode": "RGB+ED",
+        },
+        "loss": {
+            "l1Weight": 0.8,
+            "ssimWeight": 0.2,
+            "anisotropyWeight": 0.01,
+            "anisotropyFloor": 8.0,
+            "largeScaleWeight": 0.1,
+            "largeScaleThresholdMeters": 0.4,
+        },
+    }
+
+
+def _training_config_sha256(config: dict) -> str:
+    encoded = json.dumps(
+        config, sort_keys=True, separators=(",", ":"), allow_nan=False
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def training_config_sha256(config: dict) -> str:
+    return _training_config_sha256(config)
+
+
 def _fsync_directory(path: Path) -> None:
     descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
     try:
@@ -115,6 +186,7 @@ def write_checkpoint(
     scheduler_state: dict,
     strategy_state: dict,
     rng_state: dict,
+    training_config: dict,
     status: str = "running",
 ) -> Path:
     """Durably write a numbered checkpoint, latest alias, and recovery metadata."""
@@ -136,6 +208,8 @@ def write_checkpoint(
         "scheduler_state": scheduler_state,
         "strategy_state": strategy_state,
         "rng_state": rng_state,
+        "training_config": training_config,
+        "training_config_sha256": _training_config_sha256(training_config),
     }
     try:
         with numbered_tmp.open("wb") as output:
@@ -159,6 +233,8 @@ def write_checkpoint(
         "numberedCheckpoint": numbered.name,
         "datasetSha256": dataset_sha256,
         "frozenPosesSha256": frozen_poses_sha256,
+        "trainingConfig": training_config,
+        "trainingConfigSha256": _training_config_sha256(training_config),
         "poseMode": "frozen",
     })
     return latest
@@ -183,6 +259,7 @@ def checkpoint_training(
     strategy_state: dict,
     auxiliary_parameters: dict | None = None,
     auxiliary_optimizers: dict | None = None,
+    training_config: dict,
     status: str = "running",
 ) -> Path:
     """Capture every mutable training component needed for exact recovery."""
@@ -217,6 +294,7 @@ def checkpoint_training(
                 else None
             ),
         },
+        training_config=training_config,
         status=status,
     )
 
@@ -253,12 +331,25 @@ def validate_checkpoint_payload(
     *,
     dataset_sha256: str,
     frozen_poses_sha256: str,
+    training_config_sha256: str | None = None,
 ) -> None:
     """Reject a checkpoint whose serialized identity disagrees with its inputs."""
     if checkpoint.get("dataset_sha256") != dataset_sha256:
         raise ValueError("checkpoint dataset fingerprint does not match exported inputs")
     if checkpoint.get("frozen_poses_sha256") != frozen_poses_sha256:
         raise ValueError("checkpoint frozen poses checksum does not match exported trajectory")
+    if training_config_sha256 is not None:
+        config = checkpoint.get("training_config")
+        actual = (
+            _training_config_sha256(config)
+            if isinstance(config, dict)
+            else None
+        )
+        if (
+            actual != training_config_sha256
+            or checkpoint.get("training_config_sha256") != actual
+        ):
+            raise ValueError("checkpoint training configuration does not match requested recipe")
 
 
 def _to_device(value, device: str):
@@ -321,6 +412,7 @@ def validate_resume(
     *,
     dataset_sha256: str,
     frozen_poses_sha256: str | None = None,
+    training_config_sha256: str | None = None,
 ) -> Path:
     """Validate lightweight recovery metadata before importing PyTorch."""
     resume_path = Path(resume)
@@ -339,6 +431,18 @@ def validate_resume(
         and state.get("frozenPosesSha256") != frozen_poses_sha256
     ):
         raise ValueError("resume frozen poses checksum does not match exported trajectory")
+    if training_config_sha256 is not None:
+        state_config = state.get("trainingConfig")
+        actual = (
+            _training_config_sha256(state_config)
+            if isinstance(state_config, dict)
+            else None
+        )
+        if (
+            actual != training_config_sha256
+            or state.get("trainingConfigSha256") != actual
+        ):
+            raise ValueError("resume training configuration does not match requested recipe")
     checkpoint = resume_path if resume_path.is_file() else resume_path / state["checkpoint"]
     if not checkpoint.is_file():
         raise ValueError(f"resume checkpoint is missing: {checkpoint}")
@@ -391,12 +495,15 @@ def main() -> None:
     device = "cuda"
     data_dir = os.path.expanduser(args.data)
     fingerprints = dataset_fingerprints(data_dir)
+    config = training_config(args)
+    config_sha256 = training_config_sha256(config)
     resume_path = None
     if args.resume:
         resume_path = validate_resume(
             args.resume,
             dataset_sha256=fingerprints.dataset_sha256,
             frozen_poses_sha256=fingerprints.frozen_poses_sha256,
+            training_config_sha256=config_sha256,
         )
 
     global torch
@@ -416,41 +523,48 @@ def main() -> None:
             checkpoint,
             dataset_sha256=fingerprints.dataset_sha256,
             frozen_poses_sha256=fingerprints.frozen_poses_sha256,
+            training_config_sha256=config_sha256,
         )
         params = torch.nn.ParameterDict({
             name: torch.nn.Parameter(value.to(device))
             for name, value in checkpoint["gaussian_parameters"].items()
         })
     else:
-        if len(pts) > args.max_init:
-            sel = torch.randperm(len(pts))[: args.max_init]
+        if len(pts) > config["maxInitialGaussians"]:
+            sel = torch.randperm(len(pts))[: config["maxInitialGaussians"]]
             pts, cols = pts[sel], cols[sel]
         n = len(pts)
         params = torch.nn.ParameterDict({
             "means": torch.nn.Parameter(pts.float().to(device)),
-            "scales": torch.nn.Parameter(torch.full((n, 3), math.log(0.03), device=device)),
+            "scales": torch.nn.Parameter(torch.full(
+                (n, 3), math.log(INITIAL_SCALE_METERS), device=device
+            )),
             "quats": torch.nn.Parameter(torch.cat([torch.ones(n, 1), torch.zeros(n, 3)], 1).to(device)),
-            "opacities": torch.nn.Parameter(torch.logit(torch.full((n,), 0.7)).to(device)),
+            "opacities": torch.nn.Parameter(torch.logit(
+                torch.full((n,), INITIAL_OPACITY)
+            ).to(device)),
             "sh0": torch.nn.Parameter(rgb_to_sh0(cols.float()).unsqueeze(1).to(device)),
-            "shN": torch.nn.Parameter(torch.zeros(n, (args.sh_degree + 1) ** 2 - 1, 3, device=device)),
+            "shN": torch.nn.Parameter(torch.zeros(
+                n, (config["shDegree"] + 1) ** 2 - 1, 3, device=device
+            )),
         }).to(device)
 
     optimizers = {
-        "means": torch.optim.Adam([params["means"]], lr=1.6e-4 * 10),
-        "scales": torch.optim.Adam([params["scales"]], lr=5e-3),
-        "quats": torch.optim.Adam([params["quats"]], lr=1e-3),
-        "opacities": torch.optim.Adam([params["opacities"]], lr=5e-2),
-        "sh0": torch.optim.Adam([params["sh0"]], lr=2.5e-3),
-        "shN": torch.optim.Adam([params["shN"]], lr=2.5e-3 / 20),
+        name: torch.optim.Adam([params[name]], lr=OPTIMIZER_LEARNING_RATES[name])
+        for name in OPTIMIZER_LEARNING_RATES
     }
     # Means LR decays exponentially to ~1% over the run (standard 3DGS schedule).
     means_sched = torch.optim.lr_scheduler.ExponentialLR(
-        optimizers["means"], gamma=0.01 ** (1.0 / args.iters))
+        optimizers["means"],
+        gamma=MEANS_SCHEDULER_FINAL_FRACTION ** (1.0 / args.iters),
+    )
     # grow_grad2d doubled + early refine stop: depth-mode means2d gradients
     # otherwise densify without bound (17.6M gaussians observed uncapped).
     strategy = DefaultStrategy(
-        verbose=False, grow_grad2d=4e-4,
-        refine_stop_iter=min(9000, max(1000, int(args.iters * 0.3))))
+        verbose=False,
+        grow_grad2d=STRATEGY_GROW_GRAD2D,
+        refine_stop_iter=config["strategy"]["refineStopIteration"],
+    )
     strategy.check_sanity(params, optimizers)
     if checkpoint is None:
         state = strategy.initialize_state()
@@ -468,10 +582,10 @@ def main() -> None:
     # Sparse metric depth targets: z-buffer the full LiDAR cloud into each
     # view on a coarse grid. Coverage is sparse (only sensor-ranged surfaces)
     # which is exactly right — sky/background stay unconstrained.
-    DS = args.depth_ds
+    DS = config["depth"]["downsample"]
     H4, W4 = H // DS, W // DS
     depth_targets = None
-    if args.depth_weight > 0:
+    if config["depth"]["weight"] > 0:
         fp = full_pts.to(device)
         depth_targets = torch.zeros(n_frames, H4, W4, device=device)
         with torch.no_grad():
@@ -501,7 +615,12 @@ def main() -> None:
         exposure = torch.nn.Parameter(
             checkpoint["auxiliary_parameters"]["exposure"].to(device)
         )
-    exp_opt = torch.optim.Adam([exposure], lr=args.exposure_lr) if args.exposure_lr > 0 else None
+    exposure_lr = config["optimizerLearningRates"]["exposure"]
+    exp_opt = (
+        torch.optim.Adam([exposure], lr=exposure_lr)
+        if exposure_lr is not None
+        else None
+    )
     eye3 = torch.eye(3, device=device)
 
     def apply_exposure(img, i):
@@ -519,8 +638,10 @@ def main() -> None:
             exp_opt.load_state_dict(checkpoint["optimizer_states"]["exposure"])
         restore_rng_state(checkpoint["rng_state"])
     scheduled_checkpoints = set(checkpoint_iterations(
-        start_iteration, args.iters, args.checkpoint_every
+        start_iteration, config["iterations"], config["checkpointEvery"]
     ))
+    loss_config = config["loss"]
+    raster_config = config["rasterization"]
     for it in range(start_iteration, args.iters):
         # DefaultStrategy has iteration bounds but no population bound. Its
         # depth-supervised growth can make each later iteration progressively
@@ -528,21 +649,21 @@ def main() -> None:
         # Stop future refine passes as soon as the previous pass crosses the
         # ceiling; optimization continues on the population already learned.
         if (
-            len(params["means"]) >= args.max_gaussians
+            len(params["means"]) >= config["maxGaussians"]
             and it < strategy.refine_stop_iter
         ):
             strategy.refine_stop_iter = it
             print(
                 f"gaussian cap reached at iter {it}: "
-                f"{len(params['means']):,} >= {args.max_gaussians:,}; "
+                f"{len(params['means']):,} >= {config['maxGaussians']:,}; "
                 "densification stopped",
                 flush=True,
             )
         i = int(torch.randint(0, n_frames, ()))
         # Progressive SH: unlock a degree every 1000 iters (standard recipe).
-        sh_deg = min(it // 1000, args.sh_degree)
+        sh_deg = min(it // SH_DEGREE_INTERVAL, config["shDegree"])
         colors = torch.cat([params["sh0"], params["shN"]], 1)
-        refining = it >= args.warmup
+        refining = it >= config["warmupIterations"]
         render, alpha, info = rasterization(
             means=params["means"],
             quats=torch.nn.functional.normalize(params["quats"], dim=-1),
@@ -550,9 +671,9 @@ def main() -> None:
             opacities=torch.sigmoid(params["opacities"]),
             colors=colors,
             viewmats=viewmats[i:i + 1], Ks=Ks[i:i + 1],
-            width=W, height=H, sh_degree=sh_deg, packed=False,
-            rasterize_mode="antialiased",
-            render_mode="RGB+ED" if depth_targets is not None else "RGB",
+            width=W, height=H, sh_degree=sh_deg, packed=raster_config["packed"],
+            rasterize_mode=raster_config["mode"],
+            render_mode=raster_config["depthMode"] if depth_targets is not None else "RGB",
         )
         if depth_targets is not None:
             rgb_out, depth_out = render[0, ..., :3], render[0, ..., 3]
@@ -565,9 +686,19 @@ def main() -> None:
         # Scale regularization: streaky first-run gaussians came from
         # unconstrained anisotropy + growth — penalize both.
         sc = torch.exp(params["scales"])
-        aniso = (sc.max(-1).values / sc.min(-1).values.clamp_min(1e-6)).clamp_min(8.0).mean() - 8.0
-        big = torch.nn.functional.relu(sc.max(-1).values - 0.4).mean()
-        loss = 0.8 * l1 + 0.2 * ssim_loss + 0.01 * aniso + 0.1 * big
+        anisotropy_floor = loss_config["anisotropyFloor"]
+        aniso = (
+            sc.max(-1).values / sc.min(-1).values.clamp_min(1e-6)
+        ).clamp_min(anisotropy_floor).mean() - anisotropy_floor
+        big = torch.nn.functional.relu(
+            sc.max(-1).values - loss_config["largeScaleThresholdMeters"]
+        ).mean()
+        loss = (
+            loss_config["l1Weight"] * l1
+            + loss_config["ssimWeight"] * ssim_loss
+            + loss_config["anisotropyWeight"] * aniso
+            + loss_config["largeScaleWeight"] * big
+        )
         depth_l1 = None
         if depth_targets is not None:
             tgt = depth_targets[i]
@@ -576,7 +707,7 @@ def main() -> None:
             dvalid = (tgt > 0) & (a4 > 0.5)
             if dvalid.any():
                 depth_l1 = (d4[dvalid] - tgt[dvalid]).abs().mean()
-                loss = loss + args.depth_weight * depth_l1
+                loss = loss + config["depth"]["weight"] * depth_l1
         strategy.step_pre_backward(params, optimizers, state, it, info)
         loss.backward()
         strategy.step_post_backward(params, optimizers, state, it, info)
@@ -604,6 +735,7 @@ def main() -> None:
                 },
                 auxiliary_parameters={"exposure": exposure},
                 auxiliary_optimizers={"exposure": exp_opt},
+                training_config=config,
             )
         if it % 500 == 0:
             dtxt = f" depth {depth_l1.item():.3f}m" if depth_l1 is not None else ""
@@ -654,6 +786,7 @@ def main() -> None:
         },
         auxiliary_parameters={"exposure": exposure},
         auxiliary_optimizers={"exposure": exp_opt},
+        training_config=config,
         status="completed",
     )
     print(f"trained splat: {out_path} ({n:,} gaussians)")
