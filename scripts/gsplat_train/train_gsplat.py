@@ -52,6 +52,7 @@ STRATEGY_GROW_GRAD2D = 4e-4
 INITIAL_SCALE_METERS = 0.03
 INITIAL_OPACITY = 0.7
 SH_DEGREE_INTERVAL = 1000
+MIN_VALIDATION_TRAINING_FRAMES = 8
 
 
 @dataclass(frozen=True)
@@ -474,6 +475,8 @@ def load_training_frame_indices(
     data_dir: str | os.PathLike[str], *, frame_count: int
 ) -> tuple[int, ...]:
     """Load the immutable pre-training split and return only trainable frames."""
+    if frame_count < MIN_VALIDATION_TRAINING_FRAMES:
+        raise ValueError("validation-enabled training requires at least 8 frames")
     split_path = Path(data_dir) / "validation-view-spec.json"
     if not split_path.is_file():
         raise ValueError("verified dataset validation split is missing")

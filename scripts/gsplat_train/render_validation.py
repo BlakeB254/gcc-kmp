@@ -26,6 +26,7 @@ STANDARDIZED_CATEGORIES = (
     "vehicle",
     "ground",
 )
+MIN_HOLDOUT_ELIGIBLE_VIEWS = 5
 POSE_TOLERANCE = 1e-6
 ROTATION_TOLERANCE = 1e-4
 
@@ -83,6 +84,13 @@ class ValidationViewSpec:
                 for view in self.standardized
             ],
         }
+
+
+class PerfectMatchPsnr(float):
+    """Positive infinity carrying proof that captured pixels were identical."""
+
+    def __new__(cls):
+        return super().__new__(cls, float("inf"))
 
 
 def _validated_poses(camera_poses: Any) -> np.ndarray:
@@ -234,6 +242,10 @@ def build_view_spec(
         raise ValueError("interpolation thresholds must be positive")
 
     eligible = _arc_length_indices(poses, int(recorded_count))
+    if len(eligible) < MIN_HOLDOUT_ELIGIBLE_VIEWS:
+        raise ValueError(
+            "validation requires at least 5 eligible views for a nonempty holdout"
+        )
     withheld = tuple(index for position, index in enumerate(eligible, 1) if position % 5 == 0)
     recorded = tuple(index for position, index in enumerate(eligible, 1) if position % 5 != 0)
 
@@ -281,12 +293,18 @@ def validation_view_spec_from_dict(
     """Validate and restore a persisted pre-training view partition."""
     if not isinstance(document, Mapping) or frame_count < 1:
         raise ValueError("invalid validation view specification")
+    if frame_count < MIN_HOLDOUT_ELIGIBLE_VIEWS:
+        raise ValueError(
+            "validation requires at least 5 eligible views for a nonempty withheld partition"
+        )
     recorded = _strict_index_list(
         document.get("recorded"), name="recorded", frame_count=frame_count
     )
     withheld = _strict_index_list(
         document.get("withheld"), name="withheld", frame_count=frame_count
     )
+    if not withheld:
+        raise ValueError("validation requires a nonempty withheld partition")
     if set(recorded).intersection(withheld) or set(recorded).union(withheld) != set(
         range(frame_count)
     ):
@@ -395,7 +413,7 @@ def captured_image_metrics(ground_truth: Any, rendered: Any) -> dict[str, float]
     if reference.shape != candidate.shape:
         raise ValueError("ground_truth and rendered images must have the same shape")
     mse = float(np.mean(np.square(reference - candidate)))
-    psnr = float("inf") if mse == 0.0 else -10.0 * math.log10(mse)
+    psnr = PerfectMatchPsnr() if mse == 0.0 else -10.0 * math.log10(mse)
     if reference.ndim == 2:
         reference = reference[:, :, None]
         candidate = candidate[:, :, None]
@@ -433,7 +451,53 @@ def captured_image_metrics(ground_truth: Any, rendered: Any) -> dict[str, float]
     ssim = float(np.clip(np.mean(ssim_channels), -1.0, 1.0))
     if mse == 0.0:
         ssim = 1.0
-    return {"psnr": psnr, "ssim": ssim}
+    return {"mse": mse, "psnr": psnr, "ssim": ssim}
+
+
+def aggregate_captured_metrics(
+    captured_metrics: Sequence[Mapping[str, Any]],
+) -> dict[str, float]:
+    """Aggregate PSNR through MSE so mixed perfect views remain finite."""
+    if not captured_metrics:
+        raise ValueError("captured metrics must not be empty")
+    mean_squared_errors: list[float] = []
+    similarities: list[float] = []
+    for metrics in captured_metrics:
+        mse = metrics.get("mse")
+        psnr = metrics.get("psnr")
+        ssim = metrics.get("ssim")
+        if (
+            isinstance(mse, bool)
+            or not isinstance(mse, Real)
+            or not math.isfinite(float(mse))
+            or float(mse) < 0.0
+            or isinstance(ssim, bool)
+            or not isinstance(ssim, Real)
+            or not math.isfinite(float(ssim))
+        ):
+            raise ValueError("captured metric is invalid")
+        if float(mse) == 0.0:
+            if not isinstance(psnr, PerfectMatchPsnr):
+                raise ValueError("perfect PSNR lacks pixel-match provenance")
+        elif (
+            isinstance(psnr, bool)
+            or not isinstance(psnr, Real)
+            or not math.isfinite(float(psnr))
+        ):
+            raise ValueError("captured PSNR is invalid")
+        mean_squared_errors.append(float(mse))
+        similarities.append(float(ssim))
+    aggregate_mse = float(np.mean(mean_squared_errors))
+    aggregate_psnr = (
+        PerfectMatchPsnr()
+        if aggregate_mse == 0.0
+        else -10.0 * math.log10(aggregate_mse)
+    )
+    return {
+        "meanMse": aggregate_mse,
+        "meanPsnr": aggregate_psnr,
+        "meanSsim": float(np.mean(similarities)),
+    }
 
 
 def interpolation_flicker_metrics(
@@ -530,18 +594,28 @@ def build_contact_sheet(
     return column_labels + tuple(row_labels)
 
 
-def _json_safe_metric(value: Any, *, key: str | None = None) -> Any:
+def _json_safe_metric(
+    value: Any, *, key: str | None = None, in_sequence: bool = False
+) -> Any:
     if isinstance(value, Mapping):
         return {
             str(child_key): _json_safe_metric(item, key=str(child_key))
             for child_key, item in value.items()
         }
     if isinstance(value, (list, tuple)):
-        return [_json_safe_metric(item, key=key) for item in value]
-    if isinstance(value, (float, np.floating)) and not math.isfinite(float(value)):
-        if float(value) > 0.0 and key in ("psnr", "meanPsnr"):
+        return [
+            _json_safe_metric(item, key=key, in_sequence=True) for item in value
+        ]
+    if isinstance(value, PerfectMatchPsnr):
+        if not in_sequence and key in ("psnr", "meanPsnr"):
             return "Infinity"
         raise ValueError(f"non-finite metric is not permitted: {key or '<root>'}")
+    if isinstance(value, (float, np.floating)) and not math.isfinite(float(value)):
+        raise ValueError(f"non-finite metric is not permitted: {key or '<root>'}")
+    if isinstance(value, str) and value in (
+        "Infinity", "+Infinity", "-Infinity", "NaN"
+    ):
+        raise ValueError(f"reserved metric token is not permitted: {key or '<root>'}")
     if isinstance(value, np.generic):
         return value.item()
     return value
@@ -736,19 +810,13 @@ def main(argv: Sequence[str] | None = None) -> None:
             **metrics,
         })
 
+    captured_aggregates = aggregate_captured_metrics(captured_metrics)
     metrics_document = {
         "viewSpec": spec.to_dict(),
         "captured": captured_metrics,
         "interpolated": interpolation_metrics,
         "aggregates": {
-            "meanPsnr": (
-                float(np.mean([entry["psnr"] for entry in captured_metrics]))
-                if captured_metrics else None
-            ),
-            "meanSsim": (
-                float(np.mean([entry["ssim"] for entry in captured_metrics]))
-                if captured_metrics else None
-            ),
+            **captured_aggregates,
             "meanColorFlicker": (
                 float(np.mean([
                     entry["color_flicker"] for entry in interpolation_metrics

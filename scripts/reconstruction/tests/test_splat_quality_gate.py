@@ -76,6 +76,43 @@ def test_frame_selector_keeps_short_capture_intact():
     assert selector(images, budget=8) == [0, 1, 2]
 
 
+def test_runner_export_rejects_tiny_dataset_before_training(tmp_path, monkeypatch):
+    """Pins the runner's eight-frame gate shared by validation-enabled exports."""
+    fusion = FusionResult(
+        accepted_session_ids=["session"],
+        merged_points=np.array([[0.0, 0.0, 0.0]], dtype=np.float32),
+        merged_colors=np.array([[0.5, 0.5, 0.5]], dtype=np.float32),
+        session_transforms={"session": np.eye(4)},
+        anchor_lat=1.0,
+        anchor_lng=2.0,
+        north_aligned=True,
+    )
+    poses = _poses([(float(index), 1.6, 0.0) for index in range(7)])
+
+    def fake_export(_manifest, _transform, frames_dir, start_index, _budget):
+        for index in range(7):
+            Image.fromarray(np.zeros((4, 4, 3), dtype=np.uint8)).save(
+                Path(frames_dir) / f"{index:04d}.jpg"
+            )
+        return list(poses), [np.eye(3) for _ in poses], start_index + 7, []
+
+    monkeypatch.setattr(gsplat_runner, "available", lambda: True)
+    monkeypatch.setattr(gsplat_runner, "_export_session_frames", fake_export)
+    monkeypatch.setattr(
+        gsplat_runner.subprocess,
+        "run",
+        lambda *_args, **_kwargs: pytest.fail("tiny export launched trainer"),
+    )
+
+    candidate, reason = gsplat_runner.train_gsplat_for_cell(
+        "cell", fusion, {"session": {}}, staging_dir=tmp_path
+    )
+
+    assert candidate is None
+    assert reason == "too-few-frames"
+    assert not (tmp_path / "validation-view-spec.json").exists()
+
+
 def test_durable_staging_survives_timeout_and_retry_resumes(tmp_path, monkeypatch):
     """Catches temporary cleanup deleting the only recoverable trainer state."""
     staging = tmp_path / "durable-candidate"

@@ -37,6 +37,16 @@ from gaussian_ply import fit_yaw_to_north
 from render_validation import write_validation_view_spec
 
 MAX_FRAMES = 160
+MIN_VALIDATION_EXPORT_FRAMES = 8
+
+
+def persist_validation_split(poses: np.ndarray, output_dir: str | os.PathLike[str]):
+    """Persist a real holdout or reject a standalone export too small to train."""
+    if len(poses) < MIN_VALIDATION_EXPORT_FRAMES:
+        raise ValueError("validation-enabled export requires at least 8 frames")
+    return write_validation_view_spec(
+        poses, os.path.join(output_dir, "validation-view-spec.json")
+    )
 
 
 def main() -> None:
@@ -100,6 +110,8 @@ def main() -> None:
             Image.fromarray(img).save(os.path.join(out, "frames", f"{n:04d}.jpg"), quality=92)
             n += 1
     print(f"exported {n} posed frames")
+    if n < MIN_VALIDATION_EXPORT_FRAMES:
+        raise ValueError("validation-enabled export requires at least 8 frames")
 
     # LiDAR init cloud in the same north-aligned frame.
     pts = (R_north @ sess.points.T).T
@@ -107,9 +119,7 @@ def main() -> None:
     np.save(os.path.join(out, "init_colors.npy"), sess.colors.astype(np.float32))
     np.save(os.path.join(out, "poses.npy"), np.stack(poses).astype(np.float64))
     np.save(os.path.join(out, "intrinsics.npy"), np.stack(intrinsics).astype(np.float64))
-    write_validation_view_spec(
-        np.stack(poses), os.path.join(out, "validation-view-spec.json")
-    )
+    persist_validation_split(np.stack(poses), out)
 
     sample = Image.open(os.path.join(out, "frames", "0000.jpg"))
     with open(os.path.join(out, "meta.json"), "w") as fh:

@@ -14,6 +14,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from render_validation import (  # noqa: E402
+    aggregate_captured_metrics,
     build_contact_sheet,
     build_view_spec,
     captured_image_metrics,
@@ -39,6 +40,12 @@ def test_view_spec_separates_arc_length_recorded_and_every_fifth_withheld_pose()
     assert spec.recorded == (0, 6, 9, 11, 14, 16, 17, 18)
     assert spec.withheld == (13, 19)
     assert set(spec.recorded).isdisjoint(spec.withheld)
+
+
+def test_view_spec_rejects_too_few_eligible_views_for_a_real_holdout():
+    """Catches tiny datasets silently claiming validation with no held-out image."""
+    with pytest.raises(ValueError, match="at least 5 eligible views"):
+        build_view_spec(linear_camera_path(4), recorded_count=4)
 
 
 def test_interpolation_only_uses_adjacent_nearby_low_rotation_poses():
@@ -108,7 +115,7 @@ def test_captured_metrics_treat_ordinary_integer_arrays_as_eight_bit_pixels():
 
     metrics = captured_image_metrics(uint8_image, python_integer_image)
 
-    assert metrics == {"psnr": float("inf"), "ssim": 1.0}
+    assert metrics == {"mse": 0.0, "psnr": float("inf"), "ssim": 1.0}
 
 
 def test_windowed_ssim_detects_a_one_pixel_structural_displacement():
@@ -144,9 +151,13 @@ def test_validation_metrics_serialize_identical_view_psnr_explicitly(tmp_path):
     """Catches perfect-view infinite PSNR producing invalid or unwritable JSON."""
     output = tmp_path / "validation-metrics.json"
 
-    write_validation_metrics({"captured": [{"psnr": float("inf")}]}, output)
+    image = np.full((4, 4, 3), 0.25, dtype=np.float64)
+    metrics = captured_image_metrics(image, image)
+    write_validation_metrics({"captured": [metrics]}, output)
 
-    assert json.loads(output.read_text()) == {"captured": [{"psnr": "Infinity"}]}
+    assert json.loads(output.read_text()) == {
+        "captured": [{"mse": 0.0, "psnr": "Infinity", "ssim": 1.0}]
+    }
 
 
 @pytest.mark.parametrize(
@@ -154,7 +165,11 @@ def test_validation_metrics_serialize_identical_view_psnr_explicitly(tmp_path):
     [
         ({"captured": [{"psnr": float("nan")}]}, "non-finite metric"),
         ({"captured": [{"psnr": -float("inf")}]}, "non-finite metric"),
+        ({"captured": [{"psnr": float("inf")}]}, "non-finite metric"),
         ({"captured": [{"ssim": float("inf")}]}, "non-finite metric"),
+        ({"captured": [{"psnr": [float("inf")]}]}, "non-finite metric"),
+        ({"aggregates": {"meanPsnr": float("inf")}}, "non-finite metric"),
+        ({"captured": [{"psnr": "Infinity"}]}, "reserved metric token"),
     ],
 )
 def test_validation_metrics_reject_unapproved_nonfinite_values(
@@ -163,6 +178,30 @@ def test_validation_metrics_reject_unapproved_nonfinite_values(
     """Catches arbitrary non-finite metrics being disguised as JSON strings."""
     with pytest.raises(ValueError, match=message):
         write_validation_metrics(document, tmp_path / "validation-metrics.json")
+
+
+def test_psnr_aggregate_uses_mse_so_perfect_and_imperfect_frames_stay_finite():
+    """Catches one perfect frame forcing a mixed aggregate to positive infinity."""
+    reference = np.zeros((4, 4, 3), dtype=np.float64)
+    perfect = captured_image_metrics(reference, reference)
+    imperfect = captured_image_metrics(reference, np.full_like(reference, 0.5))
+
+    aggregate = aggregate_captured_metrics([perfect, imperfect])
+
+    assert aggregate["meanPsnr"] == pytest.approx(9.0308998699)
+    assert np.isfinite(aggregate["meanPsnr"])
+
+
+def test_all_perfect_psnr_aggregate_has_verified_infinity_provenance(tmp_path):
+    """Catches aggregate infinity being accepted without all-perfect frame evidence."""
+    image = np.zeros((4, 4, 3), dtype=np.float64)
+    perfect = captured_image_metrics(image, image)
+    aggregate = aggregate_captured_metrics([perfect, perfect])
+
+    output = tmp_path / "validation-metrics.json"
+    write_validation_metrics({"aggregates": aggregate}, output)
+
+    assert json.loads(output.read_text())["aggregates"]["meanPsnr"] == "Infinity"
 
 
 def test_pose_validation_rejects_a_non_homogeneous_last_row():
@@ -174,19 +213,19 @@ def test_pose_validation_rejects_a_non_homogeneous_last_row():
         build_view_spec(poses)
 
 
-@pytest.mark.parametrize("bad_index", [True, 1.5, -1, 4])
+@pytest.mark.parametrize("bad_index", [True, 1.5, -1, 5])
 def test_semantic_frame_indices_reject_ambiguous_or_out_of_range_values(bad_index):
     """Catches bool/fractional/range coercion selecting the wrong semantic frame."""
     with pytest.raises(ValueError, match="semantic frame index"):
         build_view_spec(
-            linear_camera_path(4),
+            linear_camera_path(5),
             frame_tags=[{"frameIndex": bad_index, "tags": ["facade"]}],
         )
 
 
 def test_semantic_frame_indices_and_categories_reject_duplicates_and_malformed_values():
     """Catches duplicate frames/categories overwriting evidence or inventing presets."""
-    poses = linear_camera_path(4)
+    poses = linear_camera_path(5)
     with pytest.raises(ValueError, match="duplicate semantic frame index"):
         build_view_spec(
             poses,
@@ -210,6 +249,19 @@ def test_persisted_spec_rejects_overlapping_or_incomplete_partitions():
 
     with pytest.raises(ValueError, match="partition"):
         validation_view_spec_from_dict(document, frame_count=5)
+
+
+def test_persisted_spec_rejects_an_empty_withheld_partition():
+    """Catches a split validator accepting recorded-only pseudo-validation."""
+    document = {
+        "recorded": [0, 1, 2, 3],
+        "withheld": [],
+        "interpolated": [],
+        "standardized": [],
+    }
+
+    with pytest.raises(ValueError, match="nonempty withheld partition"):
+        validation_view_spec_from_dict(document, frame_count=4)
 
 
 def test_contact_sheet_has_explicit_column_and_frame_metric_labels(tmp_path):

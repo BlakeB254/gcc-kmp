@@ -8,10 +8,12 @@ import subprocess
 import sys
 import types
 
+import numpy as np
 import pytest
 
 
 TRAINER_PATH = Path(__file__).resolve().parents[1] / "train_gsplat.py"
+EXPORT_PATH = Path(__file__).resolve().parents[1] / "export_gsplat_dataset.py"
 RECONSTRUCTION_DIR = Path(__file__).resolve().parents[2] / "reconstruction"
 
 
@@ -211,6 +213,45 @@ def test_withheld_partition_cannot_be_sampled_for_training(tmp_path):
     assert training_indices == (0, 1, 2, 3, 5, 6, 7, 8)
     assert sampled == set(training_indices)
     assert sampled.isdisjoint({4, 9})
+
+
+@pytest.mark.parametrize(
+    ("frame_count", "split"),
+    [
+        (4, {"recorded": [0, 1, 2, 3], "withheld": []}),
+        (5, {"recorded": [0, 1, 2, 3], "withheld": [4]}),
+    ],
+)
+def test_trainer_rejects_tiny_or_empty_holdout_splits_before_torch(
+    tmp_path, frame_count, split
+):
+    """Catches direct trainer invocation bypassing validation frame minimums."""
+    trainer = _load_trainer_without_torch()
+    (tmp_path / "validation-view-spec.json").write_text(json.dumps(split))
+
+    with pytest.raises(ValueError, match="at least 8 frames"):
+        trainer.load_training_frame_indices(tmp_path, frame_count=frame_count)
+    assert "torch" not in sys.modules
+
+
+def test_standalone_export_rejects_tiny_dataset_before_writing_a_split(tmp_path):
+    """Catches standalone export bypassing the runner's eight-frame gate."""
+    spec = importlib.util.spec_from_file_location("standalone_export_contract", EXPORT_PATH)
+    assert spec is not None and spec.loader is not None
+    exporter = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = exporter
+    try:
+        spec.loader.exec_module(exporter)
+    finally:
+        sys.modules.pop(spec.name, None)
+
+    with pytest.raises(ValueError, match="at least 8 frames"):
+        exporter.persist_validation_split(
+            np.repeat(np.eye(4)[None], 7, axis=0), tmp_path
+        )
+
+    assert not (tmp_path / "validation-view-spec.json").exists()
+    assert "torch" not in sys.modules
 
 
 def test_training_config_fingerprint_covers_recipe_and_exposure_optimizer_mode():
