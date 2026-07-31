@@ -11,6 +11,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 import math
+from numbers import Integral, Real
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -25,14 +26,17 @@ STANDARDIZED_CATEGORIES = (
     "vehicle",
     "ground",
 )
+POSE_TOLERANCE = 1e-6
+ROTATION_TOLERANCE = 1e-4
 
 _CATEGORY_TAGS = {
     "sidewalk": frozenset(("sidewalk", "curb", "pavement")),
     "facade": frozenset(("facade", "building", "building-facade")),
     "vegetation": frozenset(("vegetation", "tree", "grass", "plant")),
     "vehicle": frozenset(("vehicle", "car", "truck", "bus")),
-    "ground": frozenset(("ground", "ground-facing", "ground_facing")),
+    "ground": frozenset(("ground", "ground-facing")),
 }
+_VALID_SEMANTIC_TAGS = frozenset().union(*_CATEGORY_TAGS.values())
 
 
 @dataclass(frozen=True)
@@ -87,11 +91,16 @@ def _validated_poses(camera_poses: Any) -> np.ndarray:
         raise ValueError("camera_poses must be a non-empty Nx4x4 array")
     if not np.isfinite(poses).all():
         raise ValueError("camera_poses must contain only finite values")
+    homogeneous_row = np.array([0.0, 0.0, 0.0, 1.0])
+    if not np.allclose(poses[:, 3, :], homogeneous_row, atol=POSE_TOLERANCE, rtol=0.0):
+        raise ValueError("camera poses must have homogeneous row [0, 0, 0, 1]")
     rotations = poses[:, :3, :3]
     identities = rotations @ np.transpose(rotations, (0, 2, 1))
-    if not np.allclose(identities, np.eye(3), atol=1e-4):
+    if not np.allclose(identities, np.eye(3), atol=ROTATION_TOLERANCE, rtol=0.0):
         raise ValueError("camera pose rotations must be orthonormal")
-    if not np.allclose(np.linalg.det(rotations), 1.0, atol=1e-4):
+    if not np.allclose(
+        np.linalg.det(rotations), 1.0, atol=ROTATION_TOLERANCE, rtol=0.0
+    ):
         raise ValueError("camera pose rotations must be proper rotations")
     return poses
 
@@ -127,13 +136,31 @@ def _coerce_tags(value: Any) -> frozenset[str]:
         return frozenset()
     if isinstance(value, Mapping):
         value = value.get("semanticTags", value.get("tags", ()))
-    if isinstance(value, str):
-        value = (value,)
-    return frozenset(
-        str(tag).strip().lower().replace(" ", "-")
-        for tag in value
-        if str(tag).strip()
-    )
+    if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+        raise ValueError("semantic categories must be a sequence of category names")
+    normalized: list[str] = []
+    for tag in value:
+        if not isinstance(tag, str) or not tag.strip():
+            raise ValueError(f"invalid semantic category: {tag!r}")
+        category = tag.strip().lower().replace("_", "-").replace(" ", "-")
+        if category not in _VALID_SEMANTIC_TAGS:
+            raise ValueError(f"invalid semantic category: {tag!r}")
+        if category in normalized:
+            raise ValueError(f"duplicate semantic category: {category}")
+        normalized.append(category)
+    return frozenset(normalized)
+
+
+def _semantic_frame_index(value: Any) -> int:
+    if isinstance(value, bool):
+        raise ValueError(f"invalid semantic frame index: {value!r}")
+    if isinstance(value, Integral):
+        return int(value)
+    if isinstance(value, Real):
+        raise ValueError(f"invalid semantic frame index: {value!r}")
+    if isinstance(value, str) and value.isascii() and value.isdigit():
+        return int(value)
+    raise ValueError(f"invalid semantic frame index: {value!r}")
 
 
 def _normalized_frame_tags(frame_tags: Any, pose_count: int) -> dict[int, frozenset[str]]:
@@ -152,12 +179,11 @@ def _normalized_frame_tags(frame_tags: Any, pose_count: int) -> dict[int, frozen
             index_value = value.get(
                 "frameIndex", value.get("index", value.get("frame_id", fallback_index))
             )
-        try:
-            index = int(index_value)
-        except (TypeError, ValueError) as error:
-            raise ValueError(f"invalid semantic frame index: {index_value!r}") from error
+        index = _semantic_frame_index(index_value)
         if index < 0 or index >= pose_count:
             raise ValueError(f"semantic frame index out of range: {index}")
+        if index in normalized:
+            raise ValueError(f"duplicate semantic frame index: {index}")
         normalized[index] = _coerce_tags(value)
     return normalized
 
@@ -233,6 +259,115 @@ def build_view_spec(
     )
 
 
+def _strict_index_list(value: Any, *, name: str, frame_count: int) -> tuple[int, ...]:
+    if not isinstance(value, list):
+        raise ValueError(f"validation {name} must be an index list")
+    result: list[int] = []
+    for raw_index in value:
+        if isinstance(raw_index, bool) or not isinstance(raw_index, Integral):
+            raise ValueError(f"validation {name} contains an invalid index")
+        index = int(raw_index)
+        if index < 0 or index >= frame_count:
+            raise ValueError(f"validation {name} index out of range: {index}")
+        if index in result:
+            raise ValueError(f"validation {name} contains duplicate index: {index}")
+        result.append(index)
+    return tuple(result)
+
+
+def validation_view_spec_from_dict(
+    document: Mapping[str, Any], *, frame_count: int
+) -> ValidationViewSpec:
+    """Validate and restore a persisted pre-training view partition."""
+    if not isinstance(document, Mapping) or frame_count < 1:
+        raise ValueError("invalid validation view specification")
+    recorded = _strict_index_list(
+        document.get("recorded"), name="recorded", frame_count=frame_count
+    )
+    withheld = _strict_index_list(
+        document.get("withheld"), name="withheld", frame_count=frame_count
+    )
+    if set(recorded).intersection(withheld) or set(recorded).union(withheld) != set(
+        range(frame_count)
+    ):
+        raise ValueError("recorded and withheld must be a disjoint complete partition")
+
+    interpolated: list[InterpolatedView] = []
+    raw_interpolated = document.get("interpolated", [])
+    if not isinstance(raw_interpolated, list):
+        raise ValueError("validation interpolated must be a list")
+    for raw_view in raw_interpolated:
+        if not isinstance(raw_view, Mapping):
+            raise ValueError("invalid interpolated validation view")
+        start = _semantic_frame_index(raw_view.get("startIndex"))
+        end = _semantic_frame_index(raw_view.get("endIndex"))
+        alpha = raw_view.get("alpha")
+        if (
+            start < 0
+            or end >= frame_count
+            or end != start + 1
+            or isinstance(alpha, bool)
+            or not isinstance(alpha, Real)
+            or not math.isfinite(float(alpha))
+            or not 0.0 < float(alpha) < 1.0
+        ):
+            raise ValueError("invalid interpolated validation view")
+        interpolated.append(InterpolatedView(start, end, float(alpha)))
+
+    standardized: list[StandardizedView] = []
+    raw_standardized = document.get("standardized", [])
+    if not isinstance(raw_standardized, list):
+        raise ValueError("validation standardized must be a list")
+    seen_categories: set[str] = set()
+    for raw_view in raw_standardized:
+        if not isinstance(raw_view, Mapping):
+            raise ValueError("invalid standardized validation view")
+        category = raw_view.get("category")
+        status = raw_view.get("status")
+        frame_index = raw_view.get("frameIndex")
+        if category not in STANDARDIZED_CATEGORIES or category in seen_categories:
+            raise ValueError("invalid standardized validation category")
+        seen_categories.add(category)
+        if status == "not_observed" and frame_index is None:
+            standardized.append(StandardizedView(category, status, None))
+        elif status == "observed":
+            index = _semantic_frame_index(frame_index)
+            if index < 0 or index >= frame_count:
+                raise ValueError("standardized validation frame index out of range")
+            standardized.append(StandardizedView(category, status, index))
+        else:
+            raise ValueError("invalid standardized validation status")
+    return ValidationViewSpec(
+        recorded=recorded,
+        withheld=withheld,
+        interpolated=tuple(interpolated),
+        standardized=tuple(standardized),
+    )
+
+
+def write_validation_view_spec(
+    camera_poses: Any,
+    output_path: str | Path,
+    *,
+    seed: int = 0,
+    frame_tags: Any = None,
+) -> ValidationViewSpec:
+    """Create and persist the complete split before candidate training."""
+    poses = _validated_poses(camera_poses)
+    spec = build_view_spec(
+        poses,
+        seed=seed,
+        frame_tags=frame_tags,
+        recorded_count=len(poses),
+    )
+    output = Path(output_path).expanduser()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("w", encoding="utf-8") as stream:
+        json.dump(spec.to_dict(), stream, sort_keys=True, indent=2, allow_nan=False)
+        stream.write("\n")
+    return spec
+
+
 def _normalized_image(image: Any, *, name: str) -> np.ndarray:
     array = np.asarray(image)
     if array.ndim not in (2, 3) or (array.ndim == 3 and array.shape[2] not in (1, 3, 4)):
@@ -261,15 +396,34 @@ def captured_image_metrics(ground_truth: Any, rendered: Any) -> dict[str, float]
         raise ValueError("ground_truth and rendered images must have the same shape")
     mse = float(np.mean(np.square(reference - candidate)))
     psnr = float("inf") if mse == 0.0 else -10.0 * math.log10(mse)
-    # SSIM over the complete captured view, independently per channel.
-    axes = (0, 1) if reference.ndim == 3 else None
-    mu_ref = np.mean(reference, axis=axes)
-    mu_candidate = np.mean(candidate, axis=axes)
-    centered_ref = reference - mu_ref
-    centered_candidate = candidate - mu_candidate
-    variance_ref = np.mean(centered_ref * centered_ref, axis=axes)
-    variance_candidate = np.mean(centered_candidate * centered_candidate, axis=axes)
-    covariance = np.mean(centered_ref * centered_candidate, axis=axes)
+    if reference.ndim == 2:
+        reference = reference[:, :, None]
+        candidate = candidate[:, :, None]
+    window = 11
+    coordinates = np.arange(window, dtype=np.float64) - window // 2
+    gaussian = np.exp(-(coordinates ** 2) / (2.0 * 1.5 ** 2))
+    gaussian /= gaussian.sum()
+
+    def gaussian_filter(image: np.ndarray) -> np.ndarray:
+        filtered = image
+        padding = window // 2
+        for axis in (0, 1):
+            pads = [(0, 0)] * filtered.ndim
+            pads[axis] = (padding, padding)
+            padded = np.pad(filtered, pads, mode="constant")
+            windows = np.lib.stride_tricks.sliding_window_view(
+                padded, window, axis=axis
+            )
+            filtered = np.tensordot(windows, gaussian, axes=([-1], [0]))
+        return filtered
+
+    mu_ref = gaussian_filter(reference)
+    mu_candidate = gaussian_filter(candidate)
+    variance_ref = gaussian_filter(reference * reference) - mu_ref * mu_ref
+    variance_candidate = (
+        gaussian_filter(candidate * candidate) - mu_candidate * mu_candidate
+    )
+    covariance = gaussian_filter(reference * candidate) - mu_ref * mu_candidate
     c1, c2 = 0.01 ** 2, 0.03 ** 2
     ssim_channels = (
         (2.0 * mu_ref * mu_candidate + c1) * (2.0 * covariance + c2)
@@ -376,15 +530,18 @@ def build_contact_sheet(
     return column_labels + tuple(row_labels)
 
 
-def _json_safe_metric(value: Any) -> Any:
+def _json_safe_metric(value: Any, *, key: str | None = None) -> Any:
     if isinstance(value, Mapping):
-        return {str(key): _json_safe_metric(item) for key, item in value.items()}
+        return {
+            str(child_key): _json_safe_metric(item, key=str(child_key))
+            for child_key, item in value.items()
+        }
     if isinstance(value, (list, tuple)):
-        return [_json_safe_metric(item) for item in value]
+        return [_json_safe_metric(item, key=key) for item in value]
     if isinstance(value, (float, np.floating)) and not math.isfinite(float(value)):
-        if math.isnan(float(value)):
-            return "NaN"
-        return "Infinity" if float(value) > 0.0 else "-Infinity"
+        if float(value) > 0.0 and key in ("psnr", "meanPsnr"):
+            return "Infinity"
+        raise ValueError(f"non-finite metric is not permitted: {key or '<root>'}")
     if isinstance(value, np.generic):
         return value.item()
     return value
@@ -392,11 +549,12 @@ def _json_safe_metric(value: Any) -> Any:
 
 def write_validation_metrics(document: Mapping[str, Any], output_path: str | Path) -> None:
     """Persist strict JSON, spelling mathematically infinite PSNR explicitly."""
+    safe_document = _json_safe_metric(document)
     output = Path(output_path).expanduser()
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w", encoding="utf-8") as stream:
         json.dump(
-            _json_safe_metric(document),
+            safe_document,
             stream,
             sort_keys=True,
             indent=2,
@@ -440,11 +598,21 @@ def main(argv: Sequence[str] | None = None) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     poses = np.load(data_dir / "poses.npy")
     intrinsics = np.load(data_dir / "intrinsics.npy")
-    spec = build_view_spec(
+    with (data_dir / "validation-view-spec.json").open(encoding="utf-8") as stream:
+        persisted_spec = validation_view_spec_from_dict(
+            json.load(stream), frame_count=len(poses)
+        )
+    semantic_spec = build_view_spec(
         poses,
         seed=args.seed,
         frame_tags=_load_manifest_tags(args.manifest),
-        recorded_count=args.recorded_count,
+        recorded_count=len(poses),
+    )
+    spec = ValidationViewSpec(
+        recorded=persisted_spec.recorded,
+        withheld=persisted_spec.withheld,
+        interpolated=persisted_spec.interpolated,
+        standardized=semantic_spec.standardized,
     )
 
     vertex = PlyData.read(str(Path(args.ply).expanduser()))["vertex"].data

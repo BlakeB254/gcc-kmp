@@ -56,6 +56,12 @@ GL_TO_CV = np.diag([1.0, -1.0, -1.0, 1.0])
 MIN_NOVEL_VIEW_BASELINE_METERS = 2.0
 MAX_CELL_POSE_SPAN_METERS = 40.0
 
+sys.path.insert(0, GSPLAT_DIR)
+try:
+    from render_validation import write_validation_view_spec
+finally:
+    sys.path.pop(0)
+
 
 def _file_sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -334,6 +340,7 @@ def _stage_verified_training_metadata(
     for name in (
         "poses.npy",
         "frame-audit.json",
+        "validation-view-spec.json",
         "training-state.json",
         "checkpoint_latest.pt",
     ):
@@ -594,6 +601,9 @@ def train_gsplat_for_cell(
             json.dump({"version": 1, "audits": frame_audits}, fh, indent=2)
         np.save(os.path.join(tmp, "poses.npy"), np.stack(poses).astype(np.float64))
         np.save(os.path.join(tmp, "intrinsics.npy"), np.stack(intrinsics).astype(np.float64))
+        write_validation_view_spec(
+            np.stack(poses), os.path.join(tmp, "validation-view-spec.json")
+        )
         np.save(os.path.join(tmp, "init_points.npy"), fusion_result.merged_points.astype(np.float32))
         np.save(os.path.join(tmp, "init_colors.npy"), fusion_result.merged_colors.astype(np.float32))
         with open(os.path.join(tmp, "meta.json"), "w") as fh:

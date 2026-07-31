@@ -34,6 +34,7 @@ import r2_store
 from fuse_cell import (MERGE_VOXEL_SIZE_METERS, _fuse_one_chunk, _group_chunks_by_index,
                        _session_fusion_input_from_manifest, _track_gps_pairs)
 from gaussian_ply import fit_yaw_to_north
+from render_validation import write_validation_view_spec
 
 MAX_FRAMES = 160
 
@@ -106,6 +107,9 @@ def main() -> None:
     np.save(os.path.join(out, "init_colors.npy"), sess.colors.astype(np.float32))
     np.save(os.path.join(out, "poses.npy"), np.stack(poses).astype(np.float64))
     np.save(os.path.join(out, "intrinsics.npy"), np.stack(intrinsics).astype(np.float64))
+    write_validation_view_spec(
+        np.stack(poses), os.path.join(out, "validation-view-spec.json")
+    )
 
     sample = Image.open(os.path.join(out, "frames", "0000.jpg"))
     with open(os.path.join(out, "meta.json"), "w") as fh:

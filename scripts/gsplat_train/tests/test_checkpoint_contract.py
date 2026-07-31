@@ -139,6 +139,7 @@ def test_dataset_fingerprint_covers_frozen_poses_and_captured_inputs(tmp_path):
         "init_points.npy": b"lidar",
         "init_colors.npy": b"captured-colors",
         "frame-audit.json": b"audit",
+        "validation-view-spec.json": b'{"recorded":[0],"withheld":[]}',
         "frames/0000.jpg": b"captured-rgb",
     }.items():
         path = tmp_path / name
@@ -150,6 +151,66 @@ def test_dataset_fingerprint_covers_frozen_poses_and_captured_inputs(tmp_path):
 
     assert first.dataset_sha256 != second.dataset_sha256
     assert first.frozen_poses_sha256 != second.frozen_poses_sha256
+
+
+def test_dataset_fingerprint_and_training_config_capture_validation_split(tmp_path):
+    """Catches resume/config identity ignoring a changed held-out partition."""
+    trainer = _load_trainer_without_torch()
+    (tmp_path / "frames").mkdir()
+    for name, content in {
+        "meta.json": b'{"frames":5}',
+        "poses.npy": b"poses",
+        "intrinsics.npy": b"intrinsics",
+        "init_points.npy": b"lidar",
+        "init_colors.npy": b"colors",
+        "frame-audit.json": b"audit",
+        "validation-view-spec.json": b'{"recorded":[0,1,2,3],"withheld":[4]}',
+        "frames/0000.jpg": b"rgb",
+    }.items():
+        (tmp_path / name).write_bytes(content)
+
+    first = trainer.dataset_fingerprints(tmp_path)
+    first_config = trainer.training_config(
+        trainer.parse_args(["--data", str(tmp_path)]),
+        validation_split_sha256=first.validation_split_sha256,
+    )
+    (tmp_path / "validation-view-spec.json").write_bytes(
+        b'{"recorded":[0,1,2,4],"withheld":[3]}'
+    )
+    second = trainer.dataset_fingerprints(tmp_path)
+    second_config = trainer.training_config(
+        trainer.parse_args(["--data", str(tmp_path)]),
+        validation_split_sha256=second.validation_split_sha256,
+    )
+
+    assert first.dataset_sha256 != second.dataset_sha256
+    assert first.validation_split_sha256 != second.validation_split_sha256
+    assert first_config["validationSplitSha256"] == first.validation_split_sha256
+    assert trainer.training_config_sha256(
+        first_config
+    ) != trainer.training_config_sha256(second_config)
+
+
+def test_withheld_partition_cannot_be_sampled_for_training(tmp_path):
+    """Catches trainer sampling from all RGB frames instead of the persisted split."""
+    trainer = _load_trainer_without_torch()
+    split = {
+        "recorded": [0, 1, 2, 3, 5, 6, 7, 8],
+        "withheld": [4, 9],
+        "interpolated": [],
+        "standardized": [],
+    }
+    (tmp_path / "validation-view-spec.json").write_text(json.dumps(split))
+
+    training_indices = trainer.load_training_frame_indices(tmp_path, frame_count=10)
+    sampled = {
+        trainer.training_frame_index(training_indices, sample_offset)
+        for sample_offset in range(100)
+    }
+
+    assert training_indices == (0, 1, 2, 3, 5, 6, 7, 8)
+    assert sampled == set(training_indices)
+    assert sampled.isdisjoint({4, 9})
 
 
 def test_training_config_fingerprint_covers_recipe_and_exposure_optimizer_mode():
@@ -328,6 +389,7 @@ def test_runner_stages_exact_trajectory_audit_and_training_state(tmp_path):
     expected = {
         "poses.npy": b"exact-frozen-trajectory",
         "frame-audit.json": b'{"audits": []}',
+        "validation-view-spec.json": b'{"recorded":[0],"withheld":[]}',
         "training-state.json": b'{"status": "completed"}',
         "checkpoint_latest.pt": b"recoverable-checkpoint",
     }

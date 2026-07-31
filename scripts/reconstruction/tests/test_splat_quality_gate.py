@@ -119,6 +119,9 @@ def test_durable_staging_survives_timeout_and_retry_resumes(tmp_path, monkeypatc
     assert (staging / "checkpoint_latest.pt").read_bytes() == b"periodic"
     assert (staging / "poses.npy").is_file()
     assert (staging / "frame-audit.json").is_file()
+    split = json.loads((staging / "validation-view-spec.json").read_text())
+    assert set(split["recorded"]).isdisjoint(split["withheld"])
+    assert set(split["recorded"]).union(split["withheld"]) == set(range(8))
 
     commands = []
 
@@ -147,7 +150,13 @@ def test_durable_staging_survives_timeout_and_retry_resumes(tmp_path, monkeypatc
     candidate = staging / "candidate-manifest"
     assert {
         path.name for path in candidate.iterdir()
-    } == {"poses.npy", "frame-audit.json", "training-state.json", "checkpoint_latest.pt"}
+    } == {
+        "poses.npy",
+        "frame-audit.json",
+        "validation-view-spec.json",
+        "training-state.json",
+        "checkpoint_latest.pt",
+    }
 
 
 def test_caller_provided_staging_path_is_absolute_and_survives_cwd_change(

@@ -58,6 +58,7 @@ SH_DEGREE_INTERVAL = 1000
 class DatasetFingerprints:
     dataset_sha256: str
     frozen_poses_sha256: str
+    validation_split_sha256: str
 
 
 def _sha256_file(path: Path) -> str:
@@ -78,6 +79,7 @@ def dataset_fingerprints(data_dir: str | os.PathLike[str]) -> DatasetFingerprint
         Path("init_points.npy"),
         Path("init_colors.npy"),
         Path("frame-audit.json"),
+        Path("validation-view-spec.json"),
         *sorted(path.relative_to(root) for path in (root / "frames").glob("*.jpg")),
     ]
     digest = hashlib.sha256()
@@ -94,15 +96,19 @@ def dataset_fingerprints(data_dir: str | os.PathLike[str]) -> DatasetFingerprint
     return DatasetFingerprints(
         dataset_sha256=digest.hexdigest(),
         frozen_poses_sha256=_sha256_file(root / "poses.npy"),
+        validation_split_sha256=_sha256_file(root / "validation-view-spec.json"),
     )
 
 
-def training_config(args: argparse.Namespace) -> dict:
+def training_config(
+    args: argparse.Namespace, *, validation_split_sha256: str | None = None
+) -> dict:
     """Return every behavior-affecting value needed to validate recovery."""
     exposure_lr = args.exposure_lr if args.exposure_lr > 0 else None
     refine_stop_iteration = min(9000, max(1000, int(args.iters * 0.3)))
     return {
         "recipeRevision": TRAINING_RECIPE_REVISION,
+        "validationSplitSha256": validation_split_sha256,
         "poseMode": args.pose_mode,
         "iterations": args.iters,
         "shDegree": args.sh_degree,
@@ -449,6 +455,58 @@ def validate_resume(
     return checkpoint
 
 
+def _strict_split_indices(value, *, name: str, frame_count: int) -> tuple[int, ...]:
+    if not isinstance(value, list):
+        raise ValueError(f"validation {name} must be an index list")
+    indices: list[int] = []
+    for raw_index in value:
+        if isinstance(raw_index, bool) or not isinstance(raw_index, int):
+            raise ValueError(f"validation {name} contains an invalid index")
+        if raw_index < 0 or raw_index >= frame_count:
+            raise ValueError(f"validation {name} index out of range: {raw_index}")
+        if raw_index in indices:
+            raise ValueError(f"validation {name} contains duplicate index: {raw_index}")
+        indices.append(raw_index)
+    return tuple(indices)
+
+
+def load_training_frame_indices(
+    data_dir: str | os.PathLike[str], *, frame_count: int
+) -> tuple[int, ...]:
+    """Load the immutable pre-training split and return only trainable frames."""
+    split_path = Path(data_dir) / "validation-view-spec.json"
+    if not split_path.is_file():
+        raise ValueError("verified dataset validation split is missing")
+    try:
+        document = json.loads(split_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError("verified dataset validation split is invalid") from error
+    if not isinstance(document, dict):
+        raise ValueError("verified dataset validation split is invalid")
+    recorded = _strict_split_indices(
+        document.get("recorded"), name="recorded", frame_count=frame_count
+    )
+    withheld = _strict_split_indices(
+        document.get("withheld"), name="withheld", frame_count=frame_count
+    )
+    if not recorded:
+        raise ValueError("validation split leaves no training frames")
+    if set(recorded).intersection(withheld) or set(recorded).union(withheld) != set(
+        range(frame_count)
+    ):
+        raise ValueError("recorded and withheld must be a disjoint complete partition")
+    return recorded
+
+
+def training_frame_index(training_indices: Sequence[int], sample_offset: int) -> int:
+    """Map a random training-slot offset through the persisted recorded partition."""
+    if not training_indices:
+        raise ValueError("training indices must not be empty")
+    if isinstance(sample_offset, bool) or not isinstance(sample_offset, int):
+        raise ValueError("sample offset must be an integer")
+    return int(training_indices[sample_offset % len(training_indices)])
+
+
 def load_dataset(path: str):
     meta = json.load(open(os.path.join(path, "meta.json")))
     poses = np.load(os.path.join(path, "poses.npy"))        # cam2world (cv)
@@ -495,7 +553,13 @@ def main() -> None:
     device = "cuda"
     data_dir = os.path.expanduser(args.data)
     fingerprints = dataset_fingerprints(data_dir)
-    config = training_config(args)
+    with open(os.path.join(data_dir, "meta.json"), encoding="utf-8") as stream:
+        frame_count = json.load(stream)["frames"]
+    training_indices = load_training_frame_indices(data_dir, frame_count=frame_count)
+    config = training_config(
+        args,
+        validation_split_sha256=fingerprints.validation_split_sha256,
+    )
     config_sha256 = training_config_sha256(config)
     resume_path = None
     if args.resume:
@@ -514,7 +578,10 @@ def main() -> None:
 
     meta, imgs, viewmats, Ks, pts, cols = load_dataset(data_dir)
     H, W = imgs.shape[1], imgs.shape[2]
-    print(f"{meta['frames']} frames {W}x{H}, init {len(pts):,} LiDAR points")
+    print(
+        f"{meta['frames']} frames ({len(training_indices)} training) "
+        f"{W}x{H}, init {len(pts):,} LiDAR points"
+    )
 
     full_pts = pts.float()  # full cloud kept for depth targets (pre-subsample)
     checkpoint = load_checkpoint(resume_path) if resume_path is not None else None
@@ -659,7 +726,8 @@ def main() -> None:
                 "densification stopped",
                 flush=True,
             )
-        i = int(torch.randint(0, n_frames, ()))
+        sample_offset = int(torch.randint(0, len(training_indices), ()))
+        i = training_frame_index(training_indices, sample_offset)
         # Progressive SH: unlock a degree every 1000 iters (standard recipe).
         sh_deg = min(it // SH_DEGREE_INTERVAL, config["shDegree"])
         colors = torch.cat([params["sh0"], params["shN"]], 1)

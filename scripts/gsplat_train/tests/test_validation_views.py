@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image
+import pytest
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -17,6 +18,7 @@ from render_validation import (  # noqa: E402
     build_view_spec,
     captured_image_metrics,
     interpolation_flicker_metrics,
+    validation_view_spec_from_dict,
     write_validation_metrics,
 )
 
@@ -109,6 +111,17 @@ def test_captured_metrics_treat_ordinary_integer_arrays_as_eight_bit_pixels():
     assert metrics == {"psnr": float("inf"), "ssim": 1.0}
 
 
+def test_windowed_ssim_detects_a_one_pixel_structural_displacement():
+    """Catches replacement of spatial 11x11 SSIM with global image statistics."""
+    reference = np.zeros((32, 32, 3), dtype=np.float64)
+    reference[:, 16:] = 1.0
+    shifted = np.roll(reference, 1, axis=1)
+
+    metrics = captured_image_metrics(reference, shifted)
+
+    assert metrics["ssim"] < 0.7
+
+
 def test_interpolation_flicker_reports_color_and_depth_separately():
     """Catches omission or conflation of temporal RGB and depth instability."""
     colors = [
@@ -134,6 +147,69 @@ def test_validation_metrics_serialize_identical_view_psnr_explicitly(tmp_path):
     write_validation_metrics({"captured": [{"psnr": float("inf")}]}, output)
 
     assert json.loads(output.read_text()) == {"captured": [{"psnr": "Infinity"}]}
+
+
+@pytest.mark.parametrize(
+    ("document", "message"),
+    [
+        ({"captured": [{"psnr": float("nan")}]}, "non-finite metric"),
+        ({"captured": [{"psnr": -float("inf")}]}, "non-finite metric"),
+        ({"captured": [{"ssim": float("inf")}]}, "non-finite metric"),
+    ],
+)
+def test_validation_metrics_reject_unapproved_nonfinite_values(
+    tmp_path, document, message
+):
+    """Catches arbitrary non-finite metrics being disguised as JSON strings."""
+    with pytest.raises(ValueError, match=message):
+        write_validation_metrics(document, tmp_path / "validation-metrics.json")
+
+
+def test_pose_validation_rejects_a_non_homogeneous_last_row():
+    """Catches affine/projective matrices passing as rigid camera transforms."""
+    poses = linear_camera_path(2)
+    poses[1, 3] = [0.0, 0.0, 0.25, 1.0]
+
+    with pytest.raises(ValueError, match="homogeneous row"):
+        build_view_spec(poses)
+
+
+@pytest.mark.parametrize("bad_index", [True, 1.5, -1, 4])
+def test_semantic_frame_indices_reject_ambiguous_or_out_of_range_values(bad_index):
+    """Catches bool/fractional/range coercion selecting the wrong semantic frame."""
+    with pytest.raises(ValueError, match="semantic frame index"):
+        build_view_spec(
+            linear_camera_path(4),
+            frame_tags=[{"frameIndex": bad_index, "tags": ["facade"]}],
+        )
+
+
+def test_semantic_frame_indices_and_categories_reject_duplicates_and_malformed_values():
+    """Catches duplicate frames/categories overwriting evidence or inventing presets."""
+    poses = linear_camera_path(4)
+    with pytest.raises(ValueError, match="duplicate semantic frame index"):
+        build_view_spec(
+            poses,
+            frame_tags=[
+                {"frameIndex": 1, "tags": ["facade"]},
+                {"frameIndex": 1, "tags": ["vehicle"]},
+            ],
+        )
+    with pytest.raises(ValueError, match="semantic category"):
+        build_view_spec(poses, frame_tags={1: ["facade", "not-a-category"]})
+    with pytest.raises(ValueError, match="duplicate semantic category"):
+        build_view_spec(poses, frame_tags={1: ["facade", "facade"]})
+
+
+def test_persisted_spec_rejects_overlapping_or_incomplete_partitions():
+    """Catches a tampered split allowing held-out frames back into training."""
+    document = build_view_spec(
+        linear_camera_path(5), recorded_count=5
+    ).to_dict()
+    document["recorded"].append(document["withheld"][0])
+
+    with pytest.raises(ValueError, match="partition"):
+        validation_view_spec_from_dict(document, frame_count=5)
 
 
 def test_contact_sheet_has_explicit_column_and_frame_metric_labels(tmp_path):
