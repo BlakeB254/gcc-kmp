@@ -44,7 +44,7 @@ import requests
 
 import fuse_cell as fuse_cell_module
 import r2_store
-from fuse_cell import FusionResult, ProducedAsset
+from fuse_cell import FusionResult, ProducedAsset, StagedVerifiedCandidate
 from gpu_admission import GpuBusy
 
 # Must outlast the slowest job: gsplat training runs up to 3h (its
@@ -240,6 +240,296 @@ def complete_cell(conn, cell: str, result: FusionResult, assets: list[ProducedAs
                    WHERE location_cell_id=%s AND status IN ('queued', 'leased')""",
                 (result.splat_skip_reason, cell),
             )
+
+
+def _verified_decision(manifest_document) -> tuple[bool, list[str]]:
+    if not isinstance(manifest_document, dict):
+        return False, ["automated-quality-rejected"]
+    decision = manifest_document.get("decision")
+    if not isinstance(decision, dict) or decision.get("publish") is not True:
+        reasons = decision.get("reasons") if isinstance(decision, dict) else None
+        normalized = [reason for reason in (reasons or []) if isinstance(reason, str)]
+        return False, normalized or ["automated-quality-rejected"]
+    reasons = decision.get("reasons")
+    if not isinstance(reasons, list) or any(not isinstance(reason, str) for reason in reasons):
+        return False, ["automated-quality-rejected"]
+    if reasons:
+        return False, reasons
+    return True, []
+
+
+def record_verified_candidate(
+    conn,
+    staged,
+    manifest,
+    decision,
+    *,
+    source_session_ids: list[str],
+    parent_asset_id: int | None = None,
+) -> int:
+    """Create one immutable candidate row after every R2 upload completed.
+
+    ``staged`` is the receipt returned by fuse_cell's staging function. This
+    function performs no object I/O, so the first database transaction opens
+    only after the PLY, web asset, evidence, manifest and checksums exist.
+    Identical retries return the original row; a changed retry is rejected.
+    """
+    if not isinstance(staged, StagedVerifiedCandidate):
+        raise ValueError("verified candidate requires a complete upload receipt")
+    manifest_document = manifest.to_dict()
+    decision_document = decision.to_dict()
+    if not isinstance(manifest_document, dict) or manifest_document.get("kind") != "verified":
+        raise ValueError("verified candidate manifest is invalid")
+    if manifest_document.get("decision") != decision_document:
+        raise ValueError("verified candidate decision differs from its manifest")
+    if getattr(staged, "asset_sha256", None) != getattr(manifest, "asset_sha256", None):
+        raise ValueError("staged candidate checksum differs from its manifest")
+    cell = getattr(staged, "cell_id", None)
+    version = getattr(staged, "version", None)
+    r2_key = getattr(staged, "r2_key", None)
+    expected_prefix = f"reconstructed/{cell}/{version}/verified-candidate/"
+    if (
+        not isinstance(cell, str)
+        or isinstance(version, bool)
+        or not isinstance(version, int)
+        or version < 1
+        or not isinstance(r2_key, str)
+        or not r2_key.startswith(expected_prefix)
+    ):
+        raise ValueError("staged verified candidate receipt is invalid")
+    artifact_keys = staged.artifact_keys
+    fixed_suffixes = {
+        "verified.ply",
+        "manifest.json",
+        "frame-audit.json",
+        "cleanup-report.json",
+        "validation-metrics.json",
+        "validation-contact-sheet.jpg",
+        "checksums.json",
+    }
+    suffixes = {
+        key.removeprefix(expected_prefix)
+        for key in artifact_keys
+        if isinstance(key, str) and key.startswith(expected_prefix)
+    }
+    web_suffixes = {
+        suffix
+        for suffix in suffixes
+        if (suffix.startswith("verified.") and suffix != "verified.ply")
+        or suffix == "verified-web.ply"
+    }
+    if (
+        len(artifact_keys) != 8
+        or len(set(artifact_keys)) != 8
+        or not fixed_suffixes.issubset(suffixes)
+        or len(web_suffixes) != 1
+    ):
+        raise ValueError("verified candidate requires a complete upload receipt")
+    if manifest_document.get("cellIds") and cell not in manifest_document["cellIds"]:
+        raise ValueError("verified candidate cell differs from its manifest")
+    publish, reasons = _verified_decision(manifest_document)
+    if publish != bool(decision_document.get("publish")):
+        raise ValueError("verified candidate automated decision is invalid")
+    status = "candidate" if publish else "rejected"
+    manifest_json = json.dumps(manifest_document, sort_keys=True, separators=(",", ":"))
+    sources_json = json.dumps(list(source_session_ids))
+    rejection_json = json.dumps(reasons) if reasons else None
+
+    with conn.transaction():
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO reconstruction_assets
+                     (location_cell_id, asset_type, format, r2_key, version,
+                      source_scan_coverage_event_ids, asset_kind,
+                      processing_status, review_status, parent_asset_id,
+                      manifest, asset_sha256, rejected_at, rejection_reasons)
+                   VALUES (%s, 'splat', 'ply', %s, %s, %s::jsonb, 'verified',
+                           %s, 'pending', %s, %s::jsonb, %s,
+                           CASE WHEN %s='rejected' THEN now() END, %s::jsonb)
+                   ON CONFLICT (r2_key) DO NOTHING
+                   RETURNING id""",
+                (
+                    cell,
+                    r2_key,
+                    version,
+                    sources_json,
+                    status,
+                    parent_asset_id,
+                    manifest_json,
+                    staged.asset_sha256,
+                    status,
+                    rejection_json,
+                ),
+            )
+            inserted = cur.fetchone()
+            if inserted is not None:
+                return inserted[0]
+            cur.execute(
+                """SELECT id, location_cell_id, version,
+                          source_scan_coverage_event_ids, asset_kind, parent_asset_id,
+                          manifest, asset_sha256
+                   FROM reconstruction_assets WHERE r2_key=%s FOR UPDATE""",
+                (r2_key,),
+            )
+            existing = cur.fetchone()
+            expected = (
+                cell,
+                version,
+                list(source_session_ids),
+                "verified",
+                parent_asset_id,
+                manifest_document,
+                staged.asset_sha256,
+            )
+            if existing is None or tuple(existing[1:]) != expected:
+                raise ValueError("immutable candidate row differs from staged candidate")
+            return existing[0]
+
+
+def review_verified_candidate(
+    conn,
+    candidate_id: int,
+    *,
+    approved: bool,
+    reviewed_by: str,
+    rejection_reasons: list[str] | None = None,
+) -> None:
+    """Persist an attributed pilot decision without activating the row."""
+    if not isinstance(reviewed_by, str) or not reviewed_by.strip():
+        raise ValueError("verified review requires reviewed_by")
+    reasons = [reason for reason in (rejection_reasons or []) if isinstance(reason, str)]
+    if not approved and not reasons:
+        reasons = ["human-review-rejected"]
+    with conn.transaction():
+        with conn.cursor() as cur:
+            cur.execute(
+                """UPDATE reconstruction_assets
+                   SET review_status=%s, reviewed_at=now(), reviewed_by=%s,
+                       processing_status=CASE WHEN %s THEN processing_status ELSE 'rejected' END,
+                       rejected_at=CASE WHEN %s THEN rejected_at ELSE now() END,
+                       rejection_reasons=CASE WHEN %s THEN rejection_reasons ELSE %s::jsonb END
+                   WHERE id=%s AND asset_kind='verified'
+                     AND processing_status='candidate'""",
+                (
+                    "approved" if approved else "rejected",
+                    reviewed_by.strip(),
+                    approved,
+                    approved,
+                    approved,
+                    json.dumps(reasons),
+                    candidate_id,
+                ),
+            )
+            if cur.rowcount != 1:
+                raise ValueError("verified candidate is not reviewable")
+
+
+def activate_verified_candidate(
+    conn,
+    candidate_id: int,
+    *,
+    source_session_ids: list[str] | None = None,
+) -> bool:
+    """Atomically swap an approved automated-pass candidate into service.
+
+    Any exception rolls back both the old-row supersession and the new-row
+    activation. Rejection and incomplete pilot attribution return False while
+    leaving the current published verified row untouched.
+    """
+    with conn.transaction():
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT location_cell_id, version, asset_kind,
+                          processing_status, review_status, reviewed_at,
+                          reviewed_by, manifest, activated_at
+                   FROM reconstruction_assets WHERE id=%s FOR UPDATE""",
+                (candidate_id,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise ValueError("verified candidate does not exist")
+            (
+                cell,
+                version,
+                asset_kind,
+                processing_status,
+                review_status,
+                reviewed_at,
+                reviewed_by,
+                manifest_document,
+                activated_at,
+            ) = row
+            if asset_kind != "verified":
+                raise ValueError("asset is not a verified candidate")
+            if processing_status == "published" and activated_at is not None:
+                return True
+            automated_pass, automated_reasons = _verified_decision(manifest_document)
+            if not automated_pass:
+                if processing_status != "rejected":
+                    cur.execute(
+                        """UPDATE reconstruction_assets
+                           SET processing_status='rejected', rejected_at=now(),
+                               rejection_reasons=%s::jsonb
+                           WHERE id=%s""",
+                        (json.dumps(automated_reasons), candidate_id),
+                    )
+                return False
+            if review_status == "rejected":
+                if processing_status != "rejected":
+                    cur.execute(
+                        """UPDATE reconstruction_assets
+                           SET processing_status='rejected', rejected_at=now(),
+                               rejection_reasons='[\"human-review-rejected\"]'::jsonb
+                           WHERE id=%s""",
+                        (candidate_id,),
+                    )
+                return False
+            if (
+                processing_status != "candidate"
+                or review_status != "approved"
+                or reviewed_at is None
+                or not isinstance(reviewed_by, str)
+                or not reviewed_by.strip()
+            ):
+                return False
+
+            # Lock the current active row before changing either side of the
+            # swap. The partial unique index is the final concurrency guard.
+            cur.execute(
+                """SELECT id FROM reconstruction_assets
+                   WHERE location_cell_id=%s AND asset_kind='verified'
+                     AND processing_status='published'
+                     AND activated_at IS NOT NULL AND id<>%s
+                   FOR UPDATE""",
+                (cell, candidate_id),
+            )
+            cur.fetchall()
+            cur.execute(
+                """UPDATE reconstruction_assets
+                   SET processing_status='superseded'
+                   WHERE location_cell_id=%s AND asset_kind='verified'
+                     AND processing_status='published'
+                     AND activated_at IS NOT NULL AND id<>%s""",
+                (cell, candidate_id),
+            )
+            cur.execute(
+                """UPDATE reconstruction_assets
+                   SET processing_status='published', activated_at=now(),
+                       rejected_at=NULL, rejection_reasons=NULL
+                   WHERE id=%s AND processing_status='candidate'
+                   RETURNING id""",
+                (candidate_id,),
+            )
+            if cur.fetchone() is None:
+                raise RuntimeError("verified candidate changed during activation")
+            if source_session_ids:
+                cur.execute(
+                    """UPDATE scan_sessions
+                       SET reconstruction_version=%s, reconstructed_at=now()
+                       WHERE session_id=ANY(%s)""",
+                    (version, source_session_ids),
+                )
+    return True
 
 
 def _world_mirror_healthy(base_url: str) -> bool:

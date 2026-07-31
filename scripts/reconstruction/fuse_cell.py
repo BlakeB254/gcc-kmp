@@ -11,7 +11,10 @@ without needing real R2 data -- which doesn't exist yet (see README).
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
+from pathlib import Path
 import re
 from dataclasses import dataclass, field
 
@@ -82,6 +85,21 @@ class ProducedAsset:
     r2_key: str
     version: int
     data: bytes | None
+
+
+@dataclass(frozen=True)
+class StagedVerifiedCandidate:
+    """Complete R2 bundle whose immutable uploads all finished successfully.
+
+    Database code accepts this receipt rather than local paths, which keeps
+    object I/O outside the later activation transaction.
+    """
+
+    cell_id: str
+    version: int
+    r2_key: str
+    asset_sha256: str
+    artifact_keys: tuple[str, ...]
 
 
 @dataclass
@@ -524,6 +542,126 @@ def _write_bytes_to_r2(cell_id: str, asset_type: str, fmt: str, data: bytes, ver
     key = r2_store.reconstructed_asset_key(cell_id, version=version, asset_type=asset_type, fmt=fmt)
     r2_store.upload_bytes(key, data, content_type="application/octet-stream")
     return key
+
+
+def _verified_candidate_key(cell_id: str, version: int, filename: str) -> str:
+    r2_store.validate_cell_id(cell_id)
+    if isinstance(version, bool) or not isinstance(version, int) or version < 1:
+        raise ValueError("verified candidate version must be a positive integer")
+    if not filename or Path(filename).name != filename or "/" in filename:
+        raise ValueError("invalid verified candidate filename")
+    return f"reconstructed/{cell_id}/{version}/verified-candidate/{filename}"
+
+
+def _upload_immutable_verified_object(
+    key: str, data: bytes, *, content_type: str
+) -> None:
+    """Retry identical uploads, but never replace bytes at a candidate key."""
+    if r2_store.object_exists(key):
+        if r2_store.download_bytes(key) != data:
+            raise ValueError(f"immutable verified candidate key already exists: {key}")
+        return
+    r2_store.upload_bytes(key, data, content_type=content_type)
+
+
+def _read_required_candidate_file(candidate, attribute: str) -> bytes:
+    value = getattr(candidate, attribute, None)
+    if value is None:
+        raise ValueError(f"verified candidate is missing {attribute}")
+    path = Path(value).expanduser().resolve()
+    if not path.is_file():
+        raise ValueError(f"verified candidate file is missing: {path}")
+    return path.read_bytes()
+
+
+def stage_verified_candidate_assets(
+    cell_id: str,
+    version: int,
+    candidate,
+    manifest,
+    *,
+    web_asset: bytes,
+    web_format: str,
+    validation_metrics: str | os.PathLike[str],
+    contact_sheet: str | os.PathLike[str],
+) -> StagedVerifiedCandidate:
+    """Upload the complete verified bundle before any database transaction.
+
+    All keys are versioned and retry-idempotent. A partial upload never
+    returns a receipt, so callers cannot create or activate a candidate row;
+    a retry may reuse identical objects but cannot mutate an existing key.
+    """
+    if getattr(candidate, "publishable_policy", None) != "balanced":
+        raise ValueError("verified publication requires the balanced candidate")
+    balanced_path = Path(getattr(candidate, "balanced", "")).expanduser().resolve()
+    publishable_path = Path(getattr(candidate, "publishable", "")).expanduser().resolve()
+    if balanced_path != publishable_path or not balanced_path.is_file():
+        raise ValueError("verified publication requires the balanced candidate")
+    balanced = candidate.balanced_bytes
+    if not isinstance(balanced, bytes):
+        raise ValueError("verified balanced candidate bytes are invalid")
+    asset_sha256 = hashlib.sha256(balanced).hexdigest()
+    if getattr(manifest, "asset_sha256", None) != asset_sha256:
+        raise ValueError("verified manifest checksum does not match balanced candidate")
+    manifest_payload = manifest.to_json().encode("utf-8")
+    try:
+        manifest_document = json.loads(manifest_payload)
+    except (TypeError, ValueError, json.JSONDecodeError) as error:
+        raise ValueError("verified manifest is not valid JSON") from error
+    if manifest_document.get("kind") != "verified":
+        raise ValueError("verified manifest kind is invalid")
+    if not isinstance(web_asset, bytes) or not web_asset:
+        raise ValueError("verified web asset is required")
+    if not re.fullmatch(r"[a-z0-9]+", web_format):
+        raise ValueError("verified web asset format is invalid")
+
+    metrics_path = Path(validation_metrics).expanduser().resolve()
+    contact_path = Path(contact_sheet).expanduser().resolve()
+    if not metrics_path.is_file() or not contact_path.is_file():
+        raise ValueError("verified validation outputs are incomplete")
+    web_name = "verified-web.ply" if web_format == "ply" else f"verified.{web_format}"
+    payloads = (
+        ("verified.ply", balanced, "application/octet-stream"),
+        (web_name, web_asset, "application/octet-stream"),
+        ("manifest.json", manifest_payload, "application/json"),
+        (
+            "frame-audit.json",
+            _read_required_candidate_file(candidate, "frame_audit"),
+            "application/json",
+        ),
+        (
+            "cleanup-report.json",
+            _read_required_candidate_file(candidate, "cleanup_report"),
+            "application/json",
+        ),
+        ("validation-metrics.json", metrics_path.read_bytes(), "application/json"),
+        ("validation-contact-sheet.jpg", contact_path.read_bytes(), "image/jpeg"),
+    )
+    staged_payloads: list[tuple[str, bytes, str]] = []
+    for filename, data, content_type in payloads:
+        key = _verified_candidate_key(cell_id, version, filename)
+        _upload_immutable_verified_object(key, data, content_type=content_type)
+        staged_payloads.append((key, data, content_type))
+
+    checksums = {
+        key: hashlib.sha256(data).hexdigest() for key, data, _content_type in staged_payloads
+    }
+    checksum_payload = (
+        json.dumps(checksums, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        + "\n"
+    ).encode("utf-8")
+    checksum_key = _verified_candidate_key(cell_id, version, "checksums.json")
+    _upload_immutable_verified_object(
+        checksum_key, checksum_payload, content_type="application/json"
+    )
+    artifact_keys = tuple(key for key, _data, _type in staged_payloads) + (checksum_key,)
+    return StagedVerifiedCandidate(
+        cell_id=cell_id,
+        version=version,
+        r2_key=_verified_candidate_key(cell_id, version, "verified.ply"),
+        asset_sha256=asset_sha256,
+        artifact_keys=artifact_keys,
+    )
 
 
 def _record_provenance(cell_id: str, r2_key: str, asset_type: str, fmt: str, activated: bool, api_base_url: str) -> None:

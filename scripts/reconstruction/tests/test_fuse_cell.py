@@ -1,11 +1,14 @@
+import hashlib
 import io
 import json
 import struct
 from fractions import Fraction
+from types import SimpleNamespace
 
 import av
 import liblzfse
 import numpy as np
+import pytest
 
 import r2_store
 from fuse_cell import (
@@ -344,6 +347,116 @@ def test_fuse_cell_records_produced_assets_with_run_version(monkeypatch):
     assert asset.r2_key == "reconstructed/1:2/5/pointcloud.ply"
     assert asset.r2_key in uploaded
     assert asset.data == uploaded[asset.r2_key]
+
+
+def test_verified_candidate_stages_complete_immutable_bundle(monkeypatch, tmp_path):
+    """Catches publication omitting review evidence or writing outside the candidate prefix."""
+    import fuse_cell as fuse_cell_module
+
+    files = {}
+    for name, payload in {
+        "balanced.ply": b"balanced-ply",
+        "frame-audit.json": b'{"selected":12}',
+        "cleanup-report.json": b'{"policy":"balanced"}',
+        "validation-metrics.json": b'{"imageSimilarity":0.95}',
+        "validation-contact-sheet.jpg": b"jpeg",
+    }.items():
+        path = tmp_path / name
+        path.write_bytes(payload)
+        files[name] = path
+    candidate = SimpleNamespace(
+        balanced=files["balanced.ply"],
+        publishable=files["balanced.ply"],
+        publishable_policy="balanced",
+        balanced_bytes=b"balanced-ply",
+        frame_audit=files["frame-audit.json"],
+        cleanup_report=files["cleanup-report.json"],
+    )
+    manifest_json = '{"decision":{"publish":true,"reasons":[]},"kind":"verified"}'
+    manifest = SimpleNamespace(
+        to_json=lambda: manifest_json,
+        asset_sha256=hashlib.sha256(b"balanced-ply").hexdigest(),
+    )
+    uploaded = {}
+    monkeypatch.setattr(r2_store, "object_exists", lambda _key: False)
+    monkeypatch.setattr(
+        r2_store,
+        "upload_bytes",
+        lambda key, data, content_type: uploaded.__setitem__(key, (data, content_type)),
+    )
+
+    staged = fuse_cell_module.stage_verified_candidate_assets(
+        "1:2",
+        7,
+        candidate,
+        manifest,
+        web_asset=b"web-spz",
+        web_format="spz",
+        validation_metrics=files["validation-metrics.json"],
+        contact_sheet=files["validation-contact-sheet.jpg"],
+    )
+
+    prefix = "reconstructed/1:2/7/verified-candidate/"
+    assert set(uploaded) == {
+        prefix + "verified.ply",
+        prefix + "verified.spz",
+        prefix + "manifest.json",
+        prefix + "frame-audit.json",
+        prefix + "cleanup-report.json",
+        prefix + "validation-metrics.json",
+        prefix + "validation-contact-sheet.jpg",
+        prefix + "checksums.json",
+    }
+    checksums = json.loads(uploaded[prefix + "checksums.json"][0])
+    assert set(checksums) == set(uploaded) - {prefix + "checksums.json"}
+    assert staged.r2_key == prefix + "verified.ply"
+    assert staged.artifact_keys == tuple(uploaded)
+
+
+def test_verified_candidate_retry_refuses_to_overwrite_different_bytes(
+    monkeypatch, tmp_path
+):
+    """Catches a version retry mutating an already staged immutable object."""
+    import fuse_cell as fuse_cell_module
+
+    candidate_path = tmp_path / "balanced.ply"
+    audit_path = tmp_path / "frame-audit.json"
+    cleanup_path = tmp_path / "cleanup-report.json"
+    metrics_path = tmp_path / "validation-metrics.json"
+    contact_path = tmp_path / "validation-contact-sheet.jpg"
+    for path in (candidate_path, audit_path, cleanup_path, metrics_path, contact_path):
+        path.write_bytes(path.name.encode())
+    candidate = SimpleNamespace(
+        balanced=candidate_path,
+        publishable=candidate_path,
+        publishable_policy="balanced",
+        balanced_bytes=candidate_path.read_bytes(),
+        frame_audit=audit_path,
+        cleanup_report=cleanup_path,
+    )
+    manifest = SimpleNamespace(
+        to_json=lambda: '{"kind":"verified"}',
+        asset_sha256=hashlib.sha256(candidate_path.read_bytes()).hexdigest(),
+    )
+    monkeypatch.setattr(r2_store, "object_exists", lambda _key: True)
+    monkeypatch.setattr(r2_store, "download_bytes", lambda _key: b"different-generation")
+    monkeypatch.setattr(
+        r2_store,
+        "upload_bytes",
+        lambda *_args, **_kwargs: pytest.fail("immutable object was overwritten"),
+    )
+
+    with pytest.raises(ValueError, match="immutable verified candidate key"):
+        fuse_cell_module.stage_verified_candidate_assets(
+            "1:2",
+            7,
+            candidate,
+            manifest,
+            web_asset=b"web",
+            web_format="spz",
+            validation_metrics=metrics_path,
+            contact_sheet=contact_path,
+        )
 
 
 def test_fuse_cell_without_api_base_url_never_calls_http(monkeypatch):

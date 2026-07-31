@@ -3,8 +3,10 @@ Postgres (data-postgres, :5432) -- SKIP LOCKED / lease-expiry behavior is
 Postgres-generic, so there's no reason to hit Neon from tests. Skipped
 entirely when the local container isn't reachable."""
 import os
+from pathlib import Path
 import sys
 import types
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -67,6 +69,11 @@ CREATE TABLE capture_chunks (
 );
 """
 
+VERIFIED_ASSET_MIGRATION = (
+    Path(__file__).parents[3]
+    / "site/src/db/migrations/0040_verified_reconstruction_assets.sql"
+)
+
 
 @pytest.fixture()
 def db():
@@ -77,6 +84,7 @@ def db():
     conn = psycopg.connect(dsn)
     with conn.cursor() as cur:
         cur.execute(SCHEMA)
+        cur.execute(VERIFIED_ASSET_MIGRATION.read_text())
     conn.commit()
     yield dsn, conn
     conn.close()
@@ -242,6 +250,352 @@ def test_complete_cell_records_assets_stamps_sessions_closes_sibling_jobs(db):
     assert skip_reasons["sess-1"] == "too-few-frames"
     assert skip_reasons["sess-2"] == "too-few-frames"  # sibling job, same cell/run
     assert skip_reasons["sess-3"] is None  # untouched job for an unrelated cell
+
+
+# --- Verified candidate lifecycle: immutable records + atomic activation ---
+
+def _insert_verified_asset(
+    conn,
+    *,
+    cell: str = "1:2",
+    version: int,
+    processing_status: str,
+    review_status: str = "pending",
+    active: bool = False,
+    reviewed: bool = False,
+    decision_publish: bool = True,
+):
+    with conn.cursor() as cur:
+        cur.execute(
+            """INSERT INTO reconstruction_assets
+                 (location_cell_id, asset_type, format, r2_key, version,
+                  source_scan_coverage_event_ids, activated_at, asset_kind,
+                  processing_status, review_status, reviewed_at, reviewed_by,
+                  manifest, asset_sha256)
+               VALUES (%s, 'splat', 'ply', %s, %s, '[]'::jsonb,
+                       CASE WHEN %s THEN now() END, 'verified', %s, %s,
+                       CASE WHEN %s THEN now() END,
+                       CASE WHEN %s THEN 'pilot@example.test' END,
+                       %s::jsonb, %s)
+               RETURNING id""",
+            (
+                cell,
+                f"reconstructed/{cell}/{version}/verified-candidate/verified.ply",
+                version,
+                active,
+                processing_status,
+                review_status,
+                reviewed,
+                reviewed,
+                '{"decision":{"publish":%s,"reasons":[]}}'
+                % str(decision_publish).lower(),
+                f"{'a' if decision_publish else 'b'}" * 64,
+            ),
+        )
+        asset_id = cur.fetchone()[0]
+    conn.commit()
+    return asset_id
+
+
+def _active_verified_id(conn, cell: str = "1:2"):
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT id FROM reconstruction_assets
+               WHERE location_cell_id=%s AND asset_kind='verified'
+                 AND processing_status='published' AND activated_at IS NOT NULL""",
+            (cell,),
+        )
+        row = cur.fetchone()
+    return row[0] if row else None
+
+
+def test_rejected_candidate_does_not_replace_active_verified_asset(db):
+    """Catches an automated rejection deactivating the last-known-good row."""
+    import recon_worker
+
+    _dsn, conn = db
+    active = _insert_verified_asset(
+        conn, version=3, processing_status="published", active=True
+    )
+    rejected = _insert_verified_asset(
+        conn,
+        version=4,
+        processing_status="candidate",
+        decision_publish=False,
+    )
+
+    assert recon_worker.activate_verified_candidate(conn, rejected) is False
+    assert _active_verified_id(conn) == active
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT processing_status, rejected_at, rejection_reasons FROM reconstruction_assets WHERE id=%s",
+            (rejected,),
+        )
+        status, rejected_at, reasons = cur.fetchone()
+    assert status == "rejected"
+    assert rejected_at is not None
+    assert reasons == ["automated-quality-rejected"]
+
+
+def test_recorded_verified_candidate_is_pending_and_content_immutable(db):
+    """Catches a retry mutating candidate provenance or bypassing pilot review."""
+    import recon_worker
+    from fuse_cell import StagedVerifiedCandidate
+    from verified_quality import PublicationDecision
+
+    _dsn, conn = db
+    manifest_document = {
+        "kind": "verified",
+        "cellIds": ["1:2"],
+        "decision": {"publish": True, "reasons": []},
+        "checksums": {"assetSha256": "a" * 64},
+    }
+    manifest = SimpleNamespace(
+        to_dict=lambda: manifest_document,
+        asset_sha256="a" * 64,
+    )
+    prefix = "reconstructed/1:2/4/verified-candidate/"
+    staged = StagedVerifiedCandidate(
+        cell_id="1:2",
+        version=4,
+        r2_key=prefix + "verified.ply",
+        asset_sha256="a" * 64,
+        artifact_keys=tuple(
+            prefix + name
+            for name in (
+                "verified.ply",
+                "verified.spz",
+                "manifest.json",
+                "frame-audit.json",
+                "cleanup-report.json",
+                "validation-metrics.json",
+                "validation-contact-sheet.jpg",
+                "checksums.json",
+            )
+        ),
+    )
+    decision = PublicationDecision(publish=True, reasons=[])
+
+    first = recon_worker.record_verified_candidate(
+        conn,
+        staged,
+        manifest,
+        decision,
+        source_session_ids=["sess-1"],
+    )
+    retry = recon_worker.record_verified_candidate(
+        conn,
+        staged,
+        manifest,
+        decision,
+        source_session_ids=["sess-1"],
+    )
+    assert retry == first
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT processing_status, review_status, activated_at FROM reconstruction_assets WHERE id=%s",
+            (first,),
+        )
+        assert cur.fetchone() == ("candidate", "pending", None)
+
+    recon_worker.review_verified_candidate(
+        conn, first, approved=True, reviewed_by="pilot@example.test"
+    )
+    assert recon_worker.record_verified_candidate(
+        conn,
+        staged,
+        manifest,
+        decision,
+        source_session_ids=["sess-1"],
+    ) == first
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT review_status, reviewed_by FROM reconstruction_assets WHERE id=%s",
+            (first,),
+        )
+        assert cur.fetchone() == ("approved", "pilot@example.test")
+
+    changed = StagedVerifiedCandidate(
+        cell_id=staged.cell_id,
+        version=staged.version,
+        r2_key=staged.r2_key,
+        asset_sha256="b" * 64,
+        artifact_keys=staged.artifact_keys,
+    )
+    changed_document = {
+        **manifest_document,
+        "checksums": {"assetSha256": "b" * 64},
+    }
+    changed_manifest = SimpleNamespace(
+        to_dict=lambda: changed_document,
+        asset_sha256="b" * 64,
+    )
+    with pytest.raises(ValueError, match="immutable candidate row"):
+        recon_worker.record_verified_candidate(
+            conn,
+            changed,
+            changed_manifest,
+            decision,
+            source_session_ids=["sess-1"],
+        )
+
+
+def test_incomplete_upload_receipt_cannot_create_candidate_row(db):
+    """Catches a partial object upload becoming reviewable in the database."""
+    import recon_worker
+    from fuse_cell import StagedVerifiedCandidate
+    from verified_quality import PublicationDecision
+
+    _dsn, conn = db
+    r2_key = "reconstructed/1:2/4/verified-candidate/verified.ply"
+    staged = StagedVerifiedCandidate(
+        cell_id="1:2",
+        version=4,
+        r2_key=r2_key,
+        asset_sha256="a" * 64,
+        artifact_keys=(r2_key,),
+    )
+    document = {
+        "kind": "verified",
+        "cellIds": ["1:2"],
+        "decision": {"publish": True, "reasons": []},
+    }
+    manifest = SimpleNamespace(to_dict=lambda: document, asset_sha256="a" * 64)
+
+    with pytest.raises(ValueError, match="complete upload receipt"):
+        recon_worker.record_verified_candidate(
+            conn,
+            staged,
+            manifest,
+            PublicationDecision(publish=True, reasons=[]),
+            source_session_ids=["sess-1"],
+        )
+    with conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM reconstruction_assets")
+        assert cur.fetchone()[0] == 0
+
+
+def test_verified_candidate_content_columns_cannot_be_mutated(db):
+    """Catches direct SQL changing the bytes/provenance identity of a candidate row."""
+    _dsn, conn = db
+    candidate = _insert_verified_asset(
+        conn, version=4, processing_status="candidate"
+    )
+    with pytest.raises(psycopg.errors.RaiseException, match="immutable"):
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE reconstruction_assets SET r2_key='reconstructed/1:2/4/changed.ply' WHERE id=%s",
+                (candidate,),
+            )
+    conn.rollback()
+
+
+@pytest.mark.parametrize(
+    ("review_status", "reviewed"),
+    [("pending", False), ("approved", False), ("rejected", True)],
+)
+def test_review_without_attributed_approval_cannot_activate(
+    db, review_status, reviewed
+):
+    """Catches pending, rejected, or unattributed pilot review bypassing the gate."""
+    import recon_worker
+
+    _dsn, conn = db
+    active = _insert_verified_asset(
+        conn, version=3, processing_status="published", active=True
+    )
+    candidate = _insert_verified_asset(
+        conn,
+        version=4,
+        processing_status="candidate",
+        review_status=review_status,
+        reviewed=reviewed,
+    )
+
+    assert recon_worker.activate_verified_candidate(conn, candidate) is False
+    assert _active_verified_id(conn) == active
+
+
+def test_attributed_approved_candidate_swaps_atomically_and_stamps_sessions(db):
+    """Catches publishing the new row without superseding the old row and session version."""
+    import recon_worker
+
+    _dsn, conn = db
+    _enqueue(conn, "sess-1", "1:2")
+    active = _insert_verified_asset(
+        conn, version=3, processing_status="published", active=True
+    )
+    candidate = _insert_verified_asset(
+        conn,
+        version=4,
+        processing_status="candidate",
+        review_status="approved",
+        reviewed=True,
+    )
+
+    assert recon_worker.activate_verified_candidate(
+        conn, candidate, source_session_ids=["sess-1"]
+    ) is True
+    assert _active_verified_id(conn) == candidate
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT processing_status, activated_at FROM reconstruction_assets WHERE id=%s",
+            (active,),
+        )
+        old_status, old_activated_at = cur.fetchone()
+        cur.execute(
+            "SELECT reconstruction_version, reconstructed_at FROM scan_sessions WHERE session_id='sess-1'"
+        )
+        version, reconstructed_at = cur.fetchone()
+    assert old_status == "superseded"
+    assert old_activated_at is not None
+    assert version == 4
+    assert reconstructed_at is not None
+
+
+def test_activation_failure_rolls_back_and_preserves_last_good(db):
+    """Catches a mid-swap database failure leaving the cell with no active verified row."""
+    import recon_worker
+
+    _dsn, conn = db
+    active = _insert_verified_asset(
+        conn, version=3, processing_status="published", active=True
+    )
+    candidate = _insert_verified_asset(
+        conn,
+        version=4,
+        processing_status="candidate",
+        review_status="approved",
+        reviewed=True,
+    )
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""CREATE FUNCTION fail_candidate_activation() RETURNS trigger AS $$
+                BEGIN RAISE EXCEPTION 'activation failed'; END $$ LANGUAGE plpgsql;
+                CREATE TRIGGER fail_candidate_activation
+                  BEFORE UPDATE ON reconstruction_assets
+                  FOR EACH ROW WHEN (NEW.id = {candidate} AND NEW.processing_status = 'published')
+                  EXECUTE FUNCTION fail_candidate_activation();"""
+        )
+    conn.commit()
+
+    with pytest.raises(psycopg.DatabaseError, match="activation failed"):
+        recon_worker.activate_verified_candidate(conn, candidate)
+
+    assert _active_verified_id(conn) == active
+
+
+def test_verified_asset_migration_is_idempotent_and_enforces_one_active_per_cell(db):
+    """Catches a replayed migration failing or the active-row invariant being unenforced."""
+    _dsn, conn = db
+    migration = VERIFIED_ASSET_MIGRATION.read_text()
+    with conn.cursor() as cur:
+        cur.execute(migration)
+    conn.commit()
+    _insert_verified_asset(conn, version=1, processing_status="published", active=True)
+    with pytest.raises(psycopg.errors.UniqueViolation):
+        _insert_verified_asset(conn, version=2, processing_status="published", active=True)
+    conn.rollback()
 
 
 # --- compress_splat_for_web fallback logic (subprocess mocked; no DB) ---
