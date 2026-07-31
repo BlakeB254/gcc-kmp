@@ -54,6 +54,42 @@ def _corrupt_npz_member_crc(path: Path, member_name: str) -> None:
     raise AssertionError(f"NPZ member not found: {member_name}")
 
 
+def _rewrite_npz_member_zip_header(
+    path: Path,
+    member_name: str,
+    *,
+    compression: int | None = None,
+    encrypted: bool = False,
+) -> None:
+    data = bytearray(path.read_bytes())
+    signature = b"PK\x01\x02"
+    offset = 0
+    while (offset := data.find(signature, offset)) >= 0:
+        name_length = int.from_bytes(data[offset + 28 : offset + 30], "little")
+        extra_length = int.from_bytes(data[offset + 30 : offset + 32], "little")
+        comment_length = int.from_bytes(data[offset + 32 : offset + 34], "little")
+        name_start = offset + 46
+        name = bytes(data[name_start : name_start + name_length]).decode("utf-8")
+        if name == member_name:
+            local_offset = int.from_bytes(data[offset + 42 : offset + 46], "little")
+            assert data[local_offset : local_offset + 4] == b"PK\x03\x04"
+            if compression is not None:
+                encoded = compression.to_bytes(2, "little")
+                data[local_offset + 8 : local_offset + 10] = encoded
+                data[offset + 10 : offset + 12] = encoded
+            if encrypted:
+                local_flags = int.from_bytes(
+                    data[local_offset + 6 : local_offset + 8], "little"
+                ) | 1
+                central_flags = int.from_bytes(data[offset + 8 : offset + 10], "little") | 1
+                data[local_offset + 6 : local_offset + 8] = local_flags.to_bytes(2, "little")
+                data[offset + 8 : offset + 10] = central_flags.to_bytes(2, "little")
+            path.write_bytes(data)
+            return
+        offset = name_start + name_length + extra_length + comment_length
+    raise AssertionError(f"NPZ member not found: {member_name}")
+
+
 def _write_splat(path: Path) -> None:
     vertices = np.zeros(
         4,
@@ -554,6 +590,34 @@ def test_runner_fails_closed_for_evidence_member_crc_failure(tmp_path: Path):
     """Catches zip corruption escaping candidate validation and crashing the runner."""
     staging = _valid_candidate_staging(tmp_path)
     _corrupt_npz_member_crc(staging / "verified-evidence.npz", "metadata_json.npy")
+
+    candidate, reason = gsplat_runner.verified_candidate_result(staging)
+
+    assert candidate is None
+    assert reason == "evidence-malformed"
+
+
+def test_runner_fails_closed_for_unsupported_evidence_member_compression(
+    tmp_path: Path,
+):
+    """Catches unsupported lazy ZIP decompression crashing the public runner."""
+    staging = _valid_candidate_staging(tmp_path)
+    _rewrite_npz_member_zip_header(
+        staging / "verified-evidence.npz", "metadata_json.npy", compression=99
+    )
+
+    candidate, reason = gsplat_runner.verified_candidate_result(staging)
+
+    assert candidate is None
+    assert reason == "evidence-malformed"
+
+
+def test_runner_fails_closed_for_encrypted_evidence_metadata_member(tmp_path: Path):
+    """Catches password-required lazy ZIP reads crashing the public runner."""
+    staging = _valid_candidate_staging(tmp_path)
+    _rewrite_npz_member_zip_header(
+        staging / "verified-evidence.npz", "metadata_json.npy", encrypted=True
+    )
 
     candidate, reason = gsplat_runner.verified_candidate_result(staging)
 

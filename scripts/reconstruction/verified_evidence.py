@@ -391,9 +391,64 @@ def write_verified_evidence_artifact(
     )
 
 
+def _zip_info_for_archive_member(archive: Any, name: str) -> zipfile.ZipInfo | None:
+    for member_name in (name, f"{name}.npy"):
+        try:
+            return archive.zip.getinfo(member_name)
+        except KeyError:
+            continue
+        except (AttributeError, TypeError):
+            return None
+    return None
+
+
+def _is_expected_zip_member_error(
+    archive: Any, name: str, error: Exception
+) -> bool:
+    """Identify zipfile capability failures from the member's ZIP metadata."""
+    info = _zip_info_for_archive_member(archive, name)
+    if info is None:
+        return False
+    if isinstance(error, NotImplementedError):
+        supported_compression = {
+            zipfile.ZIP_STORED,
+            zipfile.ZIP_DEFLATED,
+            zipfile.ZIP_BZIP2,
+            zipfile.ZIP_LZMA,
+        }
+        unsupported_flags = (1 << 5) | (1 << 6)
+        return (
+            info.compress_type not in supported_compression
+            or bool(info.flag_bits & unsupported_flags)
+        )
+    if isinstance(error, RuntimeError):
+        message = str(error)
+        return (
+            bool(info.flag_bits & 1)
+            or message
+            in {
+                "Compression requires the (missing) zlib module",
+                "Compression requires the (missing) bz2 module",
+                "Compression requires the (missing) lzma module",
+            }
+        )
+    return False
+
+
+def _read_archive_member(archive: Any, name: str) -> np.ndarray:
+    try:
+        return archive[name]
+    except (NotImplementedError, RuntimeError) as error:
+        if not _is_expected_zip_member_error(archive, name, error):
+            raise
+        raise EvidenceArtifactError(
+            "evidence-malformed", f"artifact member {name!r} is unreadable"
+        ) from error
+
+
 def _read_metadata(archive: Any) -> dict[str, Any]:
     try:
-        value = archive["metadata_json"]
+        value = _read_archive_member(archive, "metadata_json")
         if value.shape != ():
             raise ValueError("metadata must be scalar")
         metadata = json.loads(str(value.item()))
@@ -467,12 +522,16 @@ def load_verified_evidence_artifact(
                 if name not in archive:
                     reason = "evidence-incomplete" if name == "lidar_confidence" else "evidence-malformed"
                     raise EvidenceArtifactError(reason, f"artifact input {name!r} is missing")
-                values[name] = np.asarray(archive[name])
+                values[name] = np.asarray(_read_archive_member(archive, name))
             optional = metadata.get("optionalInputs", [])
             if not isinstance(optional, list) or any(name not in _OPTIONAL_INPUTS for name in optional):
                 raise EvidenceArtifactError("evidence-malformed", "optional input list is invalid")
             for name in _OPTIONAL_INPUTS:
-                values[name] = np.asarray(archive[name]) if name in optional else None
+                values[name] = (
+                    np.asarray(_read_archive_member(archive, name))
+                    if name in optional
+                    else None
+                )
             inputs = EvidenceInputs(
                 **values,
                 source_vertex_sha256=vertex_sha256,
@@ -481,15 +540,23 @@ def load_verified_evidence_artifact(
             if not isinstance(component_names, list) or not component_names:
                 raise EvidenceArtifactError("evidence-malformed", "component list is invalid")
             components = {
-                name: _readonly(archive[f"result_component__{name}"])
+                name: _readonly(
+                    _read_archive_member(archive, f"result_component__{name}")
+                )
                 for name in component_names
             }
             result = EvidenceResult(
-                total=_readonly(archive["result_total"]),
+                total=_readonly(_read_archive_member(archive, "result_total")),
                 components=components,
-                conservative_mask=_readonly(archive["result_conservative_mask"]),
-                balanced_mask=_readonly(archive["result_balanced_mask"]),
-                diagnostic_mask=_readonly(archive["result_diagnostic_mask"]),
+                conservative_mask=_readonly(
+                    _read_archive_member(archive, "result_conservative_mask")
+                ),
+                balanced_mask=_readonly(
+                    _read_archive_member(archive, "result_balanced_mask")
+                ),
+                diagnostic_mask=_readonly(
+                    _read_archive_member(archive, "result_diagnostic_mask")
+                ),
                 source_vertex_sha256=vertex_sha256,
             )
     except EvidenceArtifactError:

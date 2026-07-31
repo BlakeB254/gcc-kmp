@@ -107,6 +107,43 @@ def _corrupt_npz_member_crc(path: Path, member_name: str) -> None:
     raise AssertionError(f"NPZ member not found: {member_name}")
 
 
+def _rewrite_npz_member_zip_header(
+    path: Path,
+    member_name: str,
+    *,
+    compression: int | None = None,
+    encrypted: bool = False,
+) -> None:
+    """Rewrite matching local/central ZIP fields without changing NPZ data."""
+    data = bytearray(path.read_bytes())
+    signature = b"PK\x01\x02"
+    offset = 0
+    while (offset := data.find(signature, offset)) >= 0:
+        name_length = int.from_bytes(data[offset + 28 : offset + 30], "little")
+        extra_length = int.from_bytes(data[offset + 30 : offset + 32], "little")
+        comment_length = int.from_bytes(data[offset + 32 : offset + 34], "little")
+        name_start = offset + 46
+        name = bytes(data[name_start : name_start + name_length]).decode("utf-8")
+        if name == member_name:
+            local_offset = int.from_bytes(data[offset + 42 : offset + 46], "little")
+            assert data[local_offset : local_offset + 4] == b"PK\x03\x04"
+            if compression is not None:
+                encoded = compression.to_bytes(2, "little")
+                data[local_offset + 8 : local_offset + 10] = encoded
+                data[offset + 10 : offset + 12] = encoded
+            if encrypted:
+                local_flags = int.from_bytes(
+                    data[local_offset + 6 : local_offset + 8], "little"
+                ) | 1
+                central_flags = int.from_bytes(data[offset + 8 : offset + 10], "little") | 1
+                data[local_offset + 6 : local_offset + 8] = local_flags.to_bytes(2, "little")
+                data[offset + 8 : offset + 10] = central_flags.to_bytes(2, "little")
+            path.write_bytes(data)
+            return
+        offset = name_start + name_length + extra_length + comment_length
+    raise AssertionError(f"NPZ member not found: {member_name}")
+
+
 def test_versioned_artifact_round_trips_inputs_results_and_generation(tmp_path: Path):
     """Catches cleanup accepting scores detached from their captured inputs."""
     staging, raw = _staging(tmp_path)
@@ -322,6 +359,99 @@ def test_artifact_normalizes_npz_member_crc_failure_to_malformed(tmp_path: Path)
         )
 
     assert error.value.reason == "evidence-malformed"
+
+
+def test_artifact_normalizes_unsupported_npz_member_compression_to_malformed(
+    tmp_path: Path,
+):
+    """Catches unsupported lazy ZIP decompression escaping the artifact boundary."""
+    staging, raw = _staging(tmp_path)
+    inputs = _inputs(raw)
+    artifact_path = staging / "verified-evidence.npz"
+    source_checksums = candidate_source_checksums(staging)
+    write_verified_evidence_artifact(
+        artifact_path,
+        inputs,
+        score_gaussians(inputs),
+        raw_ply_path=raw,
+        source_checksums=source_checksums,
+        provenance={"producer": "test"},
+    )
+    _rewrite_npz_member_zip_header(
+        artifact_path, "metadata_json.npy", compression=99
+    )
+
+    with pytest.raises(EvidenceArtifactError) as error:
+        load_verified_evidence_artifact(
+            artifact_path,
+            raw_ply_path=raw,
+            expected_source_checksums=source_checksums,
+        )
+
+    assert error.value.reason == "evidence-malformed"
+
+
+def test_artifact_normalizes_encrypted_npz_metadata_member_to_malformed(
+    tmp_path: Path,
+):
+    """Catches password-required lazy ZIP reads escaping the artifact boundary."""
+    staging, raw = _staging(tmp_path)
+    inputs = _inputs(raw)
+    artifact_path = staging / "verified-evidence.npz"
+    source_checksums = candidate_source_checksums(staging)
+    write_verified_evidence_artifact(
+        artifact_path,
+        inputs,
+        score_gaussians(inputs),
+        raw_ply_path=raw,
+        source_checksums=source_checksums,
+        provenance={"producer": "test"},
+    )
+    _rewrite_npz_member_zip_header(
+        artifact_path, "metadata_json.npy", encrypted=True
+    )
+
+    with pytest.raises(EvidenceArtifactError) as error:
+        load_verified_evidence_artifact(
+            artifact_path,
+            raw_ply_path=raw,
+            expected_source_checksums=source_checksums,
+        )
+
+    assert error.value.reason == "evidence-malformed"
+
+
+@pytest.mark.parametrize("exception_type", [RuntimeError, NotImplementedError])
+def test_artifact_does_not_normalize_unrelated_programming_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    exception_type: type[Exception],
+):
+    """Catches replacing the member-only ZIP boundary with a blanket catch."""
+    staging, raw = _staging(tmp_path)
+    inputs = _inputs(raw)
+    artifact_path = staging / "verified-evidence.npz"
+    source_checksums = candidate_source_checksums(staging)
+    write_verified_evidence_artifact(
+        artifact_path,
+        inputs,
+        score_gaussians(inputs),
+        raw_ply_path=raw,
+        source_checksums=source_checksums,
+        provenance={"producer": "test"},
+    )
+
+    def fail_metadata_read(_archive):
+        raise exception_type("programming defect")
+
+    monkeypatch.setattr(verified_evidence, "_read_metadata", fail_metadata_read)
+
+    with pytest.raises(exception_type, match="programming defect"):
+        load_verified_evidence_artifact(
+            artifact_path,
+            raw_ply_path=raw,
+            expected_source_checksums=source_checksums,
+        )
 
 
 def test_artifact_hash_describes_the_exact_bytes_that_were_parsed(
