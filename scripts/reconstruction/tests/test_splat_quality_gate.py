@@ -1,8 +1,17 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+import subprocess
+from types import SimpleNamespace
+
 import numpy as np
+from PIL import Image
+import pytest
 
 import gsplat_runner
+from fuse_cell import FusionResult
+from gpu_admission import GpuBusy, GpuReservation
 
 
 def _poses(points: list[tuple[float, float, float]]) -> np.ndarray:
@@ -67,3 +76,225 @@ def test_frame_selector_keeps_short_capture_intact():
     images = [np.full((16, 16, 3), value, dtype=np.uint8) for value in (20, 40, 60)]
 
     assert selector(images, budget=8) == [0, 1, 2]
+
+
+def test_runner_export_rejects_tiny_dataset_before_training(tmp_path, monkeypatch):
+    """Pins the runner's eight-frame gate shared by validation-enabled exports."""
+    fusion = FusionResult(
+        accepted_session_ids=["session"],
+        merged_points=np.array([[0.0, 0.0, 0.0]], dtype=np.float32),
+        merged_colors=np.array([[0.5, 0.5, 0.5]], dtype=np.float32),
+        session_transforms={"session": np.eye(4)},
+        anchor_lat=1.0,
+        anchor_lng=2.0,
+        north_aligned=True,
+    )
+    poses = _poses([(float(index), 1.6, 0.0) for index in range(7)])
+
+    def fake_export(_manifest, _transform, frames_dir, start_index, _budget):
+        for index in range(7):
+            Image.fromarray(np.zeros((4, 4, 3), dtype=np.uint8)).save(
+                Path(frames_dir) / f"{index:04d}.jpg"
+            )
+        return list(poses), [np.eye(3) for _ in poses], start_index + 7, []
+
+    monkeypatch.setattr(gsplat_runner, "available", lambda: True)
+    monkeypatch.setattr(gsplat_runner, "_export_session_frames", fake_export)
+    monkeypatch.setattr(
+        gsplat_runner.subprocess,
+        "run",
+        lambda *_args, **_kwargs: pytest.fail("tiny export launched trainer"),
+    )
+
+    candidate, reason = gsplat_runner.train_gsplat_for_cell(
+        "cell", fusion, {"session": {}}, staging_dir=tmp_path
+    )
+
+    assert candidate is None
+    assert reason == "too-few-frames"
+    assert not (tmp_path / "validation-view-spec.json").exists()
+
+
+def test_validation_dispatch_starts_only_while_gpu_reservation_is_held(tmp_path, monkeypatch):
+    """Removing validation admission would launch CUDA while a contender can lock."""
+    lock_path = tmp_path / "gpu.lock"
+    candidate = SimpleNamespace(balanced=tmp_path / "splat_balanced.ply")
+    candidate.balanced.write_bytes(b"balanced")
+    launched = []
+
+    def fake_run(command, **_kwargs):
+        launched.append(command)
+        metadata = json.loads(lock_path.read_text())
+        assert metadata["owner"] == "validation"
+        assert metadata["jobId"] == "job-17"
+        assert metadata["command"].endswith("render_validation.py --ply " + str(candidate.balanced)
+                                         + " --data " + str(tmp_path)
+                                         + " --manifest " + str(tmp_path / "validation-manifest.json")
+                                         + " --out " + str(tmp_path / "validation"))
+        with pytest.raises(GpuBusy, match="validation"):
+            with GpuReservation(lock_path).acquire("contender"):
+                pass
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setenv("GCC_GPU_LOCK_PATH", str(lock_path))
+    monkeypatch.setattr(gsplat_runner.subprocess, "run", fake_run)
+
+    result = gsplat_runner._run_validation_subprocess(
+        candidate, tmp_path, {}, gpu_job_id="job-17"
+    )
+
+    assert result.returncode == 0
+    assert launched[0][1].endswith("render_validation.py")
+    assert "--ply" in launched[0]
+
+
+def test_busy_validation_dispatch_does_not_launch_subprocess(tmp_path, monkeypatch):
+    """Changing validation admission ordering would initialize CUDA while busy."""
+    lock_path = tmp_path / "gpu.lock"
+    candidate = SimpleNamespace(balanced=tmp_path / "splat_balanced.ply")
+    candidate.balanced.write_bytes(b"balanced")
+    launched = []
+    monkeypatch.setenv("GCC_GPU_LOCK_PATH", str(lock_path))
+    monkeypatch.setattr(
+        gsplat_runner.subprocess, "run", lambda *_args, **_kwargs: launched.append(True)
+    )
+
+    with GpuReservation(lock_path).acquire("validation"):
+        with pytest.raises(GpuBusy, match="validation"):
+            gsplat_runner._run_validation_subprocess(candidate, tmp_path, {}, gpu_job_id=17)
+
+    assert launched == []
+
+
+def test_validation_failure_retains_balanced_candidate_but_fails_closed(tmp_path, monkeypatch):
+    """Changing validation failure to publishable would replace a last good asset."""
+    candidate = SimpleNamespace(balanced=tmp_path / "splat_balanced.ply")
+    candidate.balanced.write_bytes(b"verified-balanced-candidate")
+    monkeypatch.setattr(
+        gsplat_runner,
+        "_run_validation_subprocess",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=1),
+    )
+
+    result, reason = gsplat_runner._validated_candidate(
+        candidate, tmp_path, {}, cell_id="1:2", gpu_job_id=17
+    )
+
+    assert (result, reason) == (None, "validation-failed")
+    assert candidate.balanced.read_bytes() == b"verified-balanced-candidate"
+
+
+def test_durable_staging_survives_timeout_and_retry_resumes(tmp_path, monkeypatch):
+    """Catches temporary cleanup deleting the only recoverable trainer state."""
+    staging = tmp_path / "durable-candidate"
+    fusion = FusionResult(
+        accepted_session_ids=["session"],
+        merged_points=np.array([[0.0, 0.0, 0.0]], dtype=np.float32),
+        merged_colors=np.array([[0.5, 0.5, 0.5]], dtype=np.float32),
+        session_transforms={"session": np.eye(4)},
+        anchor_lat=1.0,
+        anchor_lng=2.0,
+        north_aligned=True,
+    )
+    poses = _poses([(float(index), 1.6, 0.0) for index in range(8)])
+    intrinsics = [np.eye(3, dtype=np.float64) for _ in range(8)]
+
+    def fake_export(_manifest, _transform, frames_dir, start_index, _budget):
+        for index in range(8):
+            Image.fromarray(np.full((4, 4, 3), index, dtype=np.uint8)).save(
+                Path(frames_dir) / f"{index:04d}.jpg"
+            )
+        return list(poses), intrinsics, start_index + 8, [{"chunk": 0}]
+
+    monkeypatch.setattr(gsplat_runner, "available", lambda: True)
+    monkeypatch.setattr(gsplat_runner, "_export_session_frames", fake_export)
+
+    def timeout_after_checkpoint(command, **_kwargs):
+        Path(command[command.index("--data") + 1], "checkpoint_latest.pt").write_bytes(
+            b"periodic"
+        )
+        Path(command[command.index("--data") + 1], "training-state.json").write_text(
+            json.dumps({"checkpoint": "checkpoint_latest.pt"})
+        )
+        raise subprocess.TimeoutExpired(command, 1)
+
+    monkeypatch.setattr(gsplat_runner.subprocess, "run", timeout_after_checkpoint)
+    with pytest.raises(subprocess.TimeoutExpired):
+        gsplat_runner.train_gsplat_for_cell(
+            "cell", fusion, {"session": {}}, staging_dir=staging
+        )
+
+    assert (staging / "checkpoint_latest.pt").read_bytes() == b"periodic"
+    assert (staging / "poses.npy").is_file()
+    assert (staging / "frame-audit.json").is_file()
+    split = json.loads((staging / "validation-view-spec.json").read_text())
+    assert set(split["recorded"]).isdisjoint(split["withheld"])
+    assert set(split["recorded"]).union(split["withheld"]) == set(range(8))
+
+    commands = []
+
+    def successful_retry(command, **_kwargs):
+        commands.append(command)
+        output = Path(command[command.index("--out") + 1])
+        if not output.is_absolute():
+            output = staging / output
+        if command[1].endswith("train_gsplat.py"):
+            output.write_bytes(b"raw-ply")
+            (staging / "checkpoint_latest.pt").write_bytes(b"completed")
+            (staging / "training-state.json").write_text(json.dumps({"status": "completed"}))
+        else:
+            raise AssertionError("cleanup must not run without verified evidence")
+        return type("Result", (), {"returncode": 0})()
+
+    monkeypatch.setattr(gsplat_runner.subprocess, "run", successful_retry)
+    candidate, reason = gsplat_runner.train_gsplat_for_cell(
+        "cell", fusion, {"session": {}}, staging_dir=staging
+    )
+
+    assert (candidate, reason) == (None, "evidence-missing")
+    assert ["--resume", str(staging)] == commands[0][
+        commands[0].index("--resume"):commands[0].index("--resume") + 2
+    ]
+    candidate = staging / "candidate-manifest"
+    assert {
+        path.name for path in candidate.iterdir()
+    } == {
+        "poses.npy",
+        "frame-audit.json",
+        "validation-view-spec.json",
+        "training-state.json",
+        "checkpoint_latest.pt",
+    }
+
+
+def test_caller_provided_staging_path_is_absolute_and_survives_cwd_change(
+    tmp_path, monkeypatch
+):
+    """Catches a retry path changing identity when the worker cwd changes."""
+    original = tmp_path / "original"
+    other = tmp_path / "other"
+    original.mkdir()
+    other.mkdir()
+    monkeypatch.chdir(original)
+
+    with gsplat_runner._durable_training_workspace("cell", Path("candidate")) as path:
+        resolved = Path(path)
+        monkeypatch.chdir(other)
+        (resolved / "marker").write_text("durable")
+
+    assert resolved.is_absolute()
+    assert resolved == original / "candidate"
+    assert (resolved / "marker").read_text() == "durable"
+
+
+def test_default_candidate_staging_is_deterministic_and_cell_scoped(tmp_path, monkeypatch):
+    """Catches different cells colliding or one cell losing its resume ownership."""
+    monkeypatch.setenv("GCC_GSPLAT_STAGING_ROOT", str(tmp_path))
+
+    first = gsplat_runner.candidate_staging_dir("cell:a")
+    retry = gsplat_runner.candidate_staging_dir("cell:a")
+    other = gsplat_runner.candidate_staging_dir("cell:b")
+
+    assert first == retry
+    assert first.parent == tmp_path
+    assert first != other

@@ -6,6 +6,55 @@ Fuses multiple independent scan sessions of the same physical location
 recommended split (Open3D for registration, gsplat for splat training — that
 doc's own conclusion, this is its implementation).
 
+## Verified publication quality configuration
+
+Verified candidate publication has no built-in quality thresholds. Operators
+must configure all six bounds; a missing, non-numeric, non-finite, negative,
+or out-of-range value rejects the candidate rather than selecting a default:
+
+- `VERIFIED_MIN_IMAGE_SIMILARITY` (`0..1`)
+- `VERIFIED_MAX_DEPTH_ERROR` (`>=0`)
+- `VERIFIED_MAX_TEMPORAL_FLICKER` (`>=0`)
+- `VERIFIED_MAX_FLOATER_RATIO` (`0..1`)
+- `VERIFIED_MIN_RETAINED_COVERAGE` (`0..1`)
+- `VERIFIED_MAX_ASSET_SIZE_BYTES` (`>=0`)
+
+The six measurements also have explicit artifact bindings. Image similarity,
+depth error, and temporal flicker are respectively
+`aggregates.meanSsim`, `aggregates.meanDepthError`, and
+`aggregates.meanColorFlicker` in `validation-metrics.json`. Floater ratio is
+`qualityMetrics.floaterRatio` in `cleanup-report.json`; retained spatial
+coverage is `qualityMetrics.retainedCoverage` in that same cleanup report; asset
+size is the exact balanced PLY byte length. Missing fields stay missing and
+produce stable gate rejections. In particular, depth flicker is not depth
+error, removed-Gaussian counts are not floater ratio, and selected-frame
+counts are not retained spatial coverage.
+
+`meanDepthError` is the qualified-pixel-weighted absolute-relative error
+`mean(abs(renderedDepth-capturedDepth)/capturedDepth)` across withheld views.
+Only positive captured depth whose ARKit confidence value is medium or high
+(`>=1`) participates. The report also emits
+`meanDepthAbsoluteErrorMeters` for diagnosis. If no withheld pixel qualifies,
+`meanDepthError` is omitted and the quality gate rejects the candidate.
+The frame exporter time-matches depth and confidence to each selected RGB
+frame within 200 ms, zeros unqualified depth, and persists the pair under
+`depth-evidence/{frameIndex}.npz`. Validation nearest-resamples both aligned
+planes together to the balanced depth render before comparing pixels.
+
+Cleanup defines a weak retained Gaussian using the explicit diagnostic-level
+evidence boundary: total evidence score `<0.75`, or neither verified RGB view
+support `>=1.0` nor confidence-weighted LiDAR proximity `>=0.8`. `floaterRatio`
+is the fraction of balanced-policy Gaussians that are weak by that definition;
+an empty balanced output has no ratio and fails closed.
+
+`retainedCoverage` is spatial rather than count-based. Positions are assigned
+to deterministic axis-aligned 0.5 m voxels. The denominator is the occupied
+voxel set of the evidence-supported conservative policy, and the numerator is
+that set intersected with balanced-policy occupied voxels. An empty
+conservative reference has no coverage value and fails closed. The cleanup
+report persists these thresholds and numerator/denominator counts beside the
+two metrics so candidate validation can recompute and verify them.
+
 **Ingests the REAL mobile-side capture format** shipped in
 `iosApp/iosApp/ArSessionRecorder.swift` (Pillar 1 session capture,
 2026-07-07): per session, rotating chunks of HEVC video + a per-frame JSONL

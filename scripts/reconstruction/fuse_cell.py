@@ -11,7 +11,10 @@ without needing real R2 data -- which doesn't exist yet (see README).
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
+from pathlib import Path
 import re
 from dataclasses import dataclass, field
 
@@ -19,6 +22,7 @@ import numpy as np
 import open3d as o3d
 import requests
 
+from gpu_admission import GpuReservation
 import chunk_index
 import chunk_io
 import frame_io
@@ -83,6 +87,21 @@ class ProducedAsset:
     data: bytes | None
 
 
+@dataclass(frozen=True)
+class StagedVerifiedCandidate:
+    """Complete R2 bundle whose immutable uploads all finished successfully.
+
+    Database code accepts this receipt rather than local paths, which keeps
+    object I/O outside the later activation transaction.
+    """
+
+    cell_id: str
+    version: int
+    r2_key: str
+    asset_sha256: str
+    artifact_keys: tuple[str, ...]
+
+
 @dataclass
 class FusionResult:
     accepted_session_ids: list[str] = field(default_factory=list)
@@ -119,6 +138,15 @@ class FusionResult:
     # vocabulary; recon_worker.py's complete_cell() writes this into
     # reconstruction_jobs.splat_skip_reason (migration 0039).
     splat_skip_reason: str | None = None
+    # A gsplat VerifiedCandidate is not a published legacy splat. The worker
+    # stages it under verified-candidate/ and records its review lifecycle.
+    verified_candidate: object | None = None
+    verified_version: int | None = None
+    verified_manifest: object | None = None
+    verified_metrics: object | None = None
+    publication_decision: object | None = None
+    validation_metrics: Path | None = None
+    validation_contact_sheet: Path | None = None
 
 
 def fuse_sessions(sessions: list[SessionFusionInput]) -> FusionResult:
@@ -525,6 +553,130 @@ def _write_bytes_to_r2(cell_id: str, asset_type: str, fmt: str, data: bytes, ver
     return key
 
 
+def _verified_candidate_key(cell_id: str, version: int, filename: str) -> str:
+    r2_store.validate_cell_id(cell_id)
+    if isinstance(version, bool) or not isinstance(version, int) or version < 1:
+        raise ValueError("verified candidate version must be a positive integer")
+    if not filename or Path(filename).name != filename or "/" in filename:
+        raise ValueError("invalid verified candidate filename")
+    return f"reconstructed/{cell_id}/{version}/verified-candidate/{filename}"
+
+
+def _upload_immutable_verified_object(
+    key: str, data: bytes, *, content_type: str
+) -> None:
+    """Atomically create a key; a racing retry must have identical bytes."""
+    try:
+        r2_store.upload_bytes_if_absent(
+            key,
+            data,
+            content_type=content_type,
+            sha256=hashlib.sha256(data).hexdigest(),
+        )
+    except ValueError as error:
+        raise ValueError(f"immutable verified candidate key conflict: {key}") from error
+
+
+def _read_required_candidate_file(candidate, attribute: str) -> bytes:
+    value = getattr(candidate, attribute, None)
+    if value is None:
+        raise ValueError(f"verified candidate is missing {attribute}")
+    path = Path(value).expanduser().resolve()
+    if not path.is_file():
+        raise ValueError(f"verified candidate file is missing: {path}")
+    return path.read_bytes()
+
+
+def stage_verified_candidate_assets(
+    cell_id: str,
+    version: int,
+    candidate,
+    manifest,
+    *,
+    web_asset: bytes,
+    web_format: str,
+    validation_metrics: str | os.PathLike[str],
+    contact_sheet: str | os.PathLike[str],
+) -> StagedVerifiedCandidate:
+    """Upload the complete verified bundle before any database transaction.
+
+    All keys are versioned and retry-idempotent. A partial upload never
+    returns a receipt, so callers cannot create or activate a candidate row;
+    a retry may reuse identical objects but cannot mutate an existing key.
+    """
+    if getattr(candidate, "publishable_policy", None) != "balanced":
+        raise ValueError("verified publication requires the balanced candidate")
+    balanced_path = Path(getattr(candidate, "balanced", "")).expanduser().resolve()
+    publishable_path = Path(getattr(candidate, "publishable", "")).expanduser().resolve()
+    if balanced_path != publishable_path or not balanced_path.is_file():
+        raise ValueError("verified publication requires the balanced candidate")
+    balanced = candidate.balanced_bytes
+    if not isinstance(balanced, bytes):
+        raise ValueError("verified balanced candidate bytes are invalid")
+    asset_sha256 = hashlib.sha256(balanced).hexdigest()
+    if getattr(manifest, "asset_sha256", None) != asset_sha256:
+        raise ValueError("verified manifest checksum does not match balanced candidate")
+    manifest_payload = manifest.to_json().encode("utf-8")
+    try:
+        manifest_document = json.loads(manifest_payload)
+    except (TypeError, ValueError, json.JSONDecodeError) as error:
+        raise ValueError("verified manifest is not valid JSON") from error
+    if manifest_document.get("kind") != "verified":
+        raise ValueError("verified manifest kind is invalid")
+    if not isinstance(web_asset, bytes) or not web_asset:
+        raise ValueError("verified web asset is required")
+    if not re.fullmatch(r"[a-z0-9]+", web_format):
+        raise ValueError("verified web asset format is invalid")
+
+    metrics_path = Path(validation_metrics).expanduser().resolve()
+    contact_path = Path(contact_sheet).expanduser().resolve()
+    if not metrics_path.is_file() or not contact_path.is_file():
+        raise ValueError("verified validation outputs are incomplete")
+    web_name = "verified-web.ply" if web_format == "ply" else f"verified.{web_format}"
+    payloads = (
+        ("verified.ply", balanced, "application/octet-stream"),
+        (web_name, web_asset, "application/octet-stream"),
+        ("manifest.json", manifest_payload, "application/json"),
+        (
+            "frame-audit.json",
+            _read_required_candidate_file(candidate, "frame_audit"),
+            "application/json",
+        ),
+        (
+            "cleanup-report.json",
+            _read_required_candidate_file(candidate, "cleanup_report"),
+            "application/json",
+        ),
+        ("validation-metrics.json", metrics_path.read_bytes(), "application/json"),
+        ("validation-contact-sheet.jpg", contact_path.read_bytes(), "image/jpeg"),
+    )
+    staged_payloads: list[tuple[str, bytes, str]] = []
+    for filename, data, content_type in payloads:
+        key = _verified_candidate_key(cell_id, version, filename)
+        _upload_immutable_verified_object(key, data, content_type=content_type)
+        staged_payloads.append((key, data, content_type))
+
+    checksums = {
+        key: hashlib.sha256(data).hexdigest() for key, data, _content_type in staged_payloads
+    }
+    checksum_payload = (
+        json.dumps(checksums, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        + "\n"
+    ).encode("utf-8")
+    checksum_key = _verified_candidate_key(cell_id, version, "checksums.json")
+    _upload_immutable_verified_object(
+        checksum_key, checksum_payload, content_type="application/json"
+    )
+    artifact_keys = tuple(key for key, _data, _type in staged_payloads) + (checksum_key,)
+    return StagedVerifiedCandidate(
+        cell_id=cell_id,
+        version=version,
+        r2_key=_verified_candidate_key(cell_id, version, "verified.ply"),
+        asset_sha256=asset_sha256,
+        artifact_keys=artifact_keys,
+    )
+
+
 def _record_provenance(cell_id: str, r2_key: str, asset_type: str, fmt: str, activated: bool, api_base_url: str) -> None:
     secret = os.environ.get("RECONSTRUCTION_PIPELINE_SECRET")
     if not secret:
@@ -556,6 +708,7 @@ def fuse_cell(
     api_base_url: str | None = None,
     train_splat: bool = True,
     require_activation_for_splat: bool = True,
+    gpu_job_id: str | int | None = None,
 ) -> FusionResult:
     """api_base_url=None (the default, and how recon_worker calls this)
     skips the HTTP provenance write entirely -- the worker records
@@ -619,21 +772,61 @@ def fuse_cell(
             import gsplat_runner  # deferred: keeps plyfile/torch-venv
             # checks out of point-cloud-only callers (e.g. the test suite).
 
-            splat_bytes, trainer_reason = gsplat_runner.train_gsplat_for_cell(cell_id, result, manifests_by_session_id)
+            candidate, trainer_reason = gsplat_runner.train_gsplat_for_cell(
+                cell_id, result, manifests_by_session_id, gpu_job_id=gpu_job_id
+            )
+            splat_bytes = candidate.balanced_bytes if candidate is not None else None
+            if candidate is not None:
+                result.verified_candidate = candidate
+                balanced_path = getattr(candidate, "balanced", None)
+                if balanced_path is not None:
+                    candidate_root = Path(balanced_path).parent
+                    result.validation_metrics = (
+                        candidate_root / "validation/validation-metrics.json"
+                    )
+                    result.validation_contact_sheet = (
+                        candidate_root / "validation/validation-contact-sheet.jpg"
+                    )
         else:
             import splat_train
 
-            splat_bytes, trainer_reason = splat_train.train_splat_for_cell(cell_id, result, manifests_by_session_id)
+            # The legacy world-mirror trainer is still GPU-owning.  Keep its
+            # fallback path under the same host-wide admission contract.
+            with GpuReservation(
+                job_id=gpu_job_id,
+                command="splat_train.train_splat_for_cell",
+            ).acquire("reconstruction"):
+                splat_bytes, trainer_reason = splat_train.train_splat_for_cell(
+                    cell_id, result, manifests_by_session_id
+                )
 
     result.splat_skip_reason = resolve_splat_outcome(splat_wanted, splat_bytes, trainer_reason)
     if splat_wanted:
         if splat_bytes is not None:
             version = _run_version()
-            splat_key = _write_bytes_to_r2(cell_id, "splat", "ply", splat_bytes, version)
-            result.assets.append(ProducedAsset("splat", "ply", splat_key, version, splat_bytes))
-            print(f"cell {cell_id}: wrote {splat_key}")
-            if api_base_url:
-                _record_provenance(cell_id, splat_key, "splat", "ply", activated=result.activated, api_base_url=api_base_url)
+            if result.verified_candidate is not None:
+                result.verified_version = version
+                print(
+                    f"cell {cell_id}: verified candidate ready for immutable staging "
+                    f"and pilot review (v{version})"
+                )
+            else:
+                splat_key = _write_bytes_to_r2(
+                    cell_id, "splat", "ply", splat_bytes, version
+                )
+                result.assets.append(
+                    ProducedAsset("splat", "ply", splat_key, version, splat_bytes)
+                )
+                print(f"cell {cell_id}: wrote {splat_key}")
+                if api_base_url:
+                    _record_provenance(
+                        cell_id,
+                        splat_key,
+                        "splat",
+                        "ply",
+                        activated=result.activated,
+                        api_base_url=api_base_url,
+                    )
         else:
             print(f"cell {cell_id}: no session produced a usable splat -- point cloud is still written")
 
