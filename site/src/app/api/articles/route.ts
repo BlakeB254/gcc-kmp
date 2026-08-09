@@ -8,13 +8,21 @@
  */
 import { NextResponse } from 'next/server'
 import { getArticles } from './_articles'
+import { publicCacheControl } from '@/lib/http/cache-policy'
 
-export const dynamic = 'force-dynamic'
+export const revalidate = 3_600
+
+const cacheHeaders = {
+  'Cache-Control': publicCacheControl({
+    browserMaxAgeSeconds: 60,
+    sharedMaxAgeSeconds: 3_600,
+    staleWhileRevalidateSeconds: 3_600,
+  }),
+}
 
 export async function GET() {
-  return NextResponse.json({
-    data: getArticles(),
-    success: true,
-    message: null,
-  })
+  return NextResponse.json(
+    { data: getArticles(), success: true, message: null },
+    { headers: cacheHeaders },
+  )
 }

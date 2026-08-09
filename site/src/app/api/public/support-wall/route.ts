@@ -1,74 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/db'
-import { transactions, sponsors, blocks, media } from '@/db/schema'
-import { eq, desc, isNotNull, sql, and, sum, count } from 'drizzle-orm'
+
+import { publicCacheControl } from '@/lib/http/cache-policy'
+import { loadSupportWall } from '@/lib/public-data/cached-loaders'
 
 export const runtime = 'nodejs'
 
-/**
- * Support Wall API
- *
- * Returns data for the support wall including:
- * - Recent contributions feed
- * - Leaderboard (ranked by total contributions)
- * - Impact stats (total raised, blocks funded, contributors)
- *
- * Query params:
- * - view: 'recent' | 'leaderboard' (default: 'recent')
- * - limit: Number of items (default: 20 for recent, 50 for leaderboard)
- */
-
-// Tier thresholds in cents — kept in sync with the block-count tiers in
-// src/lib/sponsor-tiers.ts (1 block = $100): bronze 1-4 blocks, silver
-// 5-19, gold 20-49, platinum 50+. Content-treatment tiers layer on top of
-// these same numbers (see SupporterRecognitionWall / PartnerSpotlight):
-// gold = honor-wall card, platinum = on-page section, and $10,000+ within
-// platinum additionally gets a full blog-style page.
-const TIER_THRESHOLDS = {
-  platinum: 500000,  // $5,000+
-  gold: 200000,       // $2,000+
-  silver: 50000,      // $500+
-  bronze: 0,          // < $500
-}
-
-function getTier(amountCents: number): 'platinum' | 'gold' | 'silver' | 'bronze' {
-  if (amountCents >= TIER_THRESHOLDS.platinum) return 'platinum'
-  if (amountCents >= TIER_THRESHOLDS.gold) return 'gold'
-  if (amountCents >= TIER_THRESHOLDS.silver) return 'silver'
-  return 'bronze'
-}
-
-interface LeaderboardEntry {
-  rank: number
-  sponsorId: number | null
-  displayName: string
-  isAnonymous: boolean
-  totalAmount: number // In dollars
-  tier: 'platinum' | 'gold' | 'silver' | 'bronze'
-  contributionCount: number
-  blocksSponsored: number
-  logoUrl: string | null
-  tagline: string | null
-  bio: string | null
-  website: string | null
-}
-
-interface RecentContribution {
-  id: number
-  type: 'donation' | 'sponsorship'
-  amount: number
-  displayName: string
-  isAnonymous: boolean
-  message: string | null
-  blockName: string | null
-  createdAt: string
-}
-
-interface ImpactStats {
-  totalRaised: number
-  blocksFunded: number
-  totalContributors: number
-  recentContributors: number // Last 30 days
+const cacheHeaders = {
+  'Cache-Control': publicCacheControl({
+    browserMaxAgeSeconds: 60,
+    sharedMaxAgeSeconds: 1_800,
+    staleWhileRevalidateSeconds: 1_800,
+  }),
 }
 
 export async function GET(request: NextRequest) {
@@ -77,184 +19,12 @@ export async function GET(request: NextRequest) {
   const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || (view === 'leaderboard' ? '50' : '20'))))
 
   try {
-    // Always get impact stats
-    const statsResults = await db
-      .select({
-        totalRaised: sum(transactions.amount),
-        blocksFunded: count(sql`CASE WHEN ${transactions.blockId} IS NOT NULL THEN 1 END`),
-        totalContributors: count(sql`DISTINCT ${transactions.sponsorId}`),
-      })
-      .from(transactions)
-      .where(eq(transactions.status, 'completed'))
-
-    const thirtyDaysAgo = new Date()
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-
-    const [recentStats] = await db
-      .select({
-        recentContributors: count(sql`DISTINCT ${transactions.sponsorId}`),
-      })
-      .from(transactions)
-      .where(
-        and(
-          eq(transactions.status, 'completed'),
-          sql`${transactions.createdAt} > ${thirtyDaysAgo.toISOString()}`
-        )
-      )
-
-    const stats: ImpactStats = {
-      totalRaised: Number(statsResults[0]?.totalRaised || 0) / 100,
-      blocksFunded: Number(statsResults[0]?.blocksFunded || 0),
-      totalContributors: Number(statsResults[0]?.totalContributors || 0),
-      recentContributors: Number(recentStats?.recentContributors || 0),
-    }
-
-    if (view === 'leaderboard') {
-      // Leaderboard: Aggregate by sponsor, rank by total
-      const leaderboardResults = await db
-        .select({
-          sponsorId: transactions.sponsorId,
-          totalAmount: sum(transactions.amount),
-          contributionCount: count(transactions.id),
-          blocksSponsored: count(sql`CASE WHEN ${transactions.blockId} IS NOT NULL THEN 1 END`),
-          displayName: sponsors.name,
-          businessName: sponsors.businessName,
-          isAnonymous: sponsors.preferencesIsAnonymous,
-          profileIsPublic: sponsors.profileIsPublic,
-          tagline: sponsors.profileTagline,
-          bio: sponsors.profileBio,
-          website: sponsors.businessWebsite,
-          logoUrl: media.url,
-        })
-        .from(transactions)
-        .leftJoin(sponsors, eq(transactions.sponsorId, sponsors.id))
-        .leftJoin(media, eq(sponsors.businessLogoId, media.id))
-        .where(eq(transactions.status, 'completed'))
-        .groupBy(
-          transactions.sponsorId,
-          sponsors.name,
-          sponsors.businessName,
-          sponsors.preferencesIsAnonymous,
-          sponsors.profileIsPublic,
-          sponsors.profileTagline,
-          sponsors.profileBio,
-          sponsors.businessWebsite,
-          media.url
-        )
-        .orderBy(desc(sum(transactions.amount)))
-        .limit(limit)
-
-      const leaderboard: LeaderboardEntry[] = leaderboardResults.map((row, index) => {
-        const totalAmountCents = Number(row.totalAmount || 0)
-        const isAnonymous = row.isAnonymous ?? false
-        const isPublic = row.profileIsPublic ?? true
-        const showProfileDetails = !isAnonymous && isPublic
-
-        return {
-          rank: index + 1,
-          // Anonymous/private sponsors don't get a linkable profile page.
-          sponsorId: showProfileDetails ? row.sponsorId : null,
-          displayName: isAnonymous
-            ? 'Anonymous Supporter'
-            : row.businessName || row.displayName || 'Anonymous Supporter',
-          isAnonymous,
-          totalAmount: totalAmountCents / 100,
-          tier: getTier(totalAmountCents),
-          contributionCount: Number(row.contributionCount),
-          blocksSponsored: Number(row.blocksSponsored),
-          logoUrl: showProfileDetails ? row.logoUrl || null : null,
-          tagline: showProfileDetails ? row.tagline || null : null,
-          bio: showProfileDetails ? row.bio || null : null,
-          website: showProfileDetails ? row.website || null : null,
-        }
-      })
-
-      return NextResponse.json({
-        view: 'leaderboard',
-        leaderboard,
-        stats,
-        tiers: {
-          platinum: { threshold: TIER_THRESHOLDS.platinum / 100, label: 'Platinum' },
-          gold: { threshold: TIER_THRESHOLDS.gold / 100, label: 'Gold' },
-          silver: { threshold: TIER_THRESHOLDS.silver / 100, label: 'Silver' },
-          bronze: { threshold: TIER_THRESHOLDS.bronze / 100, label: 'Bronze' },
-        },
-      })
-    }
-
-    // Recent feed: Individual contributions
-    const recentResults = await db
-      .select({
-        id: transactions.id,
-        amount: transactions.amount,
-        displayName: transactions.displayName,
-        isAnonymous: transactions.isAnonymous,
-        message: transactions.message,
-        messageStatus: transactions.messageStatus,
-        messageRedactedText: transactions.messageRedactedText,
-        blockId: transactions.blockId,
-        createdAt: transactions.createdAt,
-        sponsorName: sponsors.name,
-        businessName: sponsors.businessName,
-        blockName: blocks.name,
-      })
-      .from(transactions)
-      .leftJoin(sponsors, eq(transactions.sponsorId, sponsors.id))
-      .leftJoin(blocks, eq(transactions.blockId, blocks.id))
-      .where(eq(transactions.status, 'completed'))
-      .orderBy(desc(transactions.createdAt))
-      .limit(limit)
-
-    const recent: RecentContribution[] = recentResults.map((row) => {
-      const isAnonymous = row.isAnonymous ?? false
-      const messageStatus = (row as { messageStatus?: string }).messageStatus || 'visible'
-      const messageRedactedText = (row as { messageRedactedText?: string }).messageRedactedText
-
-      let displayName: string
-      if (isAnonymous) {
-        displayName = 'Anonymous Supporter'
-      } else if (row.displayName) {
-        displayName = row.displayName
-      } else if (row.businessName) {
-        displayName = row.businessName
-      } else if (row.sponsorName) {
-        displayName = row.sponsorName
-      } else {
-        displayName = 'Anonymous Supporter'
-      }
-
-      // Handle message based on moderation status
-      let message: string | null = null
-      if (!isAnonymous && messageStatus !== 'hidden') {
-        if (messageStatus === 'redacted' && messageRedactedText) {
-          message = messageRedactedText
-        } else if (messageStatus === 'visible') {
-          message = row.message
-        }
-      }
-
-      return {
-        id: row.id,
-        type: row.blockId ? 'sponsorship' : 'donation',
-        amount: Number(row.amount) / 100,
-        displayName,
-        isAnonymous,
-        message,
-        blockName: row.blockName,
-        createdAt: row.createdAt,
-      }
-    })
-
-    return NextResponse.json({
-      view: 'recent',
-      recent,
-      stats,
-    })
+    return NextResponse.json(await loadSupportWall({ view, limit }), { headers: cacheHeaders })
   } catch (error) {
     console.error('Error fetching support wall data:', error)
     return NextResponse.json(
       { error: 'Failed to fetch support wall data' },
-      { status: 500 }
+      { status: 500, headers: cacheHeaders },
     )
   }
 }
