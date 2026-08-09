@@ -15,7 +15,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
@@ -110,21 +109,26 @@ class AffectedAreasRepository(
     }
 
     /**
-     * Polling loop — intended for use inside a `LaunchedEffect` keyed on
-     * the screen's lifetime. Calls [refreshSafely] every [intervalMs] ms
-     * until the coroutine is cancelled.
+     * Lifecycle-aware poll helper. Prefer screen/view-model ownership of the
+     * timer (PollingGate in the app layer) so background visibility can
+     * suppress work without a second nested loop.
      *
-     * 30-second default matches the perceptible-change cadence for
-     * assignment-queue + cleaning-status transitions.
+     * @param shouldContinue checked before each scheduled refresh; return
+     *   false to stop without cancellation (caller may resume later).
+     * @param nextDelayMs returns the delay after each attempt; null ends the
+     *   loop (e.g. app backgrounded).
      */
-    suspend fun pollForever(
-        intervalMs: Long = 30_000L,
+    suspend fun pollWhile(
         serviceAreaId: Int? = null,
         minStatus: AffectedBlockStatus = AffectedBlockStatus.AVAILABLE,
+        shouldContinue: () -> Boolean = { true },
+        nextDelayMs: () -> Long? = { 30_000L },
     ) {
-        while (true) {
+        while (shouldContinue()) {
+            val delayMs = nextDelayMs() ?: return
+            delay(delayMs)
+            if (!shouldContinue()) return
             refreshSafely(serviceAreaId, minStatus)
-            delay(intervalMs)
         }
     }
 }

@@ -38,6 +38,8 @@ import com.gcc.app.ui.map.resolveMapCenter
 import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.TrashItemCatalog
+import com.gcc.app.polling.AppVisibility
+import com.gcc.app.polling.PollingGate
 import com.gcc.app.ui.components.GccBottomNavBar
 import com.gcc.app.ui.components.GccButton
 import com.gcc.app.ui.components.GccButtonVariant
@@ -331,20 +333,30 @@ fun MapFullScreen(
         }
     }
 
-    // Live-map delta polling (Pillar 2): while this screen stays composed,
-    // fetch only what changed since the last fetch (server-clock `since`
-    // cursor) every 20s and upsert it into the SAME coverageCells/
-    // mapObservations state the effect above fills — never replace
-    // wholesale, and never fight that initial-load effect (this loop is
-    // keyed on Unit so it survives center/mode changes; it just reads the
-    // latest viewport via rememberUpdatedState on each tick). Errors are
-    // logged and the loop keeps polling — no user-facing noise.
+    // Live-map delta polling (Pillar 2): while this screen stays composed and
+    // the app is foregrounded, fetch only what changed since the last fetch
+    // (server-clock `since` cursor) and upsert into the SAME coverageCells/
+    // mapObservations state — never replace wholesale. PollingGate owns the
+    // 20–30s base cadence with capped backoff after unchanged responses so
+    // quiet maps stop hammering Neon. Cursors remain server-authored.
     val latestViewport = rememberUpdatedState(
         Triple(dataViewportCenter.lat, dataViewportCenter.lng, mapMode),
     )
+    val deltaPollGate = remember {
+        PollingGate(baseIntervalMillis = 20_000L, maxIntervalMillis = 120_000L)
+    }
     LaunchedEffect(Unit) {
+        var consecutiveUnchanged = 0
+        // Screen composition implies foreground for the map reader; dispose
+        // cancels this effect (leaving the screen) so no scheduled work runs
+        // off-screen. PollingGate still encodes the background=null contract
+        // for shared tests and future app-lifecycle wiring.
         while (true) {
-            delay(20_000L)
+            val delayMs = deltaPollGate.nextDelayMillis(
+                AppVisibility.Foreground,
+                consecutiveUnchanged,
+            ) ?: break
+            delay(delayMs)
             val (pollLat, pollLng, _) = latestViewport.value
             try {
                 val pad = COVERAGE_FETCH_PAD_DEGREES // wide in both modes — see initial-load note
@@ -368,6 +380,9 @@ fun MapFullScreen(
                     mapObservations = mergeObservations(mapObservations, observationDelta)
                 }
 
+                val changed = coverageDelta.isNotEmpty() || observationDelta.isNotEmpty()
+                consecutiveUnchanged = if (changed) 0 else consecutiveUnchanged + 1
+
                 // Advance each cursor ONLY from its own endpoint's timestamps.
                 coverageSinceCursor = latestIsoTimestamp(
                     coverageSinceCursor,
@@ -380,7 +395,7 @@ fun MapFullScreen(
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e // leaving composition is not an error — let the loop die
             } catch (e: Exception) {
-                DiagnosticsLog.error("live-map-poll", "20s delta poll failed (will retry)", e)
+                DiagnosticsLog.error("live-map-poll", "delta poll failed (will retry)", e)
             }
         }
     }
