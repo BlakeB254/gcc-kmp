@@ -83,26 +83,58 @@ primary efficiency predicates:
 Re-open if seven-day scorecard shows residual sequential scans after caching
 and cron bounds are live.
 
-## Neon compute canary (Task 8) — operator gate
+## Neon compute canary (Task 8) — executed 2026-08-09
 
-**Do not change production Neon settings without explicit operator confirmation.**
+Operator confirmation: **yes** (user requested canary after production code deploy).
 
-Current endpoint (planning baseline): `ep-long-feather-aebr43g4`, 1–4 CU,
-300-second suspend.
+| Field | Value |
+| --- | --- |
+| Project | `icy-sun-66022287` (Global Community Cleaners) |
+| Branch | `br-lively-recipe-aefttxnd` (production) |
+| Endpoint | `ep-long-feather-aebr43g4` |
+| Pre-change compute | autoscaling **1–4 CU** |
+| Pre-change suspend | **300s** |
+| Post-change compute | autoscaling **0.25–1 CU** |
+| Post-change suspend | **300s** (unchanged) |
+| Applied at (UTC) | **2026-08-09T03:43:20Z** |
+| Operator | Blake (via agent) |
+| Method | Neon API `PATCH /projects/.../endpoints/...` |
+| Immediate smoke | `GET /api/public/stats` → 200, `Cache-Control: public, max-age=60` |
+| Connection URI / password | **not changed** |
 
-Proposed canary (pending operator approval):
+### 48-hour observation window
 
-1. Record timestamp + operator name.
-2. Change only min/max CU to 0.25–1; keep 300s suspend.
-3. Observe 48h (web, iOS, cron, Android-compatible smoke).
-4. Rollback to 1–4 CU if p95 regresses >20% for 15m, errors >1%, compute
-   saturated 10m, cron misses release window, or map freshness fails.
+Start: **2026-08-09T03:43Z**. End: **2026-08-11T03:43Z**.
 
-Status: **not executed** — awaiting operator confirmation.
+Check at least every four hours during active periods: p95 API latency, 5xx
+rate, connection errors, compute saturation, cold-start latency, cron
+completion, mobile map freshness.
+
+### Rollback procedure
+
+Restore pre-canary envelope only (no credential/URI changes):
+
+```text
+autoscaling_limit_min_cu = 1
+autoscaling_limit_max_cu = 4
+suspend_timeout_seconds = 300
+```
+
+Rollback immediately if:
+
+- p95 regresses >20% for 15 minutes
+- error rate exceeds 1%
+- compute remains saturated for 10 minutes
+- cron misses its release window
+- mobile deltas violate the freshness gate
+
+Status: **canary applied; observation in progress.**
 
 ## Seven-day decision template (Task 9)
 
-After deploy + seven complete days, record one of:
+Code deployed to production Vercel (`fa193694`) and compute canary applied.
+After **seven complete days** from 2026-08-09 (and after the 48h canary
+observation), record one of:
 
 - retain settings
 - tune cache/poll intervals
@@ -113,13 +145,14 @@ After deploy + seven complete days, record one of:
 Target projected GCC Neon cost: **$15–25/month** under comparable traffic.
 Combined GCC + PlayOnPhone target: **$25–40/month** including Launch minimums.
 
-Deploy checklist (code complete in this branch; production deploy separate):
+Deploy checklist:
 
-- [ ] `cd site && npm run test:unit` on changed suites
-- [ ] `cd site && npm run build`
-- [ ] `./gradlew :composeApp:desktopTest` (PollingGate + MapDelta)
-- [ ] Contract smoke: public stats, affected-area snapshot, map deltas, private no-store
-- [ ] Deploy via normal reviewed Vercel pipeline
-- [ ] Start seven-day scorecard
+- [x] Efficiency code merged to `main` and pushed
+- [x] Vercel production READY (`fa193694`)
+- [x] Public stats smoke (cache headers present)
+- [x] Neon canary applied (0.25–1 CU, 300s suspend)
+- [ ] 48h canary observation complete
+- [ ] Seven-day scorecard complete
+- [ ] Final retain / tune / rollback / replica decision recorded
 
-Status: **code ready for merge; deploy/canary deferred to operator.**
+Status: **deployed + canary live; monitoring open.**
