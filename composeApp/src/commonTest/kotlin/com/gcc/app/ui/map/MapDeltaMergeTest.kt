@@ -1,7 +1,10 @@
 package com.gcc.app.ui.map
 
 import com.gcc.shared.model.MapCoverageCell
+import com.gcc.shared.model.MapCoverageResponse
 import com.gcc.shared.model.WorldObservation
+import com.gcc.shared.serialization.GccJson
+import kotlinx.serialization.decodeFromString
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertSame
@@ -165,5 +168,51 @@ class MapDeltaMergeTest {
 
         assertEquals("2026-07-07T00:12:00Z", coverageCursor)
         assertEquals("2026-07-07T00:20:00Z", observationCursor)
+    }
+
+    @Test
+    fun additiveServerTimestamp_decodesAndLaterCoverageDeltaWins() {
+        // Catches making the shared parser reject an additive top-level server
+        // cursor, or replacing delta merge with first-write-wins semantics.
+        val initial = GccJson.decodeFromString<MapCoverageResponse>(
+            """
+            {
+              "cells": [{
+                "locationCellId": "a",
+                "lat": 41.86,
+                "lng": -87.72,
+                "state": "fresh",
+                "lastScannedAt": "2026-07-07T00:00:00Z",
+                "totalDistanceMeters": 10.0,
+                "quality": "grazed"
+              }],
+              "success": true,
+              "serverTimestamp": "2026-07-07T00:00:01Z"
+            }
+            """.trimIndent(),
+        )
+        val delta = GccJson.decodeFromString<MapCoverageResponse>(
+            """
+            {
+              "cells": [{
+                "locationCellId": "a",
+                "lat": 41.86,
+                "lng": -87.72,
+                "state": "fresh",
+                "lastScannedAt": "2026-07-07T00:05:00Z",
+                "totalDistanceMeters": 18.0,
+                "quality": "close"
+              }],
+              "success": true,
+              "serverTimestamp": "2026-07-07T00:05:01Z"
+            }
+            """.trimIndent(),
+        )
+
+        val merged = mergeCoverageCells(initial.cells, delta.cells)
+
+        assertEquals("close", merged.single().quality)
+        assertEquals("2026-07-07T00:05:00Z", merged.single().lastScannedAt)
+        assertEquals(18.0, merged.single().totalDistanceMeters)
     }
 }
