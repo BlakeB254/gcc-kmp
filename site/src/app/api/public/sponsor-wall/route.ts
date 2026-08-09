@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-import { publicCacheControl } from '@/lib/http/cache-policy'
+import { PRIVATE_NO_STORE, publicCacheControl } from '@/lib/http/cache-policy'
 import { loadSponsorWall } from '@/lib/public-data/cached-loaders'
 
 export const runtime = 'nodejs'
@@ -21,6 +21,6 @@ export async function GET() {
     return NextResponse.json({
       sponsors: [],
       stats: { totalBlocks: 0, totalRaised: 0, sponsorCount: 0 },
-    }, { headers: cacheHeaders })
+    }, { headers: { 'Cache-Control': PRIVATE_NO_STORE } })
   }
 }

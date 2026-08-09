@@ -1,5 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import 'next/dist/server/node-environment-baseline'
+import {
+  CacheHandler,
+  IncrementalCache,
+  type CacheHandlerValue,
+} from 'next/dist/server/lib/incremental-cache'
 import {
   createInMemoryTaggedCache,
   createPublicDataLoaders,
@@ -8,6 +14,7 @@ import {
 
 function createQueries(): PublicDataQueries {
   let publicStatsRuns = 0
+  let supportWallRuns = 0
 
   return {
     async loadPublicStats() {
@@ -39,8 +46,9 @@ function createQueries(): PublicDataQueries {
       }
     },
     async loadSupportWall(input) {
+      supportWallRuns += 1
       const stats = {
-        totalRaised: input.limit,
+        totalRaised: input.limit * 1_000 + supportWallRuns,
         blocksFunded: 0,
         totalContributors: 0,
         recentContributors: 0,
@@ -63,6 +71,40 @@ function createQueries(): PublicDataQueries {
       return { view: 'recent', recent: [], stats }
     },
   }
+}
+
+class MemoryCacheHandler extends CacheHandler {
+  static entries = new Map<string, CacheHandlerValue>()
+
+  override async get(cacheKey: string): Promise<CacheHandlerValue | null> {
+    return MemoryCacheHandler.entries.get(cacheKey) ?? null
+  }
+
+  override async set(cacheKey: string, value: CacheHandlerValue['value']): Promise<void> {
+    MemoryCacheHandler.entries.set(cacheKey, { lastModified: Date.now(), value })
+  }
+}
+
+function createNextIncrementalCache(): IncrementalCache {
+  MemoryCacheHandler.entries.clear()
+
+  return new IncrementalCache({
+    dev: false,
+    requestHeaders: {},
+    maxMemoryCacheSize: 1_024 * 1_024,
+    getPrerenderManifest: () => ({
+      version: 4,
+      routes: {},
+      dynamicRoutes: {},
+      notFoundRoutes: [],
+      preview: {
+        previewModeId: 'test-preview-mode',
+        previewModeEncryptionKey: 'test-preview-encryption-key',
+        previewModeSigningKey: 'test-preview-signing-key',
+      },
+    }),
+    CurCacheHandler: MemoryCacheHandler,
+  })
 }
 
 test('cached public stats returns the first database value throughout its five-minute window', async () => {
@@ -91,9 +133,38 @@ test('cached support-wall values never cross view or limit scopes', async () => 
   const recentTwentyOne = await loaders.loadSupportWall({ view: 'recent', limit: 21 })
   const leaderboardTwenty = await loaders.loadSupportWall({ view: 'leaderboard', limit: 20 })
 
-  assert.equal(recentTwenty.stats.totalRaised, 20)
-  assert.equal(recentTwentyOne.stats.totalRaised, 21)
-  assert.equal(leaderboardTwenty.stats.totalRaised, 20)
+  assert.equal(recentTwenty.stats.totalRaised, 20_001)
+  assert.equal(recentTwentyOne.stats.totalRaised, 21_002)
+  assert.equal(leaderboardTwenty.stats.totalRaised, 20_003)
   assert.equal(recentTwenty.view, 'recent')
   assert.equal(leaderboardTwenty.view, 'leaderboard')
+})
+
+test('default loaders use Next incremental cache entries without crossing support-wall scopes', async () => {
+  // Catches removing the production unstable_cache adapter or dropping loader
+  // arguments before they reach it, which would recompute matching requests or
+  // serve one URL scope's serialized value to another.
+  const cacheGlobal = globalThis as typeof globalThis & { __incrementalCache?: IncrementalCache }
+  const originalCache = cacheGlobal.__incrementalCache
+  cacheGlobal.__incrementalCache = createNextIncrementalCache()
+
+  try {
+    const loaders = createPublicDataLoaders(createQueries())
+    const recentTwenty = await loaders.loadSupportWall({ view: 'recent', limit: 20 })
+    const repeatedRecentTwenty = await loaders.loadSupportWall({ view: 'recent', limit: 20 })
+    const recentTwentyOne = await loaders.loadSupportWall({ view: 'recent', limit: 21 })
+    const leaderboardTwenty = await loaders.loadSupportWall({ view: 'leaderboard', limit: 20 })
+
+    assert.equal(recentTwenty.stats.totalRaised, 20_001)
+    assert.equal(repeatedRecentTwenty.stats.totalRaised, 20_001)
+    assert.equal(recentTwentyOne.stats.totalRaised, 21_002)
+    assert.equal(leaderboardTwenty.stats.totalRaised, 20_003)
+    assert.equal(leaderboardTwenty.view, 'leaderboard')
+  } finally {
+    if (originalCache) {
+      cacheGlobal.__incrementalCache = originalCache
+    } else {
+      delete cacheGlobal.__incrementalCache
+    }
+  }
 })

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import { publicCacheControl } from '@/lib/http/cache-policy'
+import { PRIVATE_NO_STORE, publicCacheControl } from '@/lib/http/cache-policy'
 import { loadSupportWall } from '@/lib/public-data/cached-loaders'
 
 export const runtime = 'nodejs'
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     console.error('Error fetching support wall data:', error)
     return NextResponse.json(
       { error: 'Failed to fetch support wall data' },
-      { status: 500, headers: cacheHeaders },
+      { status: 500, headers: { 'Cache-Control': PRIVATE_NO_STORE } },
     )
   }
 }

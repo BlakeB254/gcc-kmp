@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-import { publicCacheControl } from '@/lib/http/cache-policy'
+import { PRIVATE_NO_STORE, publicCacheControl } from '@/lib/http/cache-policy'
 import { loadPublicStats } from '@/lib/public-data/cached-loaders'
 
 export const runtime = 'nodejs'
@@ -30,6 +30,6 @@ export async function GET() {
         movement: { total: 0 },
       },
       lastUpdated: new Date().toISOString(),
-    }, { headers: cacheHeaders })
+    }, { headers: { 'Cache-Control': PRIVATE_NO_STORE } })
   }
 }

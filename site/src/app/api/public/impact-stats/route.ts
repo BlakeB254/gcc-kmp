@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-import { publicCacheControl } from '@/lib/http/cache-policy'
+import { PRIVATE_NO_STORE, publicCacheControl } from '@/lib/http/cache-policy'
 import { loadImpactStats } from '@/lib/public-data/cached-loaders'
 
 export const runtime = 'nodejs'
@@ -24,6 +24,6 @@ export async function GET() {
       jobs: { total: 0, completed: 0, active: 0 },
       blocks: { total: 0, cleaned: 0, funded: 0, available: 0 },
       movement: { waitlistCount: 0 },
-    }, { headers: cacheHeaders })
+    }, { headers: { 'Cache-Control': PRIVATE_NO_STORE } })
   }
 }
