@@ -19,6 +19,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { processDueBatches } from '@/lib/route-queue'
 import { dispatchDueOfferNotifications } from '@/lib/route-queue-notifications'
 import { withCronLease } from '@/lib/cron-lease'
+import { logRouteReleaseMetrics, summarizeReleaseResults } from '@/lib/cron/metrics'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -40,6 +41,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized', success: false }, { status: 401 })
   }
   try {
+    const started = Date.now()
     const outcome = await withCronLease('route-releases', LEASE_TTL_SECONDS, async () => {
       const releases = await processDueBatches()
       // Drain after processing so this tick's freshly-scheduled "initial"
@@ -51,14 +53,41 @@ export async function GET(request: NextRequest) {
     // A held lease means a previous tick is still running. That is expected at a
     // 15m cadence, not an error — 200 so the scheduler doesn't alert.
     if (!outcome.ran) {
+      logRouteReleaseMetrics({
+        examined: 0,
+        processed: 0,
+        released: 0,
+        durationMs: Date.now() - started,
+        leaseAcquired: false,
+      })
       return NextResponse.json({
-        data: { skipped: outcome.skipped, ranAt: new Date().toISOString() },
+        data: {
+          skipped: outcome.skipped,
+          ranAt: new Date().toISOString(),
+          metrics: {
+            examined: 0,
+            processed: 0,
+            released: 0,
+            durationMs: Date.now() - started,
+            leaseAcquired: false,
+          },
+        },
         success: true,
       })
     }
 
+    const summary = summarizeReleaseResults(outcome.result.releases)
+    const metrics = {
+      examined: outcome.result.releases.length,
+      processed: summary.processed,
+      released: summary.released,
+      durationMs: Date.now() - started,
+      leaseAcquired: true,
+    }
+    logRouteReleaseMetrics(metrics)
+
     return NextResponse.json({
-      data: { ...outcome.result, ranAt: new Date().toISOString() },
+      data: { ...outcome.result, ranAt: new Date().toISOString(), metrics },
       success: true,
     })
   } catch (error) {

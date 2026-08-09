@@ -25,12 +25,47 @@ import {
   serviceAreas,
   workers,
 } from '@/db/schema'
-import { and, asc, desc, eq, gt, inArray, lte, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, inArray, isNull, lte, or, sql } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import { scheduleOfferNotifications } from '@/lib/route-queue-notifications'
 
 const ACTIVE_JOB_STATUSES = ['claimed', 'in_progress', 'pending_review'] as const
 const NORTH_LAWNDALE_ZIPS = ['60623', '60624']
+
+/** Max batches processed per cron invocation — keeps work proportional to due rows. */
+export const ROUTE_RELEASE_BATCH_LIMIT = 25
+
+export type ReleaseBatchDueFields = {
+  status: string
+  releaseAt: string
+  nextWaveAt: string | null
+}
+
+/**
+ * Pure due predicate shared by unit tests and the SQL filter intent.
+ * A batch is due when it is scheduled/active, its release time has arrived,
+ * and its next wave is null or already due.
+ */
+export function isReleaseBatchDue(batch: ReleaseBatchDueFields, now: string): boolean {
+  if (batch.status !== 'scheduled' && batch.status !== 'active') return false
+  const nowMs = new Date(now).getTime()
+  if (Number.isNaN(nowMs)) return false
+  if (nowMs < new Date(batch.releaseAt).getTime()) return false
+  if (batch.nextWaveAt && nowMs < new Date(batch.nextWaveAt).getTime()) return false
+  return true
+}
+
+/** In-memory selection helper used by query-contract tests and diagnostics. */
+export function selectDueBatchIds(
+  rows: ReadonlyArray<ReleaseBatchDueFields & { id: number }>,
+  now: string,
+  limit: number = ROUTE_RELEASE_BATCH_LIMIT,
+): number[] {
+  return rows
+    .filter((row) => isReleaseBatchDue(row, now))
+    .slice(0, Math.max(0, limit))
+    .map((row) => row.id)
+}
 
 const iso = (v: unknown): string | null => (v ? new Date(v as string).toISOString() : null)
 const isoNow = () => new Date().toISOString()
@@ -569,12 +604,31 @@ export async function processBatch(batchId: number, now: string = isoNow()): Pro
   })
 }
 
-/** Process every batch that is due (cron / process-notifications style). */
+/**
+ * Process due batches only (cron / process-notifications style).
+ *
+ * Uses idx_route_release_batches_status_next_wave via (status, nextWaveAt)
+ * and releaseAt filters so future-wave rows are never loaded. Caps work at
+ * ROUTE_RELEASE_BATCH_LIMIT per invocation; remaining due rows wait for the
+ * next cron tick. Lease + processBatch remain idempotent.
+ */
 export async function processDueBatches(now: string = isoNow()): Promise<ProcessResult[]> {
   const due = await db
     .select({ id: routeReleaseBatches.id })
     .from(routeReleaseBatches)
-    .where(inArray(routeReleaseBatches.status, ['scheduled', 'active']))
+    .where(
+      and(
+        inArray(routeReleaseBatches.status, ['scheduled', 'active']),
+        lte(routeReleaseBatches.releaseAt, now),
+        or(
+          isNull(routeReleaseBatches.nextWaveAt),
+          lte(routeReleaseBatches.nextWaveAt, now),
+        ),
+      ),
+    )
+    .orderBy(asc(routeReleaseBatches.nextWaveAt), asc(routeReleaseBatches.id))
+    .limit(ROUTE_RELEASE_BATCH_LIMIT)
+
   const out: ProcessResult[] = []
   for (const b of due) out.push(await processBatch(b.id, now))
   return out
