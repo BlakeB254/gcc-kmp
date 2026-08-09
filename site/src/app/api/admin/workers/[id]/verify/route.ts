@@ -4,8 +4,19 @@ import { workers } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { requireAdmin } from '@/lib/admin-auth'
 import { mapWorkerToMobile } from '@/lib/worker-mapper'
+import {
+  commitPublicDataMutation,
+  type PublicDataInvalidator,
+} from '@/lib/public-data/invalidation'
 
 export const runtime = 'nodejs'
+
+export function commitWorkerVerification<T>(
+  mutation: () => Promise<T>,
+  invalidate?: PublicDataInvalidator,
+): Promise<T> {
+  return commitPublicDataMutation('worker-verification', mutation, invalidate)
+}
 
 export async function POST(
   request: Request,
@@ -51,7 +62,12 @@ export async function POST(
     if (proofOfAddressStatus) updates.verificationProofOfAddressStatus = proofOfAddressStatus
     if (reviewNotes !== undefined) updates.verificationReviewNotes = reviewNotes
 
-    await db.update(workers).set(updates).where(eq(workers.id, workerId))
+    const updateWorker = () => db.update(workers).set(updates).where(eq(workers.id, workerId))
+    if (status) {
+      await commitWorkerVerification(updateWorker)
+    } else {
+      await updateWorker()
+    }
 
     // Fetch updated worker
     const [updated] = await db

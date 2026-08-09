@@ -3,6 +3,7 @@ import { db } from '@/db'
 import { routes, serviceAreas, blocks } from '@/db/schema'
 import { eq, inArray } from 'drizzle-orm'
 import { requireAdmin } from '@/lib/admin-auth'
+import { commitPublicDataMutation } from '@/lib/public-data/invalidation'
 import { haversineDistance, estimateWalkingMinutes, lineStringToBlockPolygon, computeCenter } from '@/lib/geo-utils'
 import { deriveAreaPrefix, generateNextCode } from '@/lib/route-code-generator'
 
@@ -147,22 +148,25 @@ export async function POST(request: Request) {
     const blockPolygon = lineStringToBlockPolygon(coords)
     const center = computeCenter(blockPolygon)
 
-    const [newBlock] = await db.insert(blocks).values({
-      code: blockCode,
-      name: displayName,
-      serviceAreaId,
-      routeId: newRoute.id,
-      // NO auto-seeded boundary: admins author the block's outer edge in
-      // the mobile Boundary Studio (draw-first flow). A machine rectangle
-      // must never masquerade as an authored boundary.
-      locationBoundary: null,
-      locationCenter: { type: 'Point', coordinates: [center.lng, center.lat] },
-      streetName: streetName || null,
-      fromCorner: fromCorner || null,
-      toCorner: toCorner || null,
-      side: side || 'north',
-      status: 'funded',
-    }).returning()
+    const [newBlock] = await commitPublicDataMutation(
+      'cleanup-impact',
+      () => db.insert(blocks).values({
+        code: blockCode,
+        name: displayName,
+        serviceAreaId,
+        routeId: newRoute.id,
+        // NO auto-seeded boundary: admins author the block's outer edge in
+        // the mobile Boundary Studio (draw-first flow). A machine rectangle
+        // must never masquerade as an authored boundary.
+        locationBoundary: null,
+        locationCenter: { type: 'Point', coordinates: [center.lng, center.lat] },
+        streetName: streetName || null,
+        fromCorner: fromCorner || null,
+        toCorner: toCorner || null,
+        side: side || 'north',
+        status: 'funded',
+      }).returning(),
+    )
 
     return NextResponse.json({
       data: {

@@ -8,6 +8,7 @@ import { sendEmail } from '@/lib/email'
 import { sponsorEmailVerificationEmail } from '@/lib/email/templates/sponsor-email-verification'
 import { appUrl } from '@/lib/env'
 import crypto from 'crypto'
+import { commitPublicDataMutation } from '@/lib/public-data/invalidation'
 
 export const runtime = 'nodejs'
 
@@ -135,7 +136,7 @@ export async function POST(request: NextRequest) {
     const bizWebsite = business?.website || null
     const verificationTokenFull = `${verificationToken}:${verificationCode}`
 
-    const insertResult = await db.execute(sql`
+    const insertResult = await commitPublicDataMutation('supporter', () => db.execute(sql`
       INSERT INTO sponsors (
         name, email, hash, salt, type,
         business_name, business_website,
@@ -150,7 +151,7 @@ export async function POST(request: NextRequest) {
         false, ${verificationTokenFull}, ${verificationExpires.toISOString()}
       )
       RETURNING id, name, email
-    `)
+    `))
 
     step = 'verify-insert'
     const rows = insertResult.rows as any[]

@@ -6,6 +6,7 @@ import { stripe, isStripeConfigured } from '@/lib/stripe/client'
 import { hashPassword } from '@/lib/auth'
 import { stripeIdempotencyKey } from '@/lib/stripe-idempotency'
 import { appUrl } from '@/lib/env'
+import { commitPublicDataMutation } from '@/lib/public-data/invalidation'
 
 export const runtime = 'nodejs'
 
@@ -108,9 +109,8 @@ export async function POST(request: NextRequest) {
         ? hashPassword(password)
         : { hash: null, salt: null }
 
-      const [newSponsor] = await db
-        .insert(sponsors)
-        .values({
+      const [newSponsor] = await commitPublicDataMutation('supporter', () =>
+        db.insert(sponsors).values({
           name,
           email,
           businessName: company,
@@ -119,8 +119,8 @@ export async function POST(request: NextRequest) {
           preferencesIsAnonymous: isAnonymous || false,
           hash: authFields.hash,
           salt: authFields.salt,
-        })
-        .returning({ id: sponsors.id })
+        }).returning({ id: sponsors.id }),
+      )
 
       sponsorId = newSponsor.id
     }

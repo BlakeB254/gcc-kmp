@@ -8,6 +8,7 @@ import { db } from '@/db'
 import { communityReports, workers } from '@/db/schema'
 import { eq, desc, and, sql } from 'drizzle-orm'
 import { verifyWorkerToken } from '@/lib/auth'
+import { commitPublicDataMutation } from '@/lib/public-data/invalidation'
 
 export async function POST(request: NextRequest) {
   try {
@@ -61,9 +62,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Create the report
-    const [newReport] = await db
-      .insert(communityReports)
-      .values({
+    const [newReport] = await commitPublicDataMutation('cleanup-impact', () =>
+      db.insert(communityReports).values({
         reporterType: 'worker',
         reporterId: worker.id,
         reporterName: worker.name,
@@ -81,8 +81,8 @@ export async function POST(request: NextRequest) {
         status: 'pending',
         showOnMap: true,
         capturedAt: capturedAt || new Date().toISOString(),
-      })
-      .returning()
+      }).returning(),
+    )
 
     return NextResponse.json({
       success: true,

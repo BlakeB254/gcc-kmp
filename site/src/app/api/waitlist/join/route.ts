@@ -12,6 +12,7 @@ import {
   getLocationKey,
   getLocationDisplayName,
 } from '@/lib/chicago-community-areas'
+import { commitPublicDataMutation } from '@/lib/public-data/invalidation'
 
 export const runtime = 'nodejs'
 
@@ -233,9 +234,8 @@ export async function POST(request: NextRequest) {
     const displayNeighborhood = communityArea || data.location.neighborhood
 
     // Create waitlist entry
-    const [entry] = await db
-      .insert(waitlistEntries)
-      .values({
+    const [entry] = await commitPublicDataMutation('supporter', () =>
+      db.insert(waitlistEntries).values({
         email: data.email,
         name: data.name,
         phone: data.phone,
@@ -261,8 +261,8 @@ export async function POST(request: NextRequest) {
         preferencesWantsToBeSponsor: data.preferences?.wantsToBeSponsor ?? false,
         preferencesWantsToVolunteer: data.preferences?.wantsToVolunteer ?? false,
         preferencesEmailUpdates: data.preferences?.emailUpdates ?? true,
-      })
-      .returning()
+      }).returning(),
+    )
 
     // Update referrer's count
     if (referredById) {

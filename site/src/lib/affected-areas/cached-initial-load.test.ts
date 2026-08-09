@@ -12,21 +12,39 @@ import {
   createInitialAffectedAreasLoader,
   type AffectedAreasGeoJson,
 } from './cached-initial-load'
+import { GCC_CACHE_TAGS } from '@/lib/public-data/cache-tags'
 
 class MemoryCacheHandler extends CacheHandler {
   static entries = new Map<string, CacheHandlerValue>()
+  static tagsByKey = new Map<string, readonly string[]>()
 
   override async get(cacheKey: string): Promise<CacheHandlerValue | null> {
     return MemoryCacheHandler.entries.get(cacheKey) ?? null
   }
 
-  override async set(cacheKey: string, value: CacheHandlerValue['value']): Promise<void> {
+  override async set(
+    cacheKey: string,
+    value: CacheHandlerValue['value'],
+    context: Parameters<CacheHandler['set']>[2],
+  ): Promise<void> {
     MemoryCacheHandler.entries.set(cacheKey, { lastModified: Date.now(), value })
+    MemoryCacheHandler.tagsByKey.set(cacheKey, 'tags' in context ? context.tags ?? [] : [])
+  }
+
+  override async revalidateTag(tags: string | string[]): Promise<void> {
+    const expired = new Set(Array.isArray(tags) ? tags : [tags])
+    for (const [cacheKey, entryTags] of MemoryCacheHandler.tagsByKey) {
+      if (entryTags.some((tag) => expired.has(tag))) {
+        MemoryCacheHandler.entries.delete(cacheKey)
+        MemoryCacheHandler.tagsByKey.delete(cacheKey)
+      }
+    }
   }
 }
 
 function createNextIncrementalCache(): IncrementalCache {
   MemoryCacheHandler.entries.clear()
+  MemoryCacheHandler.tagsByKey.clear()
 
   return new IncrementalCache({
     dev: false,
@@ -151,6 +169,37 @@ test('failed affected-area loads are retried instead of cached', async () => {
 
     assert.equal(recovered.generatedAt, 'recovered')
     assert.equal(runs, 2)
+  } finally {
+    if (originalCache) {
+      cacheGlobal.__incrementalCache = originalCache
+    } else {
+      delete cacheGlobal.__incrementalCache
+    }
+  }
+})
+
+test('expiring the affected-area family recomputes every scoped snapshot', async () => {
+  // Catches omitting the family tag from the Task 3 unstable_cache entry,
+  // which would make authoritative block writes unable to refresh snapshots.
+  const cacheGlobal = globalThis as typeof globalThis & { __incrementalCache?: IncrementalCache }
+  const originalCache = cacheGlobal.__incrementalCache
+  const cache = createNextIncrementalCache()
+  cacheGlobal.__incrementalCache = cache
+  let runs = 0
+  const load = createInitialAffectedAreasLoader(async () => {
+    runs += 1
+    return collection(`snapshot:${runs}`)
+  })
+
+  try {
+    const first = await load({ serviceAreaId: '12', minStatus: 0 })
+    const cached = await load({ serviceAreaId: '12', minStatus: 0 })
+    await cache.revalidateTag(GCC_CACHE_TAGS.affectedAreaSnapshots, { expire: 0 })
+    const refreshed = await load({ serviceAreaId: '12', minStatus: 0 })
+
+    assert.equal(first.generatedAt, 'snapshot:1')
+    assert.equal(cached.generatedAt, 'snapshot:1')
+    assert.equal(refreshed.generatedAt, 'snapshot:2')
   } finally {
     if (originalCache) {
       cacheGlobal.__incrementalCache = originalCache

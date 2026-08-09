@@ -9,6 +9,7 @@ import { blocks, blockExclusionZones, routes } from '@/db/schema'
 import { and, eq, inArray } from 'drizzle-orm'
 import { requireAdmin } from '@/lib/admin-auth'
 import { parseAdminRouteStatus, eligibleBlockStatusForRouteStatus } from '@/lib/admin-route-status'
+import { commitPublicDataChanges } from '@/lib/public-data/invalidation'
 
 export const dynamic = 'force-dynamic'
 
@@ -107,6 +108,13 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Route not found' }, { status: 404 })
     }
 
+    if (nextStatus !== null) {
+      await commitPublicDataChanges(
+        ['cleanup-impact', 'affected-area'],
+        async () => updated,
+      )
+    }
+
     return NextResponse.json({
       data: toRouteResponse(updated),
     })
@@ -146,6 +154,11 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     if (!deleted) {
       return NextResponse.json({ error: 'Route not found' }, { status: 404 })
     }
+
+    await commitPublicDataChanges(
+      ['cleanup-impact', 'affected-area'],
+      async () => deleted,
+    )
 
     return NextResponse.json({ data: { id: deleted.id, deleted: true }, success: true })
   } catch (error) {

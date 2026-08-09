@@ -7,6 +7,10 @@ import intersect from '@turf/intersect'
 import difference from '@turf/difference'
 import area from '@turf/area'
 import { featureCollection, polygon as turfPolygon } from '@turf/helpers'
+import {
+  commitPublicDataMutation,
+  type PublicDataInvalidator,
+} from '@/lib/public-data/invalidation'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -15,6 +19,13 @@ type RouteContext = { params: Promise<{ blockId: string }> }
 
 type GeoPolygon = { type: 'Polygon'; coordinates: number[][][] }
 type GeoMultiPolygon = { type: 'MultiPolygon'; coordinates: number[][][][] }
+
+export function commitAffectedAreaMutation<T>(
+  mutation: () => Promise<T>,
+  invalidate?: PublicDataInvalidator,
+): Promise<T> {
+  return commitPublicDataMutation('affected-area', mutation, invalidate)
+}
 
 /**
  * PUT /api/admin/blocks/[blockId]/boundaries
@@ -105,12 +116,19 @@ export async function PUT(request: NextRequest, context: RouteContext) {
 
   // Apply: neighbor thinning first, then the edited block.
   for (const t of thinned) {
-    await db.update(blocks).set({ locationBoundary: t.newBoundary }).where(eq(blocks.id, t.blockId))
+    await commitAffectedAreaMutation(() =>
+      db.update(blocks).set({ locationBoundary: t.newBoundary }).where(eq(blocks.id, t.blockId)),
+    )
   }
   const updates: Record<string, unknown> = {}
   if (newOuter) updates.locationBoundary = newOuter
   if (newInner !== undefined) updates.innerBoundary = newInner
-  await db.update(blocks).set(updates).where(eq(blocks.id, blockId))
+  const updateTarget = () => db.update(blocks).set(updates).where(eq(blocks.id, blockId))
+  if (newOuter) {
+    await commitAffectedAreaMutation(updateTarget)
+  } else {
+    await updateTarget()
+  }
 
   return NextResponse.json({
     success: true,

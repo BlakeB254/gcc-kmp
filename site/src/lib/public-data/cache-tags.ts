@@ -3,4 +3,5 @@ export const GCC_CACHE_TAGS = {
   impactStats: 'gcc:impact-stats',
   sponsorWall: 'gcc:sponsor-wall',
   supportWall: 'gcc:support-wall',
+  affectedAreaSnapshots: 'gcc:affected-area-snapshots',
 } as const

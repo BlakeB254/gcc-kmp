@@ -27,10 +27,37 @@ import {
   tierFromAmount,
 } from '@/lib/sponsor-deliverables'
 import { appUrl } from '@/lib/env'
+import {
+  commitPublicDataChanges,
+  commitPublicDataMutation,
+  type PublicDataInvalidator,
+} from '@/lib/public-data/invalidation'
 
 export const runtime = 'nodejs'
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
+
+export function commitSponsorshipMutation<T>(
+  mutation: () => Promise<T>,
+  invalidate?: PublicDataInvalidator,
+): Promise<T> {
+  return commitPublicDataMutation('sponsorship', mutation, invalidate)
+}
+
+export async function commitBlockSponsorshipMutation<T>(
+  mutation: () => Promise<T>,
+  invalidate?: PublicDataInvalidator,
+): Promise<T> {
+  return commitPublicDataChanges(
+    ['sponsorship', 'affected-area'],
+    mutation,
+    invalidate,
+  )
+}
+
+function commitCleanupImpactMutation<T>(mutation: () => Promise<T>): Promise<T> {
+  return commitPublicDataMutation('cleanup-impact', mutation)
+}
 
 export async function POST(request: NextRequest) {
   // Return early if Stripe is not configured (demo mode)
@@ -152,7 +179,7 @@ export async function POST(request: NextRequest) {
           // Create transaction records for all blocks in one insert (the
           // per-row values only differ by blockId, so no need for N round
           // trips).
-          await db.insert(transactions).values(
+          await commitBlockSponsorshipMutation(() => db.insert(transactions).values(
             blockIds.map((blockId) => ({
               sponsorId: Number(sponsorId),
               blockId,
@@ -171,11 +198,11 @@ export async function POST(request: NextRequest) {
               preferredCleaningTimeStart: preferredCleaningTimeStart || null,
               preferredCleaningTimeEnd: preferredCleaningTimeEnd || null,
               completedAt: new Date().toISOString(),
-            }))
-          )
+            })),
+          ))
 
           // Mark every block funded with the cleaning schedule in one update
-          await db
+          await commitBlockSponsorshipMutation(() => db
             .update(blocks)
             .set({
               status: 'funded',
@@ -188,7 +215,7 @@ export async function POST(request: NextRequest) {
               preferredCleaningTimeEnd: preferredCleaningTimeEnd || null,
               updatedAt: new Date().toISOString(),
             })
-            .where(inArray(blocks.id, blockIds))
+            .where(inArray(blocks.id, blockIds)))
 
           // Get sponsor details
           const [sponsor] = await db
@@ -200,7 +227,7 @@ export async function POST(request: NextRequest) {
           if (sponsor) {
             // Update sponsor stats — atomic SQL increments so concurrent
             // webhooks can't lose updates via read-modify-write races.
-            await db
+            await commitSponsorshipMutation(() => db
               .update(sponsors)
               .set({
                 statsTotalContributed: sql`COALESCE(${sponsors.statsTotalContributed}, 0) + ${amountCents}`,
@@ -208,7 +235,7 @@ export async function POST(request: NextRequest) {
                 statsLastContributionAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
               })
-              .where(eq(sponsors.id, Number(sponsorId)))
+              .where(eq(sponsors.id, Number(sponsorId))))
 
             // Get block details for email
             const fundedBlocks = await db
@@ -245,7 +272,7 @@ export async function POST(request: NextRequest) {
           console.log('[Webhook] Processing general donation:', { amount: amountCents })
 
           // Create single transaction record for donation
-          await db.insert(transactions).values({
+          await commitSponsorshipMutation(() => db.insert(transactions).values({
             sponsorId: Number(sponsorId),
             blockId: null, // No block - general fund
             stripeCheckoutSessionId: session.id,
@@ -259,7 +286,7 @@ export async function POST(request: NextRequest) {
             isAnonymous,
             message: message || null,
             completedAt: new Date().toISOString(),
-          })
+          }))
 
           // Get sponsor details
           const [sponsor] = await db
@@ -271,14 +298,14 @@ export async function POST(request: NextRequest) {
           if (sponsor) {
             // Update sponsor stats (contribution but no blocks) — atomic
             // increment, same rationale as the block-sponsorship branch.
-            await db
+            await commitSponsorshipMutation(() => db
               .update(sponsors)
               .set({
                 statsTotalContributed: sql`COALESCE(${sponsors.statsTotalContributed}, 0) + ${amountCents}`,
                 statsLastContributionAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
               })
-              .where(eq(sponsors.id, Number(sponsorId)))
+              .where(eq(sponsors.id, Number(sponsorId))))
 
             // Send donation confirmation email
             const emailContent = donationConfirmationEmail({
@@ -381,7 +408,7 @@ export async function POST(request: NextRequest) {
         if (legacyBlockId && !blockIdsStr && allocationType !== 'block') {
           console.log('[Webhook] Processing legacy single block sponsorship:', { blockId: legacyBlockId })
           // This handles old checkout sessions that used single blockId
-          await db.insert(transactions).values({
+          await commitBlockSponsorshipMutation(() => db.insert(transactions).values({
             sponsorId: Number(sponsorId),
             blockId: Number(legacyBlockId),
             stripeCheckoutSessionId: session.id,
@@ -393,9 +420,9 @@ export async function POST(request: NextRequest) {
             sponsorType: session.metadata?.sponsorType || 'one_time',
             message: session.metadata?.message || null,
             completedAt: new Date().toISOString(),
-          })
+          }))
 
-          await db
+          await commitBlockSponsorshipMutation(() => db
             .update(blocks)
             .set({
               status: 'funded',
@@ -404,7 +431,7 @@ export async function POST(request: NextRequest) {
               fundingCurrent: String(session.amount_total || 10000),
               updatedAt: new Date().toISOString(),
             })
-            .where(eq(blocks.id, Number(legacyBlockId)))
+            .where(eq(blocks.id, Number(legacyBlockId))))
         }
         break
       }
@@ -453,13 +480,13 @@ export async function POST(request: NextRequest) {
                 .limit(1)
 
               if (!withdrawalEntry) {
-                await db
+                await commitCleanupImpactMutation(() => db
                   .update(workers)
                   .set({
                     statsTotalEarnings: sql`COALESCE(${workers.statsTotalEarnings}, 0) + ${payoutRow.amountCents}`,
                     updatedAt: new Date().toISOString(),
                   })
-                  .where(eq(workers.id, payoutRow.workerId))
+                  .where(eq(workers.id, payoutRow.workerId)))
               }
 
               // Fire-and-forget-with-logging, same pattern as the job branch.
@@ -513,7 +540,7 @@ export async function POST(request: NextRequest) {
               .limit(1)
 
             if (worker && job) {
-              await db
+              await commitCleanupImpactMutation(() => db
                 .update(workers)
                 .set({
                   statsJobsCompleted: sql`COALESCE(${workers.statsJobsCompleted}, 0) + 1`,
@@ -521,7 +548,7 @@ export async function POST(request: NextRequest) {
                   statsLastJobAt: new Date().toISOString(),
                   updatedAt: new Date().toISOString(),
                 })
-                .where(eq(workers.id, Number(workerId)))
+                .where(eq(workers.id, Number(workerId))))
 
               // ── Notify worker: payout landed ────────────────────────────
               // Same fire-and-forget-with-logging pattern as the approve

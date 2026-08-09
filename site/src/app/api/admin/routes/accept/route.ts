@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { db } from '@/db'
 import { routes, blocks } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin-auth'
+import { commitPublicDataChanges } from '@/lib/public-data/invalidation'
 
 interface AcceptedProposal {
   routeCode: string
@@ -54,7 +55,10 @@ export async function POST(request: Request) {
       status: 'funded' as const,
     }))
 
-    await db.insert(blocks).values(blockValues)
+    await commitPublicDataChanges(
+      ['cleanup-impact', 'affected-area'],
+      () => db.insert(blocks).values(blockValues),
+    )
 
     const createdRouteIds = insertedRoutes.map((r) => r.id)
     return NextResponse.json({ created: createdRouteIds.length, routes: createdRouteIds }, { status: 201 })

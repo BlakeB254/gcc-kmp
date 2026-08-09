@@ -4,6 +4,7 @@ import { blockProposals, blocks, blockExclusionZones } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { requireAdmin } from '@/lib/admin-auth'
 import { generateInnerBoundaryFromRing } from '@/lib/inner-boundary-generator'
+import { commitPublicDataChanges } from '@/lib/public-data/invalidation'
 
 interface ProposalExclusionZone {
   polygon: { type: 'Polygon'; coordinates: [number, number][][] }
@@ -32,9 +33,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: `Proposal already ${proposal.status}` }, { status: 409 })
     }
 
-    const [newBlock] = await db
-      .insert(blocks)
-      .values({
+    const [newBlock] = await commitPublicDataChanges(
+      ['cleanup-impact', 'affected-area'],
+      () => db.insert(blocks).values({
         code: proposal.codeHint,
         name: proposal.name,
         serviceAreaId: NORTH_LAWNDALE_SERVICE_AREA_ID,
@@ -46,8 +47,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         toCorner: proposal.toCorner,
         side: proposal.side,
         status: 'available',
-      })
-      .returning({ id: blocks.id })
+      }).returning({ id: blocks.id }),
+    )
 
     const zones = (proposal.exclusionZones as ProposalExclusionZone[] | null) || []
     if (zones.length > 0) {

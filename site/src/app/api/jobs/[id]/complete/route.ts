@@ -5,11 +5,22 @@ import { and, eq, or } from 'drizzle-orm'
 import { requireMobileAuth } from '@/lib/mobile-auth'
 import { routeIdsByBlockId, toMobileJob } from '@/lib/mobile-job-response'
 import { generateBlockCompletionReport } from '@/lib/block-completion-report'
+import {
+  commitPublicDataMutation,
+  type PublicDataInvalidator,
+} from '@/lib/public-data/invalidation'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 type RouteContext = { params: Promise<{ id: string }> }
+
+export function commitJobCompletion<T>(
+  mutation: () => Promise<T>,
+  invalidate?: PublicDataInvalidator,
+): Promise<T> {
+  return commitPublicDataMutation('cleanup-impact', mutation, invalidate)
+}
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
   const auth = await requireMobileAuth(request)
@@ -68,16 +79,18 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     const now = new Date().toISOString()
     const isTestAssignment = Number(existing.payoutAmount ?? 0) === 0
-    const [updated] = await db
-      .update(jobs)
-      .set({
-        status: 'completed',
-        completedAt: now,
-        payoutStatus: isTestAssignment ? 'completed' : existing.payoutStatus,
-        updatedAt: now,
-      })
-      .where(eq(jobs.id, jobId))
-      .returning()
+    const [updated] = await commitJobCompletion(() =>
+      db
+        .update(jobs)
+        .set({
+          status: 'completed',
+          completedAt: now,
+          payoutStatus: isTestAssignment ? 'completed' : existing.payoutStatus,
+          updatedAt: now,
+        })
+        .where(eq(jobs.id, jobId))
+        .returning(),
+    )
 
     // Pillar 9 — auto-generate the block completion report from the job's
     // linked route_scans session. Non-fatal by design: report generation

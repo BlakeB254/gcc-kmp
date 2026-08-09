@@ -17,6 +17,7 @@ import {
 } from '@/lib/sponsor-deliverables'
 import { sendEmail } from '@/lib/email'
 import { adminPackageCreatedEmail } from '@/lib/email/templates/sponsor-deliverable'
+import { commitPublicDataMutation } from '@/lib/public-data/invalidation'
 import { appUrl } from '@/lib/env'
 
 export const runtime = 'nodejs'
@@ -134,17 +135,16 @@ export async function POST(request: Request) {
     if (existing) {
       sponsorId = existing.id
     } else {
-      const [created] = await db
-        .insert(sponsors)
-        .values({
+      const [created] = await commitPublicDataMutation('supporter', () =>
+        db.insert(sponsors).values({
           name,
           email,
           businessName: businessName,
           type: businessName ? 'organization' : 'individual',
           emailVerified: true, // Manually entered by admin
           emailVerifiedAt: new Date().toISOString(),
-        })
-        .returning({ id: sponsors.id })
+        }).returning({ id: sponsors.id }),
+      )
       sponsorId = created.id
     }
   }
@@ -186,4 +186,3 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ data: { packageId } }, { status: 201 })
 }
-

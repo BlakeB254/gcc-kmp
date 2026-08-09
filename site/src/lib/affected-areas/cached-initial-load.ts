@@ -3,6 +3,7 @@ import { and, eq, isNotNull, sql } from 'drizzle-orm'
 
 import { db } from '@/db'
 import { blocks, serviceAreas, transactions } from '@/db/schema'
+import { GCC_CACHE_TAGS } from '@/lib/public-data/cache-tags'
 
 const AFFECTED_AREA_CACHE_SECONDS = 45
 
@@ -72,7 +73,10 @@ export function createInitialAffectedAreasLoader(
     const cachedQuery = unstable_cache(
       () => query(normalized),
       [...affectedAreaCacheKey(normalized)],
-      { revalidate: AFFECTED_AREA_CACHE_SECONDS },
+      {
+        tags: [GCC_CACHE_TAGS.affectedAreaSnapshots],
+        revalidate: AFFECTED_AREA_CACHE_SECONDS,
+      },
     )
 
     return cachedQuery()

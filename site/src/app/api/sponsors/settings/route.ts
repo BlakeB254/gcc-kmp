@@ -3,6 +3,7 @@ import { db } from '@/db'
 import { sponsors } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { verifyToken } from '@/lib/auth'
+import { commitPublicDataMutation } from '@/lib/public-data/invalidation'
 
 export const runtime = 'nodejs'
 
@@ -28,7 +29,7 @@ export async function PUT(request: NextRequest) {
     const { frequency, isAnonymous, wantsUpdates, autoDonateEnabled } = await request.json()
 
     // Update sponsor preferences
-    await db
+    await commitPublicDataMutation('sponsorship', () => db
       .update(sponsors)
       .set({
         preferencesFrequency: frequency || 'one_time',
@@ -37,7 +38,7 @@ export async function PUT(request: NextRequest) {
         activeSponsorship: autoDonateEnabled || false,
         updatedAt: new Date().toISOString(),
       })
-      .where(eq(sponsors.id, sponsorId))
+      .where(eq(sponsors.id, sponsorId)))
 
     return NextResponse.json({
       success: true,
