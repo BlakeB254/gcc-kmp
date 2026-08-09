@@ -19,7 +19,8 @@ export function commitJobCompletion<T>(
   mutation: () => Promise<T>,
   invalidate?: PublicDataInvalidator,
 ): Promise<T> {
-  return commitPublicDataMutation('cleanup-impact', mutation, invalidate)
+  // Impact stats counts jobs by status; public stats does not.
+  return commitPublicDataMutation('impact-stats', mutation, invalidate)
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext) {

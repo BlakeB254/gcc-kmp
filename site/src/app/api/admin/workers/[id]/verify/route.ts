@@ -62,19 +62,17 @@ export async function POST(
     if (proofOfAddressStatus) updates.verificationProofOfAddressStatus = proofOfAddressStatus
     if (reviewNotes !== undefined) updates.verificationReviewNotes = reviewNotes
 
-    const updateWorker = () => db.update(workers).set(updates).where(eq(workers.id, workerId))
-    if (status) {
-      await commitWorkerVerification(updateWorker)
-    } else {
-      await updateWorker()
-    }
+    // RETURNING lets the shared invalidator skip zero-row updates (stale id /
+    // concurrent delete) so public caches are not thrashed for a no-op.
+    const updateWorker = () =>
+      db.update(workers).set(updates).where(eq(workers.id, workerId)).returning()
 
-    // Fetch updated worker
-    const [updated] = await db
-      .select()
-      .from(workers)
-      .where(eq(workers.id, workerId))
-      .limit(1)
+    let updated: (typeof workers.$inferSelect) | undefined
+    if (status) {
+      ;[updated] = await commitWorkerVerification(updateWorker)
+    } else {
+      ;[updated] = await updateWorker()
+    }
 
     if (!updated) {
       return NextResponse.json({ error: 'Worker not found' }, { status: 404 })

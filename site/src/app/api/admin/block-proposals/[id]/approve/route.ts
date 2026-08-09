@@ -33,8 +33,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: `Proposal already ${proposal.status}` }, { status: 409 })
     }
 
+    // Available blocks change impact totals/available; public funded/cleaned
+    // counts are unchanged. Geometry lands in affected-area snapshots.
     const [newBlock] = await commitPublicDataChanges(
-      ['cleanup-impact', 'affected-area'],
+      ['impact-stats', 'affected-area'],
       () => db.insert(blocks).values({
         code: proposal.codeHint,
         name: proposal.name,

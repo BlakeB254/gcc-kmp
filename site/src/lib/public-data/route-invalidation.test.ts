@@ -3,8 +3,12 @@ import test from 'node:test'
 
 import { commitWorkerVerification } from '@/app/api/admin/workers/[id]/verify/route'
 import { commitAffectedAreaMutation } from '@/app/api/admin/blocks/[blockId]/boundaries/route'
+import { commitRouteAssignmentMutation } from '@/app/api/admin/routes/[routeId]/assign/route'
 import { commitJobCompletion } from '@/app/api/jobs/[id]/complete/route'
-import { commitBlockSponsorshipMutation } from '@/app/api/stripe/webhooks/route'
+import {
+  commitBlockSponsorshipMutation,
+  commitSponsorshipMutation,
+} from '@/app/api/stripe/webhooks/route'
 import { GCC_CACHE_TAGS } from './cache-tags'
 import { createPublicDataInvalidator } from './invalidation'
 
@@ -18,9 +22,9 @@ function collectingInvalidator() {
   }
 }
 
-test('job completion invalidates public impact families only after the database update commits', async () => {
-  // Catches invalidating before the job UPDATE resolves, which would expose
-  // stale data again after a rejected mutation and waste a cache refresh.
+test('job completion invalidates only impact stats after a real row commits', async () => {
+  // Job completion changes jobs.completed/active in impact stats; public
+  // stats has no jobs aggregate and must stay warm.
   const success = collectingInvalidator()
   const committedJob = {
     id: 41,
@@ -32,10 +36,10 @@ test('job completion invalidates public impact families only after the database 
   }
 
   assert.deepEqual(
-    await commitJobCompletion(async () => committedJob, success.invalidate),
-    committedJob,
+    await commitJobCompletion(async () => [committedJob], success.invalidate),
+    [committedJob],
   )
-  assert.deepEqual(success.tags, [GCC_CACHE_TAGS.publicStats, GCC_CACHE_TAGS.impactStats])
+  assert.deepEqual(success.tags, [GCC_CACHE_TAGS.impactStats])
 
   const failure = collectingInvalidator()
   await assert.rejects(
@@ -45,11 +49,13 @@ test('job completion invalidates public impact families only after the database 
     /job update rejected/,
   )
   assert.deepEqual(failure.tags, [])
+
+  const zeroRow = collectingInvalidator()
+  assert.deepEqual(await commitJobCompletion(async () => [], zeroRow.invalidate), [])
+  assert.deepEqual(zeroRow.tags, [])
 })
 
-test('worker verification invalidates verification families only after the update commits', async () => {
-  // Catches validation/DB failures invalidating worker counts even though the
-  // authoritative verification state did not change.
+test('worker verification invalidates public+impact only after a non-empty update', async () => {
   const success = collectingInvalidator()
   const committedWorker = {
     id: 7,
@@ -61,8 +67,8 @@ test('worker verification invalidates verification families only after the updat
   }
 
   assert.deepEqual(
-    await commitWorkerVerification(async () => committedWorker, success.invalidate),
-    committedWorker,
+    await commitWorkerVerification(async () => [committedWorker], success.invalidate),
+    [committedWorker],
   )
   assert.deepEqual(success.tags, [GCC_CACHE_TAGS.publicStats, GCC_CACHE_TAGS.impactStats])
 
@@ -74,11 +80,13 @@ test('worker verification invalidates verification families only after the updat
     /verification update rejected/,
   )
   assert.deepEqual(failure.tags, [])
+
+  const zeroRow = collectingInvalidator()
+  assert.deepEqual(await commitWorkerVerification(async () => [], zeroRow.invalidate), [])
+  assert.deepEqual(zeroRow.tags, [])
 })
 
-test('completed sponsor writes invalidate every contribution consumer and rejected writes invalidate none', async () => {
-  // Catches the webhook leaving a wall or affected-area snapshot stale after
-  // a completed contribution, or invalidating for a rejected DB write.
+test('completed block sponsorship invalidates contribution consumers and snapshots', async () => {
   const success = collectingInvalidator()
   const committedTransaction = {
     id: 93,
@@ -91,8 +99,8 @@ test('completed sponsor writes invalidate every contribution consumer and reject
   }
 
   assert.deepEqual(
-    await commitBlockSponsorshipMutation(async () => committedTransaction, success.invalidate),
-    committedTransaction,
+    await commitBlockSponsorshipMutation(async () => [committedTransaction], success.invalidate),
+    [committedTransaction],
   )
   assert.deepEqual(success.tags, [
     GCC_CACHE_TAGS.publicStats,
@@ -112,9 +120,23 @@ test('completed sponsor writes invalidate every contribution consumer and reject
   assert.deepEqual(failure.tags, [])
 })
 
+test('general donation sponsorship invalidates summary/wall families without snapshots', async () => {
+  const success = collectingInvalidator()
+  const committed = { id: 11, status: 'completed', blockId: null }
+
+  assert.deepEqual(
+    await commitSponsorshipMutation(async () => [committed], success.invalidate),
+    [committed],
+  )
+  assert.deepEqual(success.tags, [
+    GCC_CACHE_TAGS.publicStats,
+    GCC_CACHE_TAGS.impactStats,
+    GCC_CACHE_TAGS.sponsorWall,
+    GCC_CACHE_TAGS.supportWall,
+  ])
+})
+
 test('affected-area writes invalidate only snapshots after the boundary update commits', async () => {
-  // Catches invalidating real mobile delta families or public summaries for a
-  // geometry-only write, and catches invalidation on rejected geometry writes.
   const success = collectingInvalidator()
   const committedBlock = {
     id: 12,
@@ -125,8 +147,8 @@ test('affected-area writes invalidate only snapshots after the boundary update c
   }
 
   assert.deepEqual(
-    await commitAffectedAreaMutation(async () => committedBlock, success.invalidate),
-    committedBlock,
+    await commitAffectedAreaMutation(async () => [committedBlock], success.invalidate),
+    [committedBlock],
   )
   assert.deepEqual(success.tags, [GCC_CACHE_TAGS.affectedAreaSnapshots])
 
@@ -136,6 +158,27 @@ test('affected-area writes invalidate only snapshots after the boundary update c
       throw new Error('boundary update rejected')
     }, failure.invalidate),
     /boundary update rejected/,
+  )
+  assert.deepEqual(failure.tags, [])
+})
+
+test('route block-assignment invalidates impact stats after a new job is created', async () => {
+  // Creating/cancelling a claimed job changes impact jobs.total/active.
+  const success = collectingInvalidator()
+  const job = { id: 55, status: 'claimed', workerId: 3, blockId: 12 }
+
+  assert.deepEqual(
+    await commitRouteAssignmentMutation(async () => job, success.invalidate),
+    job,
+  )
+  assert.deepEqual(success.tags, [GCC_CACHE_TAGS.impactStats])
+
+  const failure = collectingInvalidator()
+  await assert.rejects(
+    commitRouteAssignmentMutation(async () => {
+      throw new Error('assignment insert rejected')
+    }, failure.invalidate),
+    /assignment insert rejected/,
   )
   assert.deepEqual(failure.tags, [])
 })

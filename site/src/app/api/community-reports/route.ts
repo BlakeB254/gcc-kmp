@@ -62,7 +62,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Create the report
-    const [newReport] = await commitPublicDataMutation('cleanup-impact', () =>
+    // Public stats counts community reports; impact stats does not.
+    const [newReport] = await commitPublicDataMutation('public-stats', () =>
       db.insert(communityReports).values({
         reporterType: 'worker',
         reporterId: worker.id,

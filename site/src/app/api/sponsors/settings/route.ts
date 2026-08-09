@@ -29,7 +29,8 @@ export async function PUT(request: NextRequest) {
     const { frequency, isAnonymous, wantsUpdates, autoDonateEnabled } = await request.json()
 
     // Update sponsor preferences
-    await commitPublicDataMutation('sponsorship', () => db
+    // Anonymity / presentation preferences only affect wall rendering.
+    await commitPublicDataMutation('wall-presentation', () => db
       .update(sponsors)
       .set({
         preferencesFrequency: frequency || 'one_time',

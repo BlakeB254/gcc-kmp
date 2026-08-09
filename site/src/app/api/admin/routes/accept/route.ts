@@ -55,8 +55,9 @@ export async function POST(request: Request) {
       status: 'funded' as const,
     }))
 
+    // Funded blocks change public+impact block counts and snapshot geometry.
     await commitPublicDataChanges(
-      ['cleanup-impact', 'affected-area'],
+      ['public-stats', 'impact-stats', 'affected-area'],
       () => db.insert(blocks).values(blockValues),
     )
 

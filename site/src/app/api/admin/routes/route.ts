@@ -3,7 +3,7 @@ import { db } from '@/db'
 import { routes, serviceAreas, blocks } from '@/db/schema'
 import { eq, inArray } from 'drizzle-orm'
 import { requireAdmin } from '@/lib/admin-auth'
-import { commitPublicDataMutation } from '@/lib/public-data/invalidation'
+import { commitPublicDataChanges } from '@/lib/public-data/invalidation'
 import { haversineDistance, estimateWalkingMinutes, lineStringToBlockPolygon, computeCenter } from '@/lib/geo-utils'
 import { deriveAreaPrefix, generateNextCode } from '@/lib/route-code-generator'
 
@@ -148,8 +148,9 @@ export async function POST(request: Request) {
     const blockPolygon = lineStringToBlockPolygon(coords)
     const center = computeCenter(blockPolygon)
 
-    const [newBlock] = await commitPublicDataMutation(
-      'cleanup-impact',
+    // Funded block without authored boundary: public+impact block counts only.
+    const [newBlock] = await commitPublicDataChanges(
+      ['public-stats', 'impact-stats'],
       () => db.insert(blocks).values({
         code: blockCode,
         name: displayName,

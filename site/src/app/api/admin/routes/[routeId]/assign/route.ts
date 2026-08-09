@@ -11,9 +11,21 @@ import { and, desc, eq, isNotNull } from 'drizzle-orm'
 import { requireAdmin } from '@/lib/admin-auth'
 import { toMobileJob } from '@/lib/mobile-job-response'
 import { ensureJobForRouteWorker } from '@/lib/ensure-job-for-route-worker'
+import {
+  commitPublicDataMutation,
+  type PublicDataInvalidator,
+} from '@/lib/public-data/invalidation'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
+
+/** Creating/cancelling claimed jobs changes impact jobs.total/active counts. */
+export function commitRouteAssignmentMutation<T>(
+  mutation: () => Promise<T>,
+  invalidate?: PublicDataInvalidator,
+): Promise<T> {
+  return commitPublicDataMutation('impact-stats', mutation, invalidate)
+}
 
 type RouteContext = { params: Promise<{ routeId: string }> }
 
@@ -133,6 +145,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
       )
     }
 
+    await commitRouteAssignmentMutation(async () => result.job)
+
     return NextResponse.json(
       { data: toMobileJob(result.job, routeId), success: true },
       { status: 201 },
@@ -177,18 +191,20 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     const now = new Date().toISOString()
     const payoutAmount = existing.job.payoutAmount ? Math.round(parseFloat(existing.job.payoutAmount)) : 0
     const cancelledStatus = payoutAmount > 0 ? 'available' : 'disputed'
-    const [updated] = await db
-      .update(jobs)
-      .set({
-        workerId: null,
-        status: cancelledStatus,
-        claimedAt: null,
-        startedAt: null,
-        payoutStatus: null,
-        updatedAt: now,
-      })
-      .where(eq(jobs.id, jobId))
-      .returning()
+    const [updated] = await commitRouteAssignmentMutation(() =>
+      db
+        .update(jobs)
+        .set({
+          workerId: null,
+          status: cancelledStatus,
+          claimedAt: null,
+          startedAt: null,
+          payoutStatus: null,
+          updatedAt: now,
+        })
+        .where(eq(jobs.id, jobId))
+        .returning(),
+    )
 
     return NextResponse.json({
       data: toMobileJob(updated, routeId),

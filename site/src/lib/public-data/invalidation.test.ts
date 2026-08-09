@@ -3,14 +3,13 @@ import test, { mock } from 'node:test'
 
 import { GCC_CACHE_TAGS } from './cache-tags'
 import {
+  commitPublicDataChanges,
   commitPublicDataMutation,
   createPublicDataInvalidator,
   tagsForPublicDataChange,
 } from './invalidation'
 
-test('each public data change expires only its owned cache families', () => {
-  // Catches mapping a narrow mutation to an unrelated public cache family,
-  // which would turn authoritative writes into broad cache flushes.
+test('compatibility change kinds retain their multi-family mappings', () => {
   assert.deepEqual(tagsForPublicDataChange('cleanup-impact'), [
     GCC_CACHE_TAGS.publicStats,
     GCC_CACHE_TAGS.impactStats,
@@ -34,9 +33,18 @@ test('each public data change expires only its owned cache families', () => {
   ])
 })
 
+test('granular change kinds expire only a single projection family', () => {
+  // Catches collapsing job-completion and community-report writers onto the
+  // same multi-family group when they touch disjoint aggregates.
+  assert.deepEqual(tagsForPublicDataChange('public-stats'), [GCC_CACHE_TAGS.publicStats])
+  assert.deepEqual(tagsForPublicDataChange('impact-stats'), [GCC_CACHE_TAGS.impactStats])
+  assert.deepEqual(tagsForPublicDataChange('wall-presentation'), [
+    GCC_CACHE_TAGS.sponsorWall,
+    GCC_CACHE_TAGS.supportWall,
+  ])
+})
+
 test('the public invalidator rejects arbitrary tag strings instead of forwarding them', () => {
-  // Catches weakening the typed change boundary into a stringly-typed tag
-  // passthrough that lets routes invalidate unrelated Next cache entries.
   const expired: string[] = []
   const invalidate = createPublicDataInvalidator((tag) => {
     expired.push(tag)
@@ -55,8 +63,6 @@ test('the public invalidator rejects arbitrary tag strings instead of forwarding
 })
 
 test('the public invalidator forwards every mapped family with bounded-stale semantics', () => {
-  // Catches dropping a family from a multi-family change or using immediate
-  // expiry instead of the cache contract's stale-while-revalidate profile.
   const expired: Array<{ tag: string; profile: string }> = []
   const invalidate = createPublicDataInvalidator((tag, profile) => {
     expired.push({ tag, profile: String(profile) })
@@ -73,8 +79,6 @@ test('the public invalidator forwards every mapped family with bounded-stale sem
 })
 
 test('a cache-boundary failure cannot change an already-committed mutation result', async () => {
-  // Catches an invalidation exception changing a successful authoritative
-  // route response into a 500 after the database write has already committed.
   const committed = { id: 17, status: 'completed' }
 
   const errorLog = mock.method(console, 'error', () => undefined)
@@ -91,4 +95,40 @@ test('a cache-boundary failure cannot change an already-committed mutation resul
   } finally {
     errorLog.mock.restore()
   }
+})
+
+test('zero-row mutations do not invalidate any cache family', async () => {
+  // Catches invalidating after an UPDATE … RETURNING that matched no rows
+  // (stale worker id, concurrent delete) and thrashing public caches for free.
+  const tags: string[] = []
+  const invalidate = createPublicDataInvalidator((tag) => {
+    tags.push(tag)
+  })
+
+  const empty = await commitPublicDataMutation(
+    'worker-verification',
+    async () => [] as unknown[],
+    invalidate,
+  )
+  assert.deepEqual(empty, [])
+  assert.deepEqual(tags, [])
+
+  const missing = await commitPublicDataMutation(
+    'impact-stats',
+    async () => null,
+    invalidate,
+  )
+  assert.equal(missing, null)
+  assert.deepEqual(tags, [])
+})
+
+test('non-empty committed results still invalidate every requested change', async () => {
+  const tags: string[] = []
+  const invalidate = createPublicDataInvalidator((tag) => {
+    tags.push(tag)
+  })
+
+  const row = { id: 9, status: 'approved' }
+  await commitPublicDataChanges(['public-stats', 'impact-stats'], async () => [row], invalidate)
+  assert.deepEqual(tags, [GCC_CACHE_TAGS.publicStats, GCC_CACHE_TAGS.impactStats])
 })
