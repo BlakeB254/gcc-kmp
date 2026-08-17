@@ -23,6 +23,11 @@ For a walk bundle directory:
 
 WorldMirror handoff: prefer `rec/vidmap/prior_camera.json` when it contains cameras, else the bundle's existing approximate `prior_camera.json`.
 
+Live `recon_worker` / `fuse_cell` session manifests come from R2 and do not know the local bundle path. Set `VIDMAP_BUNDLE_ROOT` to a directory of `<sessionId>/` walk bundles so `attach_vidmap_priors()` stamps `bundleDir` + `priorCamPath`.
+
+- `SPLAT_ENGINE=world-mirror` (or HTTP `/generate`): VidMap `prior_camera.json` is uploaded as `prior_cam` and passed through to HY-WorldMirror.
+- default `gsplat`: ARKit poses when the session has mov+jsonl chunks. If those are missing (civic walk bundle), `gsplat_runner` loads VidMap COLMAP + GPS Sim3 and maps cameras into the cell ENU frame.
+
 ```bash
 python world_mirror_client.py --bundle /path/to/bundle \
   --input_path /path/to/bundle/frames \

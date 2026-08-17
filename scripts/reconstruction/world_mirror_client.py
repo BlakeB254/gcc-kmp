@@ -8,14 +8,11 @@ direct read this session:
   GET  /tasks/{id}  -> {status: pending|running|done|error, artifacts, ...}
   GET  /tasks/{id}/artifact/{name} -> raw file bytes
 
-The live HTTP /generate signature still has no prior-cam field (confirmed
-against app/main.py). HY-WorldMirror's CLI does: ``--prior_cam_path`` loads
-``{extrinsics:[{camera_id,matrix:4x4 c2w}], intrinsics:[{camera_id,matrix:3x3}]}``
-(see hyworld2.worldrecon.hyworldmirror.utils.inference_utils.load_prior_camera).
-VidMap writes that shape to rec/vidmap/prior_camera.json; reconstruct_session
-extracts the same ``extrinsics[].matrix`` list from the service's
-camera_params.json artifact. Use resolve_prior_cam_path() +
-build_pipeline_argv() so a recon job prefers VidMap cameras and otherwise
+POST /generate accepts VidMap cameras two ways: form ``prior_cam_path``
+(local Spark path) and uploaded ``prior_cam`` JSON. HY-WorldMirror loads
+``{extrinsics:[{camera_id,matrix:4x4 c2w}], intrinsics:[{camera_id,matrix:3x3}]}``.
+VidMap writes that shape to rec/vidmap/prior_camera.json. Use
+resolve_prior_cam_path() so a recon job prefers VidMap cameras and otherwise
 falls back to the bundle's existing approx prior.
 
 splat_train.py still calls this PER SESSION only -- no persistent map --
@@ -126,6 +123,53 @@ def resolve_prior_cam_path(bundle_dir: str | os.PathLike[str] | None) -> Path | 
     return None
 
 
+def attach_vidmap_priors(
+    manifests_by_id: dict[str, dict],
+    *,
+    bundle_root: str | os.PathLike[str] | None = None,
+) -> dict[str, dict]:
+    """Stamp ``bundleDir`` / ``priorCamPath`` from VidMap output onto session manifests.
+
+    Live recon manifests come from R2 and do not know about a local walk bundle.
+    Operators set ``VIDMAP_BUNDLE_ROOT`` (or pass ``bundle_root``) so a session
+    id maps to ``<root>/<sessionId>/rec/vidmap/prior_camera.json``. Existing
+    ``priorCamPath`` / ``bundleDir`` values are left alone.
+    """
+    root_env = bundle_root if bundle_root is not None else os.environ.get("VIDMAP_BUNDLE_ROOT", "").strip()
+    root_path = Path(root_env).expanduser() if root_env else None
+    stamped: dict[str, dict] = {}
+    for session_id, manifest in manifests_by_id.items():
+        copy = dict(manifest)
+        if copy.get("priorCamPath"):
+            stamped[session_id] = copy
+            continue
+        candidates: list[Path] = []
+        for key in ("bundleDir", "localBundleDir", "captureDir"):
+            value = copy.get(key)
+            if value:
+                candidates.append(Path(str(value)).expanduser())
+        if root_path is not None:
+            candidates.append(root_path / str(session_id))
+            sid = copy.get("sessionId")
+            if sid and str(sid) != str(session_id):
+                candidates.append(root_path / str(sid))
+        for candidate in candidates:
+            prior = resolve_prior_cam_path(candidate)
+            if prior is None:
+                continue
+            if prior.name == APPROX_PRIOR_NAME and not (candidate / VIDMAP_PRIOR_REL).is_file():
+                # Approx-only bundle: still useful as a prior, but do not pretend
+                # VidMap ran. splat_train can use priorCamPath either way.
+                copy.setdefault("bundleDir", str(candidate))
+                copy["priorCamPath"] = str(prior)
+                break
+            copy["bundleDir"] = str(candidate)
+            copy["priorCamPath"] = str(prior)
+            break
+        stamped[session_id] = copy
+    return stamped
+
+
 def build_pipeline_argv(
     input_path: str | os.PathLike[str],
     output_path: str | os.PathLike[str],
@@ -172,10 +216,13 @@ def submit_generate(
     files = [("files", (f"frame_{i}.jpg", data, "image/jpeg")) for i, data in enumerate(image_bytes_list)]
     data: dict[str, object] = {"target_size": target_size}
     if prior_cam_path is not None:
-        # HTTP /generate ignores unknown form fields today; the HY CLI path
-        # is what actually consumes the file. Keep the path on the request
-        # so a future wrapper can forward it without a second lookup.
         data["prior_cam_path"] = str(prior_cam_path)
+        prior_file = Path(prior_cam_path)
+        if prior_file.is_file():
+            files.append((
+                "prior_cam",
+                (prior_file.name, prior_file.read_bytes(), "application/json"),
+            ))
     resp = requests.post(f"{base_url}/generate", files=files, data=data, timeout=30)
     resp.raise_for_status()
     return resp.json()["task_id"]
@@ -217,8 +264,8 @@ def reconstruct_session(
     them, merged community splats don't share a ground plane.
 
     ``prior_cam_path`` / ``bundle_dir`` select VidMap cameras when present,
-    else the bundle's existing approx prior. The live HTTP wrapper does not
-    yet apply that file; build_pipeline_argv() is the CLI handoff.
+    else the bundle's existing approx prior. HTTP /generate uploads the JSON
+    as ``prior_cam`` and also sends the Spark path as ``prior_cam_path``.
     """
     if prior_cam_path is None and bundle_dir is not None:
         found = resolve_prior_cam_path(bundle_dir)

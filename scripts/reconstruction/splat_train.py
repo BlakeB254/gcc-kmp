@@ -201,8 +201,9 @@ def train_splat_for_cell(
     produced a trustworthy, aligned splat)."""
     transformed_splats = []
     total_frames_gathered = 0
+    manifests = world_mirror_client.attach_vidmap_priors(session_manifests_by_id)
     for session_id in fusion_result.accepted_session_ids:
-        manifest = session_manifests_by_id.get(session_id)
+        manifest = manifests.get(session_id)
         if manifest is None:
             continue
         result = train_splat_for_session(manifest, world_mirror_base_url)

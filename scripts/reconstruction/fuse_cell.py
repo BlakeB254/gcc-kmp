@@ -28,6 +28,7 @@ import chunk_io
 import frame_io
 import geo_registration
 import r2_store
+import world_mirror_client
 from registration import GpsAnchor, gps_seeded_initial_transform, register_session_into_cell
 from splat_outcome import resolve_splat_outcome
 
@@ -725,7 +726,9 @@ def fuse_cell(
     )
     if recovered:
         print(f"cell {cell_id}: recovered {recovered} capture chunk key(s) absent from manifests")
-    manifests_by_session_id = {m.manifest.get("sessionId", m.key): m.manifest for m in manifests}
+    manifests_by_session_id = world_mirror_client.attach_vidmap_priors(
+        {m.manifest.get("sessionId", m.key): m.manifest for m in manifests}
+    )
     sessions = [s for m in manifests if (s := _session_fusion_input_from_manifest(m)) is not None]
     print(f"cell {cell_id}: {len(manifests)} manifests, {len(sessions)} with usable depth-backed frames")
 

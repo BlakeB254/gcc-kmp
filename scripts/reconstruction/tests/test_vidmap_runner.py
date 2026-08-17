@@ -18,6 +18,7 @@ from vidmap_runner import (
     run_bundle,
     w2c_from_center,
 )
+import world_mirror_client
 from world_mirror_client import (
     build_pipeline_argv,
     extract_extrinsic_matrices,
@@ -191,6 +192,88 @@ def test_empty_vidmap_prior_falls_back_to_approx(tmp_path, monkeypatch):
     assert resolve_prior_cam_path(bundle) == approx
     argv = build_pipeline_argv("images", "out", bundle_dir=bundle)
     assert argv[argv.index("--prior_cam_path") + 1] == str(approx)
+
+
+def test_ecef_roundtrip_and_colmap_cell_mapping():
+    lat, lon, alt = 41.86, -87.72, 180.0
+    ecef = geodetic_to_ecef(lat, lon, alt)
+    back = vidmap_runner.ecef_to_geodetic(*ecef)
+    assert abs(back[0] - lat) < 1e-6
+    assert abs(back[1] - lon) < 1e-6
+    assert abs(back[2] - alt) < 1e-3
+
+    c2w = np.eye(4)
+    c2w[:3, 3] = [0.0, 0.0, 0.0]
+    transform = {
+        "scale": 1.0,
+        "rotation": np.eye(3).tolist(),
+        "translation_ecef_m": ecef.tolist(),
+    }
+    cell = vidmap_runner.colmap_c2w_to_cell(c2w, transform, lat, lon, alt)
+    assert np.allclose(cell[:3, 3], [0.0, 0.0, 0.0], atol=0.05)
+
+
+def test_gsplat_exports_vidmap_frames_when_arkit_missing(tmp_path, monkeypatch):
+    _clear_vidmap_env(monkeypatch)
+    from fuse_cell import FusionResult
+    import gsplat_runner
+
+    bundle = tmp_path / "sess-walk-1"
+    frames = bundle / "frames"
+    frames.mkdir(parents=True)
+    samples = _synthetic_gps()
+    _write_gps_jsonl(bundle / "gps.jsonl", samples)
+    ecef = np.stack([geodetic_to_ecef(s["lat"], s["lon"], s["alt"]) for s in samples])
+    model = _model_from_ecef(ecef, 1.0, np.eye(3), ecef.mean(axis=0))
+    for image in model.images:
+        (frames / image.name).write_bytes(b"not-a-real-jpeg")
+    run_bundle(bundle, dry_run=True, model=model)
+
+    fusion = FusionResult(
+        accepted_session_ids=["sess-walk-1"],
+        anchor_lat=samples[0]["lat"],
+        anchor_lng=samples[0]["lon"],
+    )
+    out_frames = tmp_path / "out"
+    out_frames.mkdir()
+    poses, K, n, audits = gsplat_runner._export_vidmap_frames(
+        {"sessionId": "sess-walk-1", "bundleDir": str(bundle)},
+        fusion,
+        str(out_frames),
+        0,
+        8,
+    )
+    assert n == 4
+    assert len(poses) == 4
+    assert all(np.asarray(p).shape == (4, 4) for p in poses)
+    assert audits[0]["source"] == "vidmap-colmap"
+    assert (out_frames / "0000.jpg").is_file()
+
+
+def test_attach_vidmap_priors_stamps_session_manifests(tmp_path, monkeypatch):
+    _clear_vidmap_env(monkeypatch)
+    bundle = tmp_path / "bundles" / "sess-walk-1"
+    bundle.mkdir(parents=True)
+    samples = _synthetic_gps()
+    _write_gps_jsonl(bundle / "gps.jsonl", samples)
+    ecef = np.stack([geodetic_to_ecef(s["lat"], s["lon"], s["alt"]) for s in samples])
+    model = _model_from_ecef(ecef, 1.0, np.eye(3), ecef.mean(axis=0))
+    run_bundle(bundle, dry_run=True, model=model)
+
+    stamped = world_mirror_client.attach_vidmap_priors(
+        {"sess-walk-1": {"sessionId": "sess-walk-1", "captureChunks": []}},
+        bundle_root=tmp_path / "bundles",
+    )
+    assert stamped["sess-walk-1"]["bundleDir"] == str(bundle)
+    assert stamped["sess-walk-1"]["priorCamPath"] == str(
+        bundle / "rec" / "vidmap" / "prior_camera.json"
+    )
+    # Existing explicit prior is not overwritten.
+    kept = world_mirror_client.attach_vidmap_priors(
+        {"sess-walk-1": {"priorCamPath": "/already/set.json"}},
+        bundle_root=tmp_path / "bundles",
+    )
+    assert kept["sess-walk-1"]["priorCamPath"] == "/already/set.json"
 
 
 def test_dry_run_does_not_touch_gpu_or_network(tmp_path, monkeypatch):

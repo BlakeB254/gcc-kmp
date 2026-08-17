@@ -644,6 +644,83 @@ def _export_session_frames(manifest: dict, T_cell: np.ndarray, frames_dir: str,
     return poses, intrinsics, n, audits
 
 
+def _export_vidmap_frames(
+    manifest: dict,
+    fusion_result: FusionResult,
+    frames_dir: str,
+    start_index: int,
+    budget: int,
+) -> tuple[list, list, int, list[dict]]:
+    """Walk-bundle fallback: VidMap COLMAP poses + on-disk frames → cell frame.
+
+    Used when a session has no ARKit mov+jsonl chunks (civic walk video).
+    Requires ``bundleDir`` / ``priorCamPath`` from attach_vidmap_priors and a
+    GPS Sim3 in rec/vidmap/poses_gps.json. COLMAP is already OpenCV, so
+    GL_TO_CV is not applied.
+    """
+    import vidmap_runner
+
+    bundle = manifest.get("bundleDir")
+    if not bundle:
+        return [], [], start_index, []
+    root = Path(bundle).expanduser()
+    model = vidmap_runner.load_colmap_model(root / "rec" / "vidmap" / "colmap")
+    poses_path = root / "rec" / "vidmap" / "poses_gps.json"
+    if model is None or model.empty or not poses_path.is_file():
+        return [], [], start_index, []
+    try:
+        poses_gps = json.loads(poses_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return [], [], start_index, []
+    transform = poses_gps.get("transform")
+    if not transform:
+        return [], [], start_index, []
+    lat0 = fusion_result.anchor_lat
+    lon0 = fusion_result.anchor_lng
+    if lat0 is None or lon0 is None:
+        return [], [], start_index, []
+    cameras = {c.camera_id: c for c in model.cameras}
+    images = model.images[:budget]
+    poses, intrinsics, n = [], [], start_index
+    copied = 0
+    for image in images:
+        src = None
+        for folder in (root / "frames", root / "images", root / "keyframes", root):
+            candidate = folder / image.name
+            if candidate.is_file():
+                src = candidate
+                break
+        if src is None:
+            continue
+        dest = Path(frames_dir) / f"{n:04d}.jpg"
+        shutil.copy2(src, dest)
+        c2w = vidmap_runner.c2w_from_w2c(image.qvec, image.tvec)
+        poses.append(vidmap_runner.colmap_c2w_to_cell(c2w, transform, float(lat0), float(lon0)))
+        cam = cameras.get(image.camera_id)
+        if cam is None:
+            dest.unlink(missing_ok=True)
+            continue
+        params = cam.params
+        if cam.model in {"SIMPLE_PINHOLE", "SIMPLE_RADIAL", "SIMPLE_RADIAL_FISHEYE"}:
+            fx = fy = params[0]
+            cx, cy = params[1], params[2]
+        else:
+            fx, fy, cx, cy = params[0], params[1], params[2], params[3]
+        intrinsics.append(np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], dtype=np.float64))
+        n += 1
+        copied += 1
+    audits = [{
+        "chunk": "vidmap",
+        "selectedIndices": list(range(copied)),
+        "rejections": {},
+        "baselineMeters": None,
+        "normalTrackingFraction": None,
+        "depthCoverageFraction": None,
+        "source": "vidmap-colmap",
+    }]
+    return poses, intrinsics, n, audits
+
+
 def train_gsplat_for_cell(
     cell_id: str,
     fusion_result: FusionResult,
@@ -684,6 +761,9 @@ def train_gsplat_for_cell(
                 continue
             p, K, n, audits = _export_session_frames(
                 manifest, fusion_result.session_transforms[sid], frames_dir, n, budget)
+            if not p:
+                p, K, n, audits = _export_vidmap_frames(
+                    manifest, fusion_result, frames_dir, n, budget)
             poses.extend(p)
             intrinsics.extend(K)
             frame_audits.extend(audits)

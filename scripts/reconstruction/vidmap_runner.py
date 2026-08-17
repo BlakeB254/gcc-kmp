@@ -350,6 +350,65 @@ def discover_bundle(bundle_dir: str | os.PathLike[str]) -> BundleInputs:
 # Geodesy + GPS Sim3 (COLMAP → ECEF)
 # ---------------------------------------------------------------------------
 
+def ecef_to_geodetic(x: float, y: float, z: float) -> tuple[float, float, float]:
+    """WGS84 ECEF metres → (lat_deg, lon_deg, alt_m)."""
+    p = math.hypot(x, y)
+    lon = math.atan2(y, x)
+    lat = math.atan2(z, p * (1.0 - _WGS84_E2))
+    for _ in range(8):
+        sin_lat = math.sin(lat)
+        n = _WGS84_A / math.sqrt(1.0 - _WGS84_E2 * sin_lat * sin_lat)
+        lat = math.atan2(z + _WGS84_E2 * n * sin_lat, p)
+    sin_lat = math.sin(lat)
+    n = _WGS84_A / math.sqrt(1.0 - _WGS84_E2 * sin_lat * sin_lat)
+    alt = p / max(math.cos(lat), 1e-12) - n
+    return math.degrees(lat), math.degrees(lon), alt
+
+
+def ecef_to_enu_rotation(lat_deg: float, lon_deg: float) -> np.ndarray:
+    """Rows are east, north, up in ECEF."""
+    lat = math.radians(lat_deg)
+    lon = math.radians(lon_deg)
+    slat, clat = math.sin(lat), math.cos(lat)
+    slon, clon = math.sin(lon), math.cos(lon)
+    return np.array([
+        [-slon, clon, 0.0],
+        [-slon * slat, -clon * slat, clat],
+        [clat * clon, clat * slon, slat],
+    ], dtype=np.float64)
+
+
+def ecef_to_cell(ecef: np.ndarray, lat0: float, lon0: float, alt0: float = 0.0) -> np.ndarray:
+    """ECEF point → cell frame (+X east, +Y up, -Z north)."""
+    lat, lon, alt = ecef_to_geodetic(float(ecef[0]), float(ecef[1]), float(ecef[2]))
+    east = (lon - lon0) * 111_320.0 * math.cos(math.radians(lat0))
+    north = (lat - lat0) * 111_320.0
+    up = alt - alt0
+    return np.array([east, up, -north], dtype=np.float64)
+
+
+def colmap_c2w_to_cell(
+    c2w: np.ndarray,
+    transform: dict,
+    lat0: float,
+    lon0: float,
+    alt0: float = 0.0,
+) -> np.ndarray:
+    """Map a COLMAP OpenCV c2w through the GPS Sim3 into the cell frame."""
+    scale = float(transform["scale"])
+    rotation = np.asarray(transform["rotation"], dtype=np.float64)
+    translation = np.asarray(transform["translation_ecef_m"], dtype=np.float64)
+    center = np.asarray(c2w, dtype=np.float64)[:3, 3]
+    ecef = scale * (rotation @ center) + translation
+    cell = np.eye(4, dtype=np.float64)
+    r_enu = ecef_to_enu_rotation(lat0, lon0)
+    # ENU rows = e,n,u; cell axes = e, u, -n
+    r_cell_from_ecef = np.stack([r_enu[0], r_enu[2], -r_enu[1]], axis=0)
+    cell[:3, :3] = r_cell_from_ecef @ rotation @ np.asarray(c2w, dtype=np.float64)[:3, :3]
+    cell[:3, 3] = ecef_to_cell(ecef, lat0, lon0, alt0)
+    return cell
+
+
 def geodetic_to_ecef(lat: float, lon: float, alt_m: float = 0.0) -> np.ndarray:
     lat_r = math.radians(lat)
     lon_r = math.radians(lon)
