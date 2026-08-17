@@ -102,7 +102,17 @@ def train_splat_for_session(session_manifest: dict, world_mirror_base_url: str) 
         return SessionSplatResult(session_id=session_id, splat_bytes=None, skip_reason=f"only {len(frames)} usable frames (need {MIN_FRAMES_PER_SESSION}+)", frames_gathered=len(frames))
 
     try:
-        splat_bytes, wm_cameras = world_mirror_client.reconstruct_session(frames, base_url=world_mirror_base_url)
+        prior_cam = (
+            session_manifest.get("priorCamPath")
+            or os.environ.get("WORLD_MIRROR_PRIOR_CAM")
+        )
+        bundle_dir = session_manifest.get("bundleDir")
+        splat_bytes, wm_cameras = world_mirror_client.reconstruct_session(
+            frames,
+            base_url=world_mirror_base_url,
+            prior_cam_path=prior_cam,
+            bundle_dir=bundle_dir,
+        )
     except world_mirror_client.WorldMirrorError as e:
         return SessionSplatResult(session_id=session_id, splat_bytes=None, skip_reason=str(e), frames_gathered=len(frames))
 
