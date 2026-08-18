@@ -98,6 +98,12 @@ export default function AppLandingPage() {
           <p className="text-sm text-white/70 mt-12 leading-relaxed">
             Currently launched in North Lawndale, Chicago (60623, 60624).
             <br />
+            Scans stay outdoors —{' '}
+            <Link href="/app/indoor-gate" className="underline font-semibold hover:text-white">
+              Indoor Gate v4
+            </Link>
+            {' '}blocks indoor capture.
+            <br />
             Bringing GCC to every neighborhood next.{' '}
             <Link href="/sponsor/enterprise" className="underline font-semibold hover:text-white">
               Partner with us →
