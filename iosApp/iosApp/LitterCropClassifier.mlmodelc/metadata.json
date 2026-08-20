@@ -1,0 +1,103 @@
+[
+  {
+    "metadataOutputVersion" : "3.0",
+    "storagePrecision" : "Float32",
+    "outputSchema" : [
+      {
+        "isOptional" : "0",
+        "keyType" : "String",
+        "formattedType" : "Dictionary (String → Double)",
+        "type" : "Dictionary",
+        "name" : "var_526",
+        "shortDescription" : ""
+      },
+      {
+        "hasShapeFlexibility" : "0",
+        "isOptional" : "0",
+        "dataType" : "Float32",
+        "formattedType" : "MultiArray (Float32)",
+        "shortDescription" : "",
+        "shape" : "[]",
+        "name" : "x",
+        "type" : "MultiArray"
+      },
+      {
+        "isOptional" : "0",
+        "formattedType" : "String",
+        "type" : "String",
+        "name" : "classLabel",
+        "shortDescription" : ""
+      }
+    ],
+    "modelParameters" : [
+
+    ],
+    "specificationVersion" : 4,
+    "computePrecision" : "Float16",
+    "isUpdatable" : "0",
+    "stateSchema" : [
+
+    ],
+    "availability" : {
+      "macOS" : "10.15",
+      "tvOS" : "13.0",
+      "visionOS" : "1.0",
+      "watchOS" : "6.0",
+      "iOS" : "13.0",
+      "macCatalyst" : "13.0"
+    },
+    "modelType" : {
+      "name" : "MLModelType_neuralNetworkClassifier"
+    },
+    "inputSchema" : [
+      {
+        "height" : "224",
+        "colorspace" : "RGB",
+        "isOptional" : "0",
+        "width" : "224",
+        "isColor" : "1",
+        "formattedType" : "Image (Color 224 × 224)",
+        "hasSizeFlexibility" : "0",
+        "type" : "Image",
+        "shortDescription" : "",
+        "name" : "image"
+      }
+    ],
+    "classLabels" : [
+      "background",
+      "can",
+      "carton",
+      "chip_bag",
+      "cigarette",
+      "cup",
+      "food_waste",
+      "glass_bottle",
+      "other_litter",
+      "paper",
+      "plastic_bag",
+      "plastic_bottle",
+      "trash_bag",
+      "wrapper"
+    ],
+    "generatedClassName" : "model",
+    "userDefinedMetadata" : {
+      "com.github.apple.coremltools.conversion_date" : "2026-08-19",
+      "com.github.apple.coremltools.source" : "torch==2.15.0.dev20260818+cu130",
+      "com.github.apple.coremltools.version" : "9.0",
+      "com.github.apple.coremltools.source_dialect" : "TorchScript"
+    },
+    "neuralNetworkLayerTypeHistogram" : {
+      "Concat" : 4,
+      "Multiply" : 26,
+      "ReshapeStatic" : 1,
+      "PoolingAverage" : 1,
+      "SplitND" : 4,
+      "Add" : 6,
+      "SoftmaxND" : 1,
+      "Convolution" : 26,
+      "ActivationSigmoid" : 26,
+      "InnerProduct" : 1
+    },
+    "method" : "predict"
+  }
+]
