@@ -18,7 +18,7 @@ export default function PrivacyPage() {
 
           <div className="prose prose-neutral max-w-none">
             <p className="text-neutral-600 mb-6">
-              Last updated: March 2026
+              Last updated: August 2026
             </p>
 
             <section className="mb-8">
@@ -100,6 +100,23 @@ export default function PrivacyPage() {
               <h2 className="text-xl font-semibold text-neutral-900 mb-4">6A. Background Location Tracking</h2>
               <p className="text-neutral-700 mb-4">
                 During active cleaning jobs, the app tracks your location in the background to record your route path for verification purposes. Background location tracking is only active while you have an in-progress job and stops automatically when the job is completed or abandoned. You will see a location indicator in your device's status bar whenever background tracking is active.
+              </p>
+            </section>
+
+            <section className="mb-8">
+              <h2 className="text-xl font-semibold text-neutral-900 mb-4">6B. Indoor Scan Gate</h2>
+              <p className="text-neutral-700 mb-4">
+                Environment and route scans are for public outdoor blocks. Indoor Gate v4
+                denies capture by default: while the app is still confirming you are
+                outside, the camera preview can run but frames are not persisted,
+                detected, credited, or uploaded. If the device is indoors — including a
+                ceiling-classified AR plane or a mapped building footprint — scanning
+                stops and any frames from the previous 10 seconds are purged before
+                upload. See the{' '}
+                <Link href="/app/indoor-gate" className="text-brand-green-600 hover:underline">
+                  Indoor Gate v4 app interface
+                </Link>
+                .
               </p>
             </section>
 

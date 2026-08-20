@@ -1,6 +1,7 @@
 'use client'
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { IndoorGateDiagnosticsPanel } from '@/components/indoor-gate/IndoorGateDiagnosticsPanel'
 
 // Session replay (scan-session-replay PRD Phase 2): "watch the session
 // without video". Left pane: the GPS trail drawn up to the scrubber time
@@ -380,6 +381,11 @@ export default function ScanSessionReplayPage({ params }: { params: Promise<{ se
               </div>
             </div>
           </div>
+
+          <IndoorGateDiagnosticsPanel
+            gateEvents={manifest?.gateEvents}
+            diagnosticsLog={manifest?.diagnosticsLog}
+          />
 
           <div className="mt-4 rounded-lg border border-neutral-800 bg-neutral-900/50">
             <div className="border-b border-neutral-800 px-3 py-2 text-xs font-medium text-neutral-300">
