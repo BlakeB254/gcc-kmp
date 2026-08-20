@@ -2,6 +2,11 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { computePriority, applyObservedOnlyBoost } from './route'
 
+// SQL-shape tests only — drizzle's `.toSQL()` never connects, but `@/db`'s
+// lazy init still requires the env var to construct the client. Set a dummy
+// here so the plain `npm run test:unit` runner works without shell env.
+process.env.DATABASE_URL ??= 'postgres://test:test@localhost/test'
+
 // Pillar 8 Task 4 — observed-only litter priority boost. computePriority
 // and applyObservedOnlyBoost are pure/side-effect-free (no DB access), same
 // pattern as site/src/lib/world-observations.test.ts. Run with:
