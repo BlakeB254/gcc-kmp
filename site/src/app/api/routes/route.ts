@@ -43,6 +43,9 @@ export async function GET(request: Request) {
         lengthMeters: routes.lengthMeters,
         estimatedMinutes: routes.estimatedMinutes,
         status: routes.status,
+        claimStatus: routes.claimStatus,
+        publishAt: routes.publishAt,
+        unpublishAt: routes.unpublishAt,
         payoutAmount: routes.payoutAmount,
         createdAt: routes.createdAt,
         updatedAt: routes.updatedAt,
@@ -96,6 +99,12 @@ export async function GET(request: Request) {
         blockBoundary: blockBoundaryMap.get(route.id) ?? null,
         innerBoundary: innerBoundaryMap.get(route.id) ?? null,
         status: route.status,
+        // Claim switch + scheduled window so mobile can render "opens Friday"
+        // states. Claimable = published + claim_status='open'.
+        claimStatus: route.claimStatus ?? 'closed',
+        claimable: route.status === 'published' && route.claimStatus === 'open',
+        publishAt: route.claimStatus === 'scheduled' && route.publishAt ? new Date(route.publishAt).toISOString() : null,
+        unpublishAt: route.claimStatus === 'scheduled' && route.unpublishAt ? new Date(route.unpublishAt).toISOString() : null,
         distanceMeters: route.lengthMeters ? parseFloat(route.lengthMeters) : null,
         estimatedDurationMinutes: route.estimatedMinutes ? Math.round(parseFloat(route.estimatedMinutes)) : null,
         payoutAmount: Math.round(parseFloat(route.payoutAmount || '10000')),

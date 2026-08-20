@@ -31,6 +31,8 @@ import com.gcc.shared.model.AdminRouteAssignment
 import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.JobStatus
 import com.gcc.shared.model.Route
+import com.gcc.shared.model.RouteDeleteResult
+import com.gcc.shared.model.RouteDeleteSummary
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
@@ -68,6 +70,7 @@ fun AdminRouteDetailScreen(
     var editDescription by remember(route) { mutableStateOf(route?.description ?: "") }
     var nameDescDirty by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var deleteConflict by remember { mutableStateOf<RouteDeleteSummary?>(null) }
     var savingNameDesc by remember { mutableStateOf(false) }
     // Track imageUrl to detect when upload completes
     var previousImageUrl by remember { mutableStateOf(route?.imageUrl) }
@@ -923,24 +926,56 @@ fun AdminRouteDetailScreen(
                             modifier = Modifier.padding(12.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            Text(
-                                "Permanently delete this route and its assignments?",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = GccError,
-                                fontWeight = FontWeight.Medium,
-                            )
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            val conflict = deleteConflict
+                            if (conflict != null) {
+                                // HTTP 409 — the server refused: live work is
+                                // attached. Show its summary instead of a retry.
+                                Text(
+                                    "This route can't be deleted while it has " +
+                                        "${conflict.activeJobs} active job(s) and " +
+                                        "${conflict.pendingOffers} pending offer(s).",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = GccError,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                                Text(
+                                    "Cancel or complete those first — or archive the route to hide it without deleting.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextSubtle,
+                                )
                                 OutlinedButton(
-                                    onClick = { showDeleteConfirm = false },
-                                    modifier = Modifier.weight(1f),
-                                ) { Text("Cancel") }
-                                Button(
                                     onClick = {
-                                        viewModel.deleteRoute(routeId) { onBack() }
+                                        showDeleteConfirm = false
+                                        deleteConflict = null
                                     },
-                                    modifier = Modifier.weight(1f),
-                                    colors = ButtonDefaults.buttonColors(containerColor = GccError),
-                                ) { Text("Delete") }
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) { Text("Close") }
+                            } else {
+                                Text(
+                                    "Permanently delete this route and its assignments?",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = GccError,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedButton(
+                                        onClick = { showDeleteConfirm = false },
+                                        modifier = Modifier.weight(1f),
+                                    ) { Text("Cancel") }
+                                    Button(
+                                        onClick = {
+                                            viewModel.deleteRoute(routeId) { result, _ ->
+                                                when (result) {
+                                                    is RouteDeleteResult.Deleted -> onBack()
+                                                    is RouteDeleteResult.Conflict -> deleteConflict = result.summary
+                                                    null -> showDeleteConfirm = false
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        colors = ButtonDefaults.buttonColors(containerColor = GccError),
+                                    ) { Text("Delete") }
+                                }
                             }
                         }
                     }

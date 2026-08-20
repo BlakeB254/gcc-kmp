@@ -3,6 +3,8 @@ import { db } from '@/db'
 import { routes, serviceAreas, blocks } from '@/db/schema'
 import { eq, inArray } from 'drizzle-orm'
 import { requireAdmin } from '@/lib/admin-auth'
+import { parseAdminClaimStatus } from '@/lib/admin-route-status'
+import { parseOptionalTimestamp } from '@/lib/admin-route-sync'
 import { commitPublicDataChanges } from '@/lib/public-data/invalidation'
 import { haversineDistance, estimateWalkingMinutes, lineStringToBlockPolygon, computeCenter } from '@/lib/geo-utils'
 import { deriveAreaPrefix, generateNextCode } from '@/lib/route-code-generator'
@@ -23,6 +25,9 @@ export async function GET(request: Request) {
         lengthMeters: routes.lengthMeters,
         estimatedMinutes: routes.estimatedMinutes,
         status: routes.status,
+        claimStatus: routes.claimStatus,
+        publishAt: routes.publishAt,
+        unpublishAt: routes.unpublishAt,
         payoutAmount: routes.payoutAmount,
         imageUrl: routes.imageUrl,
         description: routes.description,
@@ -61,6 +66,9 @@ export async function GET(request: Request) {
       serviceAreaId: route.serviceAreaId,
       geometry: route.geometry,
       status: route.status,
+      claimStatus: route.claimStatus ?? 'closed',
+      publishAt: route.publishAt ? new Date(route.publishAt).toISOString() : null,
+      unpublishAt: route.unpublishAt ? new Date(route.unpublishAt).toISOString() : null,
       distanceMeters: route.lengthMeters ? parseFloat(route.lengthMeters) : null,
       estimatedDurationMinutes: route.estimatedMinutes ? Math.round(parseFloat(route.estimatedMinutes)) : null,
       payoutAmount: Math.round(parseFloat(route.payoutAmount || '10000')),
@@ -87,10 +95,29 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json()
-    const { displayName, serviceAreaId = 1, geometry, code, payoutAmount, side, streetName, fromCorner, toCorner, description } = body
+    const { displayName, serviceAreaId = 1, geometry, code, payoutAmount, side, streetName, fromCorner, toCorner, description, claimStatus, publishAt, unpublishAt } = body
 
     if (!displayName) {
       return NextResponse.json({ error: 'displayName is required' }, { status: 400 })
+    }
+
+    // Optional claim switch + scheduled (un)publish timestamps (mobile DTOs
+    // already send these; previously ignored — inventory finding (e)).
+    let parsedClaimStatus: 'closed' | 'open' | 'scheduled' = 'closed'
+    if (claimStatus !== undefined) {
+      const parsed = parseAdminClaimStatus(claimStatus)
+      if (parsed === null) {
+        return NextResponse.json({ error: 'claimStatus must be closed, open, or scheduled' }, { status: 400 })
+      }
+      parsedClaimStatus = parsed
+    }
+    let parsedPublishAt: string | null
+    let parsedUnpublishAt: string | null
+    try {
+      parsedPublishAt = parseOptionalTimestamp(publishAt, 'publishAt')
+      parsedUnpublishAt = parseOptionalTimestamp(unpublishAt, 'unpublishAt')
+    } catch (e) {
+      return NextResponse.json({ error: (e as Error).message }, { status: 400 })
     }
 
     // If no geometry provided, default to service area center (North Lawndale)
@@ -139,6 +166,9 @@ export async function POST(request: Request) {
       lengthMeters: distanceMeters.toFixed(1),
       estimatedMinutes: estimatedMinutes.toString(),
       status: 'draft',
+      claimStatus: parsedClaimStatus,
+      publishAt: parsedPublishAt,
+      unpublishAt: parsedUnpublishAt,
       payoutAmount: (payoutAmount || 10000).toString(),
       description: description || null,
       createdById: auth.workerId,
@@ -177,6 +207,9 @@ export async function POST(request: Request) {
         serviceAreaId: newRoute.serviceAreaId,
         geometry: newRoute.geometry,
         status: newRoute.status,
+        claimStatus: newRoute.claimStatus ?? 'closed',
+        publishAt: newRoute.publishAt ? new Date(newRoute.publishAt).toISOString() : null,
+        unpublishAt: newRoute.unpublishAt ? new Date(newRoute.unpublishAt).toISOString() : null,
         distanceMeters: newRoute.lengthMeters ? parseFloat(newRoute.lengthMeters) : null,
         estimatedDurationMinutes: newRoute.estimatedMinutes ? Math.round(parseFloat(newRoute.estimatedMinutes)) : null,
         payoutAmount: Math.round(parseFloat(newRoute.payoutAmount || '10000')),

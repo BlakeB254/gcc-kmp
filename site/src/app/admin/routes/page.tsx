@@ -6,12 +6,16 @@ import { RouteDrawer } from '@/components/admin/RouteDrawer'
 import { RouteGenerator } from '@/components/admin/RouteGenerator'
 import { ExclusionZoneDrawer } from '@/components/admin/ExclusionZoneDrawer'
 import { RouteEditModal, type RouteEditValues } from '@/components/admin/RouteEditModal'
+import { AdminConfirmDialog } from '@/components/admin/AdminConfirmDialog'
+
+type ClaimStatus = 'open' | 'closed' | 'scheduled'
 
 interface RouteRow {
   id: number
   code: string
   displayName: string
   status: string
+  claimStatus?: ClaimStatus | null
   distanceMeters: number | null
   estimatedDurationMinutes: number | null
   payoutAmount: number
@@ -19,6 +23,31 @@ interface RouteRow {
   blockId: number | null
   createdAt: string
 }
+
+// Effective worker-facing state from (status, claimStatus) — mirrors the
+// state matrix in docs/plans/route-admin-plan-2026-08-20.md phase 1.
+function effectiveState(route: RouteRow): { label: string; cls: string; hint: string } {
+  if (route.status === 'draft')
+    return { label: 'Draft', cls: 'bg-neutral-800 text-neutral-400', hint: 'Hidden from workers' }
+  if (route.status === 'archived')
+    return { label: 'Archived', cls: 'bg-yellow-900/40 text-yellow-400', hint: 'Hidden from workers' }
+  // published — claimStatus defaults to 'open' (matches the migration backfill)
+  const cs = route.claimStatus ?? 'open'
+  if (cs === 'open')
+    return { label: 'Live', cls: 'bg-green-900/40 text-green-400', hint: 'Claimable by workers' }
+  if (cs === 'scheduled')
+    return { label: 'Scheduled', cls: 'bg-blue-900/40 text-blue-400', hint: 'Opens for claims later' }
+  return {
+    label: 'Live · not claimable',
+    cls: 'bg-amber-900/40 text-amber-400',
+    hint: 'Visible, claims closed',
+  }
+}
+
+type DeleteDialog =
+  | { kind: 'confirm'; route: RouteRow }
+  | { kind: 'blocked'; route: RouteRow; message: string; summary: { activeJobs?: number; pendingOffers?: number } }
+  | { kind: 'result'; route: RouteRow; summary: Record<string, unknown> | null }
 
 interface BlockRow {
   id: number
@@ -39,6 +68,8 @@ export default function AdminRoutesPage() {
   const [busyRouteId, setBusyRouteId] = useState<number | null>(null)
   const [editingRoute, setEditingRoute] = useState<RouteRow | null>(null)
   const [savingEdit, setSavingEdit] = useState(false)
+  const [deleteDialog, setDeleteDialog] = useState<DeleteDialog | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const [toast, setToast] = useState<{ kind: 'ok' | 'warn' | 'error'; text: string } | null>(null)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -105,59 +136,102 @@ export default function AdminRoutesPage() {
     return json.data
   }, [])
 
-  const handleStatusChange = useCallback(
-    async (route: RouteRow, nextStatus: 'draft' | 'published' | 'archived') => {
-      if (nextStatus === 'archived') {
-        const ok = window.confirm(`Archive ${route.code}? It will be hidden from workers.`)
-        if (!ok) return
-      }
+  // New verb endpoints (phase 2 API): publish/unpublish/archive/claim-status.
+  // Each returns the updated route; we refetch the list to stay consistent.
+  const postRouteVerb = useCallback(
+    async (routeId: number, verb: 'publish' | 'unpublish' | 'archive' | 'claim-status', body?: Record<string, unknown>) => {
+      const token = localStorage.getItem('adminToken')
+      const res = await fetch(`/api/admin/routes/${routeId}/${verb}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body ?? {}),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error || `${verb} failed (${res.status})`)
+      return json.data
+    },
+    []
+  )
+
+  const handleVerb = useCallback(
+    async (route: RouteRow, verb: 'publish' | 'unpublish' | 'archive') => {
       setBusyRouteId(route.id)
       try {
-        await putRoute(route.id, { status: nextStatus })
-        setRoutes((rs) => rs.map((r) => (r.id === route.id ? { ...r, status: nextStatus } : r)))
-        if (nextStatus === 'published') {
+        await postRouteVerb(route.id, verb)
+        if (verb === 'publish') {
           showToast('ok', `${route.code} published — live for workers.`)
-        } else if (nextStatus === 'draft') {
-          showToast('ok', `${route.code} is now a draft — hidden from workers.`)
+        } else if (verb === 'unpublish') {
+          showToast('ok', `${route.code} unpublished — back to draft.`)
         } else {
           showToast('ok', `${route.code} archived — hidden from workers.`)
         }
         fetchRoutes()
       } catch (e) {
-        showToast('error', e instanceof Error ? e.message : 'Failed to update route status.')
+        showToast('error', e instanceof Error ? e.message : `Failed to ${verb} route.`)
       } finally {
         setBusyRouteId(null)
       }
     },
-    [putRoute, fetchRoutes, showToast]
+    [postRouteVerb, fetchRoutes, showToast]
   )
 
-  const handleDelete = useCallback(
+  const handleClaimToggle = useCallback(
     async (route: RouteRow) => {
-      const ok = window.confirm(
-        `Delete ${route.code}? This removes its linked block and exclusion zones. This cannot be undone.`
-      )
-      if (!ok) return
+      const current = route.claimStatus ?? 'open'
+      const next: ClaimStatus = current === 'open' ? 'closed' : 'open'
       setBusyRouteId(route.id)
       try {
-        const token = localStorage.getItem('adminToken')
-        const res = await fetch(`/api/admin/routes/${route.id}`, {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        const json = await res.json().catch(() => ({}))
-        if (!res.ok) throw new Error(json.error || `Delete failed (${res.status})`)
-        setRoutes((rs) => rs.filter((r) => r.id !== route.id))
-        showToast('ok', `${route.code} deleted.`)
+        await postRouteVerb(route.id, 'claim-status', { claimStatus: next })
+        showToast(
+          'ok',
+          next === 'open'
+            ? `${route.code} claims opened — workers can claim it.`
+            : `${route.code} claims closed — visible but not claimable.`
+        )
         fetchRoutes()
       } catch (e) {
-        showToast('error', e instanceof Error ? e.message : 'Failed to delete route.')
+        showToast('error', e instanceof Error ? e.message : 'Failed to update claim status.')
       } finally {
         setBusyRouteId(null)
       }
     },
-    [fetchRoutes, showToast]
+    [postRouteVerb, fetchRoutes, showToast]
   )
+
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deleteDialog || deleteDialog.kind !== 'confirm') return
+    const route = deleteDialog.route
+    setDeleting(true)
+    try {
+      const token = localStorage.getItem('adminToken')
+      const res = await fetch(`/api/admin/routes/${route.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const json = await res.json().catch(() => ({}))
+      if (res.status === 409) {
+        // Busy route — show what is blocking the delete.
+        setDeleteDialog({
+          kind: 'blocked',
+          route,
+          message: json.error || 'Route has active work and cannot be deleted.',
+          summary: json.summary || {},
+        })
+        return
+      }
+      if (!res.ok) throw new Error(json.error || `Delete failed (${res.status})`)
+      const summary =
+        json.summary ?? json.data?.summary ?? (json.data && typeof json.data === 'object' ? json.data : null)
+      setRoutes((rs) => rs.filter((r) => r.id !== route.id))
+      setDeleteDialog({ kind: 'result', route, summary })
+      fetchRoutes()
+    } catch (e) {
+      showToast('error', e instanceof Error ? e.message : 'Failed to delete route.')
+      setDeleteDialog(null)
+    } finally {
+      setDeleting(false)
+    }
+  }, [deleteDialog, fetchRoutes, showToast])
 
   const handleEditSave = useCallback(
     async (values: RouteEditValues) => {
@@ -380,54 +454,67 @@ export default function AdminRoutesPage() {
                       ${(r.payoutAmount / 100).toFixed(0)}
                     </td>
                     <td className="px-4 py-3">
-                      <span
-                        className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
-                          r.status === 'published'
-                            ? 'bg-green-900/40 text-green-400'
-                            : r.status === 'draft'
-                              ? 'bg-neutral-800 text-neutral-400'
-                              : 'bg-yellow-900/40 text-yellow-400'
-                        }`}
-                      >
-                        {r.status}
-                      </span>
-                      <div className="text-[10px] text-neutral-600 mt-0.5">
-                        {r.status === 'published' ? 'Live for workers' : 'Hidden from workers'}
-                      </div>
+                      {(() => {
+                        const state = effectiveState(r)
+                        return (
+                          <>
+                            <span
+                              className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${state.cls}`}
+                            >
+                              {state.label}
+                            </span>
+                            <div className="text-[10px] text-neutral-600 mt-0.5">{state.hint}</div>
+                          </>
+                        )
+                      })()}
                     </td>
                     <td className="px-4 py-3 text-neutral-500 text-xs">
                       {new Date(r.createdAt).toLocaleDateString()}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        {r.status === 'published' ? (
+                        {r.status !== 'archived' &&
+                          (r.status === 'published' ? (
+                            <button
+                              onClick={() => handleVerb(r, 'unpublish')}
+                              disabled={busy}
+                              className="px-2 py-1 rounded text-xs font-medium bg-neutral-800 text-neutral-300 hover:bg-neutral-700 disabled:opacity-40 transition-colors"
+                            >
+                              Unpublish
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleVerb(r, 'publish')}
+                              disabled={busy}
+                              className="px-2 py-1 rounded text-xs font-medium bg-green-700 text-white hover:bg-green-600 disabled:opacity-40 transition-colors"
+                            >
+                              Publish
+                            </button>
+                          ))}
+                        {r.status === 'published' && (
                           <button
-                            onClick={() => handleStatusChange(r, 'draft')}
+                            onClick={() => handleClaimToggle(r)}
                             disabled={busy}
-                            className="px-2 py-1 rounded text-xs font-medium bg-neutral-800 text-neutral-300 hover:bg-neutral-700 disabled:opacity-40 transition-colors"
+                            className={`px-2 py-1 rounded text-xs font-medium disabled:opacity-40 transition-colors ${
+                              (r.claimStatus ?? 'open') === 'open'
+                                ? 'bg-amber-800/60 text-amber-300 hover:bg-amber-800'
+                                : 'bg-green-700 text-white hover:bg-green-600'
+                            }`}
                           >
-                            Unpublish
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleStatusChange(r, 'published')}
-                            disabled={busy}
-                            className="px-2 py-1 rounded text-xs font-medium bg-green-700 text-white hover:bg-green-600 disabled:opacity-40 transition-colors"
-                          >
-                            Publish
+                            {(r.claimStatus ?? 'open') === 'open' ? 'Close Claims' : 'Open Claims'}
                           </button>
                         )}
                         {r.status === 'archived' ? (
                           <button
-                            onClick={() => handleStatusChange(r, 'draft')}
+                            onClick={() => handleVerb(r, 'publish')}
                             disabled={busy}
-                            className="px-2 py-1 rounded text-xs font-medium bg-neutral-800 text-neutral-300 hover:bg-neutral-700 disabled:opacity-40 transition-colors"
+                            className="px-2 py-1 rounded text-xs font-medium bg-green-700 text-white hover:bg-green-600 disabled:opacity-40 transition-colors"
                           >
-                            Restore
+                            Republish
                           </button>
                         ) : (
                           <button
-                            onClick={() => handleStatusChange(r, 'archived')}
+                            onClick={() => handleVerb(r, 'archive')}
                             disabled={busy}
                             className="px-2 py-1 rounded text-xs font-medium bg-neutral-800 text-neutral-300 hover:bg-neutral-700 disabled:opacity-40 transition-colors"
                           >
@@ -457,7 +544,7 @@ export default function AdminRoutesPage() {
                           </span>
                         )}
                         <button
-                          onClick={() => handleDelete(r)}
+                          onClick={() => setDeleteDialog({ kind: 'confirm', route: r })}
                           disabled={busy}
                           className="px-2 py-1 rounded text-xs font-medium bg-red-900/50 text-red-400 hover:bg-red-900 disabled:opacity-40 transition-colors"
                         >
@@ -484,6 +571,84 @@ export default function AdminRoutesPage() {
           saving={savingEdit}
           onSave={handleEditSave}
           onClose={() => setEditingRoute(null)}
+        />
+      )}
+
+      {deleteDialog?.kind === 'confirm' && (
+        <AdminConfirmDialog
+          title={
+            <>
+              Delete route <span className="font-mono text-red-400">{deleteDialog.route.code}</span>?
+            </>
+          }
+          body={
+            <p>
+              This removes the route, its linked block, and exclusion zones, and cancels any open
+              release slots and offers. This cannot be undone.
+            </p>
+          }
+          confirmLabel="Delete Route"
+          confirmTone="danger"
+          busy={deleting}
+          onConfirm={handleDeleteConfirm}
+          onClose={() => setDeleteDialog(null)}
+        />
+      )}
+
+      {deleteDialog?.kind === 'blocked' && (
+        <AdminConfirmDialog
+          title={
+            <>
+              Cannot delete <span className="font-mono text-red-400">{deleteDialog.route.code}</span>
+            </>
+          }
+          body={
+            <>
+              <p>{deleteDialog.message}</p>
+              <div className="rounded-md border border-neutral-800 bg-neutral-900 px-3 py-2 text-xs space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-neutral-400">Active jobs</span>
+                  <span className="text-white font-medium">{deleteDialog.summary.activeJobs ?? 0}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-neutral-400">Pending offers</span>
+                  <span className="text-white font-medium">{deleteDialog.summary.pendingOffers ?? 0}</span>
+                </div>
+              </div>
+              <p className="text-xs text-neutral-500">
+                Resolve the active jobs / pending offers (or archive the route) before deleting.
+              </p>
+            </>
+          }
+          onClose={() => setDeleteDialog(null)}
+        />
+      )}
+
+      {deleteDialog?.kind === 'result' && (
+        <AdminConfirmDialog
+          title={
+            <>
+              Deleted <span className="font-mono text-green-400">{deleteDialog.route.code}</span>
+            </>
+          }
+          body={
+            deleteDialog.summary && Object.keys(deleteDialog.summary).length > 0 ? (
+              <>
+                <p>The route was deleted. The server cancelled the following:</p>
+                <div className="rounded-md border border-neutral-800 bg-neutral-900 px-3 py-2 text-xs space-y-1">
+                  {Object.entries(deleteDialog.summary).map(([key, value]) => (
+                    <div key={key} className="flex justify-between">
+                      <span className="text-neutral-400">{key}</span>
+                      <span className="text-white font-medium">{String(value)}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p>The route was deleted.</p>
+            )
+          }
+          onClose={() => setDeleteDialog(null)}
         />
       )}
     </div>

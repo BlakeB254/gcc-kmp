@@ -844,8 +844,76 @@ class GccApiClient(
             if (description != null) put("description", description)
         })
 
-    suspend fun deleteRoute(routeId: Int) =
-        deleteUnit("/api/admin/routes/$routeId")
+    // ── Route admin v2 verbs (docs/plans/route-admin-plan-2026-08-20.md) ─────
+    // Explicit publish/unpublish/archive endpoints + claim-status switch.
+    // The legacy PUT status path above stays for backward compatibility; new
+    // code should prefer these verbs.
+
+    suspend fun publishRoute(
+        routeId: Int,
+        claimStatus: ClaimStatus? = null,
+        publishAt: kotlinx.datetime.Instant? = null,
+        unpublishAt: kotlinx.datetime.Instant? = null,
+    ): Route = postJson(
+        "/api/admin/routes/$routeId/publish",
+        AdminRoutePublishRequest(claimStatus = claimStatus, publishAt = publishAt, unpublishAt = unpublishAt),
+    )
+
+    suspend fun unpublishRoute(routeId: Int): Route =
+        postJson("/api/admin/routes/$routeId/unpublish", AdminRoutePublishRequest())
+
+    suspend fun archiveRoute(routeId: Int): Route =
+        postJson("/api/admin/routes/$routeId/archive", AdminRoutePublishRequest())
+
+    suspend fun setRouteClaimStatus(routeId: Int, claimStatus: ClaimStatus): Route =
+        postJson("/api/admin/routes/$routeId/claim-status", UpdateRouteClaimStatusRequest(claimStatus))
+
+    /**
+     * DELETE /api/admin/routes/{id} — a 409 refusal (active jobs / pending
+     * offers) is returned as [RouteDeleteResult.Conflict] with the server's
+     * summary, not thrown, so the admin UI can render the counts.
+     */
+    suspend fun deleteRoute(routeId: Int): RouteDeleteResult {
+        val response = httpClient.delete("$baseUrl/api/admin/routes/$routeId")
+        val errorBody = response.bodyAsText()
+        if (response.status.value == 409) {
+            return RouteDeleteResult.Conflict(parseRouteDeleteSummary(errorBody))
+        }
+        if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
+        }
+        return RouteDeleteResult.Deleted(parseRouteDeleteSummary(errorBody))
+    }
+
+    /** The delete body carries `summary` at the top level or inside the
+     *  ApiResponse envelope's `data`, depending on which error path answered. */
+    private fun parseRouteDeleteSummary(body: String): RouteDeleteSummary {
+        val obj = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull()
+            ?: return RouteDeleteSummary()
+        val summaryEl = obj["summary"]
+            ?: (obj["data"] as? JsonObject)?.get("summary")
+            ?: return RouteDeleteSummary()
+        return runCatching { json.decodeFromJsonElement<RouteDeleteSummary>(summaryEl) }
+            .getOrDefault(RouteDeleteSummary())
+    }
+
+    // ── Release queue (route-admin v2) ───────────────────────────────────────
+
+    suspend fun listReleaseBatches(): List<AdminReleaseBatchDto> =
+        get("/api/admin/route-releases")
+
+    suspend fun getReleaseBatchDetail(batchId: Int): AdminReleaseBatchDetailDto =
+        get("/api/admin/route-releases/$batchId")
+
+    suspend fun updateReleaseBatch(batchId: Int, request: UpdateReleaseBatchRequest): AdminReleaseBatchDto =
+        patchJson("/api/admin/route-releases/$batchId", request)
+
+    suspend fun cancelReleaseBatch(batchId: Int): AdminReleaseBatchDto =
+        patchJson("/api/admin/route-releases/$batchId", UpdateReleaseBatchRequest(action = "cancel"))
+
+    suspend fun reorderReleaseRoutes(batchId: Int, routeIds: List<Int>): AdminRouteOrderResponse =
+        putJson("/api/admin/route-releases/$batchId/order", AdminRouteOrderRequest(routeIds))
 
     // Blocks
     suspend fun getAvailableBlocks(): List<Block> {

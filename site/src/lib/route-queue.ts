@@ -138,10 +138,12 @@ export async function toRouteOffer(
     const [b] = await db.select().from(routeReleaseBatches).where(eq(routeReleaseBatches.id, offer.batchId)).limit(1)
     if (b && opts.includeBatch) batch = toRouteReleaseBatch(b)
     if (opts.includeRoutes) {
+      // Offer presentation honors the admin-set queue order (position ASC).
       const openRoutes = await db
         .select({ routeId: routeReleaseRoutes.routeId })
         .from(routeReleaseRoutes)
         .where(and(eq(routeReleaseRoutes.batchId, offer.batchId), eq(routeReleaseRoutes.status, 'open')))
+        .orderBy(asc(routeReleaseRoutes.position), asc(routeReleaseRoutes.id))
       const serialized = await Promise.all(openRoutes.map((r) => toMobileRoute(r.routeId)))
       availableRoutes = serialized.filter(Boolean)
     }
@@ -227,7 +229,7 @@ export async function createRelease(
     })
     .returning()
 
-  for (const routeId of routeIds) {
+  for (const [index, routeId] of routeIds.entries()) {
     const [route] = await db.select().from(routes).where(eq(routes.id, routeId)).limit(1)
     if (!route) throw new Error(`Route ${routeId} not found`)
 
@@ -283,6 +285,8 @@ export async function createRelease(
         routeId,
         jobId: openJob.id,
         status: 'open',
+        // Explicit queue order: request order becomes position 1..N.
+        position: index + 1,
         createdAt: now,
         updatedAt: now,
       })

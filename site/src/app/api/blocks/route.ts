@@ -79,6 +79,10 @@ export async function GET(request: NextRequest) {
       completedAt: blocks.completedAt,
       createdAt: blocks.createdAt,
       updatedAt: blocks.updatedAt,
+      // Claim switch of the linked route (null for legacy route-less blocks)
+      // so mobile can render "opens Friday" states on funded blocks.
+      routeClaimStatus: routes.claimStatus,
+      routePublishAt: routes.publishAt,
     })
     .from(blocks)
     .leftJoin(serviceAreas, eq(blocks.serviceAreaId, serviceAreas.id))
@@ -142,6 +146,12 @@ export async function GET(request: NextRequest) {
       },
       completedById: block.completedById,
       completedAt: block.completedAt ? new Date(block.completedAt).toISOString() : null,
+      // Claimable = linked route published + claim_status='open' (kept in
+      // lockstep with blocks.status='available' by the admin state matrix).
+      claimStatus: block.routeClaimStatus ?? null,
+      publishAt: block.routeClaimStatus === 'scheduled' && block.routePublishAt
+        ? new Date(block.routePublishAt).toISOString()
+        : null,
       createdAt: new Date(block.createdAt).toISOString(),
       updatedAt: new Date(block.updatedAt).toISOString(),
     }))

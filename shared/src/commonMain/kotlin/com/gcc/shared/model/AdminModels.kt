@@ -66,6 +66,42 @@ data class ReassignJobResponse(
 @Serializable
 data class UpdateRouteStatusRequest(val status: RouteStatus)
 
+/**
+ * Body of POST /api/admin/routes/{id}/publish|unpublish|archive (route-admin
+ * v2 explicit verbs). All fields optional — publish may carry a claimStatus
+ * and/or scheduled publish/unpublish times.
+ */
+@Serializable
+data class AdminRoutePublishRequest(
+    val claimStatus: ClaimStatus? = null,
+    val publishAt: Instant? = null,
+    val unpublishAt: Instant? = null,
+)
+
+/** Body of POST /api/admin/routes/{id}/claim-status. */
+@Serializable
+data class UpdateRouteClaimStatusRequest(val claimStatus: ClaimStatus)
+
+/**
+ * Summary returned by DELETE /api/admin/routes/{id}. On HTTP 409 the counts
+ * explain the refusal (activeJobs/pendingOffers > 0); on HTTP 200 they
+ * report what the delete cancelled.
+ */
+@Serializable
+data class RouteDeleteSummary(
+    val activeJobs: Int = 0,
+    val pendingOffers: Int = 0,
+    val cancelledReleaseRoutes: Int = 0,
+    val cancelledOffers: Int = 0,
+    val detachedJobs: Int = 0,
+)
+
+/** Typed outcome of DELETE /api/admin/routes/{id} — 409 surfaces as data, not an exception. */
+sealed interface RouteDeleteResult {
+    data class Deleted(val summary: RouteDeleteSummary) : RouteDeleteResult
+    data class Conflict(val summary: RouteDeleteSummary) : RouteDeleteResult
+}
+
 @Serializable
 data class AdminRouteRequest(
     val code: String,

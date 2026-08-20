@@ -644,6 +644,9 @@ export const routeReleaseRoutes = pgTable('route_release_routes', {
   routeId: integer('route_id').notNull(),
   jobId: integer('job_id').notNull(),
   status: routeReleaseRouteStatusEnum('status').default('open').notNull(),
+  // Explicit per-batch ordering (migration 0042); offer presentation and the
+  // admin queue honor position ASC.
+  position: integer('position').default(0).notNull(),
   acceptedByWorkerId: integer('accepted_by_worker_id'),
   acceptedOfferId: integer('accepted_offer_id'),
   acceptedAt: timestamp('accepted_at', { mode: 'string', withTimezone: true }),
@@ -653,6 +656,7 @@ export const routeReleaseRoutes = pgTable('route_release_routes', {
   batchRouteUnique: uniqueIndex('idx_route_release_routes_batch_route_unique').on(table.batchId, table.routeId),
   jobUnique: uniqueIndex('idx_route_release_routes_job_unique').on(table.jobId),
   batchStatusIdx: index('idx_route_release_routes_batch_status').on(table.batchId, table.status),
+  batchPositionIdx: index('idx_route_release_routes_batch_position').on(table.batchId, table.position),
 }))
 
 export const routeJobOffers = pgTable('route_job_offers', {
@@ -1505,6 +1509,15 @@ export const routeStatusEnum = pgEnum('enum_routes_status', [
   'archived',
 ])
 
+// Route claim status enum — independent from publish: publishing is the
+// visibility switch, claim_status is the accepting-claims switch
+// (migration 0042).
+export const routeClaimStatusEnum = pgEnum('enum_routes_claim_status', [
+  'closed',
+  'open',
+  'scheduled',
+])
+
 // Routes table (street-conforming cleaning paths)
 export const routes = pgTable('routes', {
   id: serial('id').primaryKey(),
@@ -1521,7 +1534,11 @@ export const routes = pgTable('routes', {
 
   // Status & versioning
   status: routeStatusEnum('status').default('draft'),
+  claimStatus: routeClaimStatusEnum('claim_status').default('closed'),
   publishedAt: timestamp('published_at', { mode: 'string', withTimezone: true }),
+  // Scheduled (un)publish timestamps (admin-set; nullable)
+  publishAt: timestamp('publish_at', { mode: 'string', withTimezone: true }),
+  unpublishAt: timestamp('unpublish_at', { mode: 'string', withTimezone: true }),
   version: integer('version').default(1),
 
   // Funding

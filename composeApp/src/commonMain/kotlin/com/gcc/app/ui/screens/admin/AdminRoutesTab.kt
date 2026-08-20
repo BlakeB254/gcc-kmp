@@ -12,19 +12,26 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.components.NetworkImage
+import com.gcc.app.ui.components.StatusChip
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.map.chicagoCommunityAreas
 import com.gcc.app.ui.theme.*
 import com.gcc.shared.geo.routePathCoordinates
 import com.gcc.shared.model.AdminRouteRequest
+import com.gcc.shared.model.ClaimStatus
 import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.Route
+import com.gcc.shared.model.RouteDeleteResult
+import com.gcc.shared.model.RouteDeleteSummary
+import com.gcc.shared.model.RouteStatus
 import com.gcc.shared.model.Worker
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -39,9 +46,13 @@ internal fun AdminRoutesTab(
     routeStatusActionError: String?,
     onCreateRoute: (AdminRouteRequest) -> Unit = {},
     onAssignRoute: (routeId: Int, workerId: Int, isTest: Boolean, onResult: (Boolean) -> Unit) -> Unit = { _, _, _, onResult -> onResult(false) },
+    onClaimStatusChange: (Route, ClaimStatus, (Boolean, String?) -> Unit) -> Unit = { _, _, onResult -> onResult(false, null) },
+    onDeleteRoute: (Route, (RouteDeleteResult?, String?) -> Unit) -> Unit = { _, onResult -> onResult(null, "Delete unavailable") },
 ) {
     var showCreateDialog by remember { mutableStateOf(false) }
     var routeToAssign by remember { mutableStateOf<Route?>(null) }
+    var routeToDelete by remember { mutableStateOf<Route?>(null) }
+    var deleteConflict by remember { mutableStateOf<RouteDeleteSummary?>(null) }
     var assignmentMessage by remember { mutableStateOf<String?>(null) }
     val pickerWorkers = remember(workers, currentWorker) {
         (listOfNotNull(currentWorker) + workers).distinctBy { it.id }
@@ -71,6 +82,34 @@ internal fun AdminRoutesTab(
                         routeToAssign = null
                     }
                     onResult(success)
+                }
+            },
+        )
+    }
+
+    routeToDelete?.let { route ->
+        DeleteRouteDialog(
+            route = route,
+            conflict = deleteConflict,
+            onDismiss = {
+                routeToDelete = null
+                deleteConflict = null
+            },
+            onConfirm = {
+                onDeleteRoute(route) { result, _ ->
+                    when (result) {
+                        is RouteDeleteResult.Deleted -> {
+                            routeToDelete = null
+                            deleteConflict = null
+                        }
+                        is RouteDeleteResult.Conflict -> deleteConflict = result.summary
+                        null -> {
+                            // Network/server failure — the ViewModel already
+                            // surfaced the error; close the dialog.
+                            routeToDelete = null
+                            deleteConflict = null
+                        }
+                    }
                 }
             },
         )
@@ -280,6 +319,16 @@ internal fun AdminRoutesTab(
                         },
                     )
 
+                    // ── Claim switch (route-admin v2) — published routes only
+                    if (route.status == RouteStatus.PUBLISHED) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        AdminRouteClaimControls(
+                            route = route,
+                            isUpdating = route.id in updatingRouteStatusIds,
+                            onClaimStatusChange = onClaimStatusChange,
+                        )
+                    }
+
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Row(
@@ -305,6 +354,20 @@ internal fun AdminRoutesTab(
                             ),
                         ) {
                             Text("Assign", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                deleteConflict = null
+                                routeToDelete = route
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = GccError),
+                            modifier = Modifier.semantics {
+                                contentDescription = "Delete ${route.displayName}"
+                            },
+                        ) {
+                            Text("Delete", style = MaterialTheme.typography.labelMedium)
                         }
                     }
                 }
@@ -587,3 +650,119 @@ private fun Route.adminPathCoordinates(): List<Coordinates> =
 
 private fun Worker.adminWorkerLabel(currentWorkerId: Int?): String =
     if (id == currentWorkerId) "$name (me)" else name
+
+/**
+ * Claim switch for a published route (route-admin v2) — visibility and
+ * claimability are separate switches: a published route with closed claims
+ * stays visible but can't be claimed. SCHEDULED carries a server-set open
+ * time; "Open now" clears the schedule.
+ */
+@Composable
+private fun AdminRouteClaimControls(
+    route: Route,
+    isUpdating: Boolean,
+    onClaimStatusChange: (Route, ClaimStatus, (Boolean, String?) -> Unit) -> Unit,
+) {
+    // Servers predating the claim_status column return null — the migration
+    // backfills published routes to open, so null renders as OPEN.
+    val claimStatus = route.claimStatus ?: ClaimStatus.OPEN
+    val (chipLabel, chipColor) = when (claimStatus) {
+        ClaimStatus.OPEN -> "Claims open" to GccGreen
+        ClaimStatus.CLOSED -> "Claims closed" to GccClaimed
+        ClaimStatus.SCHEDULED -> "Claims scheduled" to GccSky
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        StatusChip(
+            text = chipLabel,
+            dotColor = chipColor,
+            backgroundColor = chipColor.copy(alpha = 0.15f),
+        )
+        Spacer(Modifier.weight(1f))
+        when (claimStatus) {
+            ClaimStatus.OPEN -> TextButton(
+                onClick = { onClaimStatusChange(route, ClaimStatus.CLOSED) { _, _ -> } },
+                enabled = !isUpdating,
+                modifier = Modifier.semantics { contentDescription = "Close claims for ${route.displayName}" },
+            ) {
+                Text("Close claims", style = MaterialTheme.typography.labelMedium)
+            }
+            ClaimStatus.CLOSED -> TextButton(
+                onClick = { onClaimStatusChange(route, ClaimStatus.OPEN) { _, _ -> } },
+                enabled = !isUpdating,
+                modifier = Modifier.semantics { contentDescription = "Open claims for ${route.displayName}" },
+            ) {
+                Text("Open claims", style = MaterialTheme.typography.labelMedium, color = GccGreen)
+            }
+            ClaimStatus.SCHEDULED -> TextButton(
+                onClick = { onClaimStatusChange(route, ClaimStatus.OPEN) { _, _ -> } },
+                enabled = !isUpdating,
+                modifier = Modifier.semantics { contentDescription = "Open claims now for ${route.displayName}" },
+            ) {
+                Text("Open now", style = MaterialTheme.typography.labelMedium, color = GccGreen)
+            }
+        }
+    }
+}
+
+/**
+ * Delete confirmation. When the server refuses with HTTP 409 the dialog
+ * switches to showing the conflict summary (active jobs / pending offers)
+ * instead of the confirm buttons — delete is blocked, not retried.
+ */
+@Composable
+private fun DeleteRouteDialog(
+    route: Route,
+    conflict: RouteDeleteSummary?,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Delete route", fontWeight = FontWeight.Bold) },
+        text = {
+            if (conflict != null) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "${route.displayName} can't be deleted while it has live work:",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        "\u2022 ${conflict.activeJobs} active job(s)\n\u2022 ${conflict.pendingOffers} pending offer(s)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = GccError,
+                    )
+                    Text(
+                        "Cancel or complete those first — or archive the route to hide it without deleting.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else {
+                Text(
+                    "Permanently delete ${route.displayName}? Related release-queue slots and " +
+                        "offers will be cancelled. This can't be undone.",
+                )
+            }
+        },
+        confirmButton = {
+            if (conflict == null) {
+                TextButton(
+                    onClick = onConfirm,
+                    colors = ButtonDefaults.textButtonColors(contentColor = GccError),
+                    modifier = Modifier.semantics { contentDescription = "Confirm delete ${route.displayName}" },
+                ) {
+                    Text("Delete", fontWeight = FontWeight.SemiBold)
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(if (conflict != null) "Close" else "Cancel")
+            }
+        },
+    )
+}

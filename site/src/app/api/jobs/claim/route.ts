@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server'
 import { db } from '@/db'
 import { blocks, workers, jobs } from '@/db/schema'
 import { eq, and, inArray } from 'drizzle-orm'
+import { requireMobileAuth } from '@/lib/mobile-auth'
+import { verifyToken } from '@/lib/auth'
 
 export const runtime = 'nodejs'
 
@@ -11,15 +13,37 @@ export const runtime = 'nodejs'
  *
  * Uses optimistic locking to prevent race conditions when multiple
  * workers try to claim the same block simultaneously.
+ *
+ * Auth: the worker is ALWAYS the authenticated caller — Bearer mobile JWT
+ * (same helper as /api/jobs/[id]/claim) or the web `worker-token` cookie
+ * (same pattern as /api/workers/me). A `workerId` in the body is ignored
+ * (kept in the accepted shape only for older clients).
  */
+async function authenticatedWorkerId(request: NextRequest): Promise<number | null> {
+  const mobile = await requireMobileAuth(request)
+  if (mobile) return mobile.workerId
+
+  // Web dashboard fallback (cookie session).
+  const token = request.cookies.get('worker-token')?.value
+  if (!token) return null
+  const payload = await verifyToken(token)
+  if (!payload || payload.type !== 'worker') return null
+  return payload.id
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { blockId, workerId } = body
+    const workerId = await authenticatedWorkerId(request)
+    if (!workerId) {
+      return Response.json({ message: 'Not authenticated' }, { status: 401 })
+    }
 
-    if (!blockId || !workerId) {
+    const body = await request.json()
+    const { blockId } = body
+
+    if (!blockId) {
       return Response.json(
-        { message: 'Block ID and Worker ID are required' },
+        { message: 'Block ID is required' },
         { status: 400 }
       )
     }
@@ -28,7 +52,7 @@ export async function POST(request: NextRequest) {
     const [worker] = await db
       .select()
       .from(workers)
-      .where(eq(workers.id, Number(workerId)))
+      .where(eq(workers.id, workerId))
       .limit(1)
 
     if (!worker) {
@@ -48,7 +72,7 @@ export async function POST(request: NextRequest) {
       .from(jobs)
       .where(
         and(
-          eq(jobs.workerId, Number(workerId)),
+          eq(jobs.workerId, workerId),
           inArray(jobs.status, ['claimed', 'in_progress', 'pending_review'])
         )
       )
@@ -92,7 +116,7 @@ export async function POST(request: NextRequest) {
       .insert(jobs)
       .values({
         blockId: Number(blockId),
-        workerId: Number(workerId),
+        workerId,
         status: 'claimed',
         claimedAt: new Date().toISOString(),
         payoutAmount: block.fundingGoal || '10000',

@@ -15,6 +15,7 @@ import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.AdminPanelViewModel
 import com.gcc.app.viewmodel.AdminTab
 import com.gcc.shared.auth.TokenManager
+import com.gcc.shared.model.ClaimStatus
 import org.koin.compose.koinInject
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -48,6 +49,14 @@ fun AdminPanelScreen(
         if (message != null) {
             snackbarHostState.showSnackbar(message)
             viewModel.clearRouteStatusFeedback()
+        }
+    }
+
+    LaunchedEffect(uiState.releaseQueueNotice) {
+        val message = uiState.releaseQueueNotice
+        if (message != null) {
+            snackbarHostState.showSnackbar(message)
+            viewModel.clearReleaseQueueFeedback()
         }
     }
 
@@ -167,6 +176,34 @@ fun AdminPanelScreen(
                             routeStatusActionError = uiState.routeStatusActionError,
                             onCreateRoute = viewModel::createRoute,
                             onAssignRoute = viewModel::assignRouteToWorker,
+                            onClaimStatusChange = { route, claimStatus, onResult ->
+                                val copy = when (claimStatus) {
+                                    ClaimStatus.OPEN -> "${route.displayName} is open for claims."
+                                    ClaimStatus.CLOSED -> "${route.displayName} claims closed — visible but not claimable."
+                                    ClaimStatus.SCHEDULED -> "${route.displayName} claims scheduled."
+                                }
+                                viewModel.updateRouteClaimStatus(
+                                    routeId = route.id,
+                                    claimStatus = claimStatus,
+                                    successNotice = copy,
+                                    onResult = onResult,
+                                )
+                            },
+                            onDeleteRoute = { route, onResult ->
+                                viewModel.deleteRoute(route.id, onResult)
+                            },
+                        )
+                        AdminTab.RELEASE_QUEUE -> AdminReleaseQueueTab(
+                            batches = uiState.releaseBatches,
+                            selectedBatchId = uiState.selectedReleaseBatchId,
+                            detail = uiState.releaseBatchDetail,
+                            isDetailLoading = uiState.isReleaseBatchDetailLoading,
+                            actionError = uiState.releaseQueueActionError,
+                            onOpenBatch = viewModel::openReleaseBatch,
+                            onCloseBatch = viewModel::closeReleaseBatch,
+                            onMoveRoute = viewModel::moveReleaseRoute,
+                            onCancelBatch = viewModel::cancelReleaseBatch,
+                            onDismissError = viewModel::clearReleaseQueueFeedback,
                         )
                         AdminTab.BOUNTIES -> AdminBountiesTab(
                             bounties = uiState.bounties,

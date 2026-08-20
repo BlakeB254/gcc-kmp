@@ -31,6 +31,15 @@ data class Route(
      */
     val blockId: Int? = null,
     val status: RouteStatus = RouteStatus.DRAFT,
+    /**
+     * Claim visibility switch (route-admin v2) — null on servers that predate
+     * the claim_status column; treat null as "server default" (published = open).
+     */
+    val claimStatus: ClaimStatus? = null,
+    /** Scheduled publish time (route-admin v2); null = immediate/none. */
+    val publishAt: Instant? = null,
+    /** Scheduled unpublish time (route-admin v2); null = none. */
+    val unpublishAt: Instant? = null,
     val distanceMeters: Double? = null,
     val estimatedDurationMinutes: Int? = null,
     val payoutAmount: Int? = null,

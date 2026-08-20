@@ -19,6 +19,7 @@ enum class AdminTab(val label: String, val icon: String) {
     OVERVIEW("Overview", "\uD83D\uDCCA"),
     WORKERS("Workers", "\uD83D\uDC77"),
     ROUTES("Routes", "\uD83D\uDDFA"),
+    RELEASE_QUEUE("Release Queue", "\uD83D\uDEA6"),
     BOUNTIES("Bounties", "\uD83C\uDFAF"),
     SPOTS("Spots", "\uD83D\uDCCD"),
     PAYOUTS("Payouts", "\uD83D\uDCB0"),
@@ -57,6 +58,13 @@ data class AdminPanelUiState(
     val recentPayouts: List<AdminPayout> = emptyList(),
     val blockProposals: List<BlockProposal> = emptyList(),
     val blockProposalActionError: String? = null,
+    // Release queue (route-admin v2): batch list + open batch detail
+    val releaseBatches: List<AdminReleaseBatchDto> = emptyList(),
+    val selectedReleaseBatchId: Int? = null,
+    val releaseBatchDetail: AdminReleaseBatchDetailDto? = null,
+    val isReleaseBatchDetailLoading: Boolean = false,
+    val releaseQueueNotice: String? = null,
+    val releaseQueueActionError: String? = null,
 )
 
 class AdminPanelViewModel(
@@ -170,6 +178,12 @@ class AdminPanelViewModel(
                         val routes = apiClient.getAdminRoutes()
                         _uiState.update { it.applyRoutesRefresh(routes) }
                     }
+                    AdminTab.RELEASE_QUEUE -> {
+                        val batches = apiClient.listReleaseBatches()
+                        _uiState.update { it.copy(releaseBatches = batches) }
+                        // Keep an open batch detail fresh on pull-to-refresh
+                        _uiState.value.selectedReleaseBatchId?.let { loadReleaseBatchDetail(it) }
+                    }
                     AdminTab.BOUNTIES -> {
                         // Bounties table may not exist in production — gracefully degrade
                         val bounties = try { apiClient.getAdminBounties() } catch (_: Exception) { emptyList() }
@@ -233,7 +247,15 @@ class AdminPanelViewModel(
 
         scope.launch {
             val updateResult = try {
-                Result.success(apiClient.updateRouteStatus(routeId, newStatus))
+                // Route-admin v2 verbs — explicit endpoints instead of the
+                // overloaded PUT (keeps the mobile client dumb).
+                Result.success(
+                    when (newStatus) {
+                        RouteStatus.PUBLISHED -> apiClient.publishRoute(routeId)
+                        RouteStatus.DRAFT -> apiClient.unpublishRoute(routeId)
+                        RouteStatus.ARCHIVED -> apiClient.archiveRoute(routeId)
+                    },
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -263,6 +285,47 @@ class AdminPanelViewModel(
 
     fun clearRouteStatusFeedback() {
         _uiState.update { it.copy(routeStatusNotice = null, routeStatusActionError = null) }
+    }
+
+    /**
+     * Flip a route's claim switch (route-admin v2) — open/closed, independent
+     * of publish visibility. Mirrors [updateRouteStatus]'s loading/feedback
+     * machinery; the server returns the updated route.
+     */
+    fun updateRouteClaimStatus(
+        routeId: Int,
+        claimStatus: ClaimStatus,
+        successNotice: String,
+        onResult: (success: Boolean, error: String?) -> Unit = { _, _ -> },
+    ) {
+        while (true) {
+            val current = _uiState.value
+            val started = current.startRouteStatusUpdate(routeId) ?: return
+            if (_uiState.compareAndSet(current, started)) break
+        }
+
+        scope.launch {
+            val updateResult = try {
+                Result.success(apiClient.setRouteClaimStatus(routeId, claimStatus))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+
+            val callbackResult = updateResult.fold(
+                onSuccess = { updated ->
+                    _uiState.update { it.completeRouteStatusUpdate(routeId, updated, successNotice) }
+                    true to null
+                },
+                onFailure = { error ->
+                    val message = error.message ?: "Failed to update claim status"
+                    _uiState.update { it.failRouteStatusUpdate(routeId, message) }
+                    false to message
+                },
+            )
+            onResult(callbackResult.first, callbackResult.second)
+        }
     }
 
     fun updateRouteImage(routeId: Int, photoBytes: ByteArray) {
@@ -623,17 +686,135 @@ class AdminPanelViewModel(
         }
     }
 
-    fun deleteRoute(routeId: Int, onDeleted: () -> Unit) {
+    /**
+     * Delete a route. A 409 refusal (active jobs / pending offers) comes back
+     * as [RouteDeleteResult.Conflict] via [onResult] so the caller can render
+     * the server's summary — it is not treated as an error.
+     */
+    fun deleteRoute(routeId: Int, onResult: (result: RouteDeleteResult?, error: String?) -> Unit) {
         scope.launch {
             try {
-                apiClient.deleteRoute(routeId)
-                _uiState.update { it.copy(routes = it.routes.filter { route -> route.id != routeId }) }
-                invalidateTab(AdminTab.OVERVIEW)
-                onDeleted()
+                when (val result = apiClient.deleteRoute(routeId)) {
+                    is RouteDeleteResult.Deleted -> {
+                        _uiState.update { it.copy(routes = it.routes.filter { route -> route.id != routeId }) }
+                        invalidateTab(AdminTab.OVERVIEW)
+                        onResult(result, null)
+                    }
+                    is RouteDeleteResult.Conflict -> onResult(result, null)
+                }
             } catch (e: Exception) {
+                val msg = e.message ?: "Failed to delete route"
                 _uiState.update { it.copy(error = "Failed to delete route: ${e.message}") }
+                onResult(null, msg)
             }
         }
+    }
+
+    // ── Release Queue (route-admin v2) ───────────────────────────────────────
+    // Server is the source of truth: every mutation refetches the batch list
+    // and (when open) the batch detail — no optimistic local copies.
+
+    fun openReleaseBatch(batchId: Int) {
+        _uiState.update { it.copy(selectedReleaseBatchId = batchId, releaseBatchDetail = null) }
+        loadReleaseBatchDetail(batchId)
+    }
+
+    fun closeReleaseBatch() {
+        _uiState.update { it.copy(selectedReleaseBatchId = null, releaseBatchDetail = null) }
+    }
+
+    private fun loadReleaseBatchDetail(batchId: Int) {
+        scope.launch {
+            _uiState.update { it.copy(isReleaseBatchDetailLoading = true, releaseQueueActionError = null) }
+            try {
+                val detail = apiClient.getReleaseBatchDetail(batchId)
+                _uiState.update { it.copy(releaseBatchDetail = detail) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(releaseQueueActionError = e.message ?: "Failed to load batch") }
+            }
+            _uiState.update { it.copy(isReleaseBatchDetailLoading = false) }
+        }
+    }
+
+    /** Refetch list + open detail after a mutation. */
+    private fun refetchReleaseQueue() {
+        scope.launch {
+            try {
+                val batches = apiClient.listReleaseBatches()
+                _uiState.update { it.copy(releaseBatches = batches) }
+            } catch (_: Exception) {
+                // The next pull-to-refresh retries; a mutation's own error
+                // path already surfaced what failed.
+            }
+        }
+        _uiState.value.selectedReleaseBatchId?.let { loadReleaseBatchDetail(it) }
+    }
+
+    fun updateReleaseBatch(
+        batchId: Int,
+        name: String?,
+        releaseAt: kotlinx.datetime.Instant?,
+        onResult: (success: Boolean, error: String?) -> Unit = { _, _ -> },
+    ) {
+        scope.launch {
+            _uiState.update { it.copy(releaseQueueActionError = null) }
+            try {
+                apiClient.updateReleaseBatch(batchId, UpdateReleaseBatchRequest(name = name, releaseAt = releaseAt))
+                _uiState.update { it.copy(releaseQueueNotice = "Batch updated") }
+                refetchReleaseQueue()
+                onResult(true, null)
+            } catch (e: Exception) {
+                val msg = e.message ?: "Failed to update batch"
+                _uiState.update { it.copy(releaseQueueActionError = msg) }
+                onResult(false, msg)
+            }
+        }
+    }
+
+    fun cancelReleaseBatch(batchId: Int, onResult: (success: Boolean, error: String?) -> Unit = { _, _ -> }) {
+        scope.launch {
+            _uiState.update { it.copy(releaseQueueActionError = null) }
+            try {
+                apiClient.cancelReleaseBatch(batchId)
+                _uiState.update { it.copy(releaseQueueNotice = "Batch cancelled — open slots and pending offers cancelled") }
+                refetchReleaseQueue()
+                onResult(true, null)
+            } catch (e: Exception) {
+                val msg = e.message ?: "Failed to cancel batch"
+                _uiState.update { it.copy(releaseQueueActionError = msg) }
+                onResult(false, msg)
+            }
+        }
+    }
+
+    /**
+     * Move one route slot up ([delta] = -1) or down (+1) in the release
+     * queue, then PUT the full new order. The detail is refetched from the
+     * server afterwards — no local position bookkeeping.
+     */
+    fun moveReleaseRoute(batchId: Int, releaseRouteId: Int, delta: Int) {
+        val routes = _uiState.value.releaseBatchDetail?.routes
+            ?.sortedBy { it.position } ?: return
+        val index = routes.indexOfFirst { it.id == releaseRouteId }
+        val target = index + delta
+        if (index < 0 || target !in routes.indices) return
+        val newOrder = routes.map { it.routeId }.toMutableList().apply {
+            val moved = removeAt(index)
+            add(target, moved)
+        }
+        scope.launch {
+            _uiState.update { it.copy(releaseQueueActionError = null) }
+            try {
+                apiClient.reorderReleaseRoutes(batchId, newOrder)
+                loadReleaseBatchDetail(batchId)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(releaseQueueActionError = e.message ?: "Failed to reorder routes") }
+            }
+        }
+    }
+
+    fun clearReleaseQueueFeedback() {
+        _uiState.update { it.copy(releaseQueueNotice = null, releaseQueueActionError = null) }
     }
 
     fun assignRouteToWorker(routeId: Int, workerId: Int, isTest: Boolean, onResult: (Boolean) -> Unit) {
