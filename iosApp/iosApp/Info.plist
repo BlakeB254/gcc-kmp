@@ -19,7 +19,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.8</string>
+	<string>1.0.9</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -38,7 +38,7 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>181</string>
+	<string>182</string>
 	<key>GIDClientID</key>
 	<string>674514823110-mebr2cehucmac7u4dorkeh4alm2hs80g.apps.googleusercontent.com</string>
 	<key>ITSAppUsesNonExemptEncryption</key>

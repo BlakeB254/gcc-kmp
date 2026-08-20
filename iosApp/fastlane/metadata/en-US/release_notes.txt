@@ -1,3 +1,8 @@
+• Build 182 (v1.0.9): New cinematic splash intro with tap-to-skip, plus a first-launch welcome carousel that shows how cleaning a block earns you money.
+• First-block tutorial: step-by-step guidance on your first assigned block, from claiming to scan-verified clean.
+• Smoother scan flow: clearer progress, fewer dead ends, and better recovery when a scan is interrupted.
+• Litter identification upgrades: on-device litter classifier improvements and more reliable AR trash anchoring.
+• Bug fixes and stability improvements across the map, job flow, and uploads.
 • Build 181: Live guidance helps capture reconstruction-ready camera motion, tracking, and LiDAR depth without interrupting scans.
 • Faster scan completion: the local summary opens immediately while report and capture uploads continue behind it.
 • Durable evidence: completion photos are saved on the iPhone first, retain stable scan/GPS links while offline, and retry through iOS Background App Refresh.
