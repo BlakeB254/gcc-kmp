@@ -117,8 +117,8 @@ fun Application.module(config: Config) {
                 try {
                     val result = withContext(Dispatchers.IO) { retention.runOnce() }
                     log.info(
-                        "verification-retention sweep: {} scanned, {} expired ({} referenced), {} deleted, {} tombstoned, dryRun={} ({}ms)",
-                        result.scanned, result.expired, result.expiredReferenced,
+                        "verification-retention sweep: {} scanned, {} expired ({} referenced, {} protected by review flow), {} deleted, {} tombstoned, dryRun={} ({}ms)",
+                        result.scanned, result.expired, result.expiredReferenced, result.skippedPendingReview,
                         result.deleted, result.tombstoned, result.dryRun, result.durationMs,
                     )
                 } catch (e: CancellationException) {

@@ -23,6 +23,12 @@ import javax.sql.DataSource
  * If the delete fails after the tombstone, the blob becomes unreferenced and
  * the next sweep finds and removes it — no stuck half-state.
  *
+ * Review-flow guard: a key is NEVER purged while its worker is still in the
+ * verification loop — overall `verification_status` in (pending, needs_info)
+ * or either per-document status in (pending, resubmit). A key whose worker id
+ * no longer resolves to a workers row cannot be in any review flow and is
+ * purgeable.
+ *
  * Idempotent and safe to run on a schedule.
  */
 class VerificationPhotoRetention(
@@ -39,6 +45,7 @@ class VerificationPhotoRetention(
         val retentionDays: Long,
         val scanned: Int,
         val expired: Int,
+        val skippedPendingReview: Int,
         val expiredReferenced: Int,
         val deleted: Int,
         val tombstoned: Int,
@@ -52,14 +59,20 @@ class VerificationPhotoRetention(
 
         val expired = objects.filter { it.value.lastModifiedEpochMs in 1 until cutoffMs }
         if (expired.isEmpty()) {
-            return Result(dryRun, retentionDays, objects.size, 0, 0, 0, 0, System.currentTimeMillis() - start)
+            return Result(dryRun, retentionDays, objects.size, 0, 0, 0, 0, 0, System.currentTimeMillis() - start)
         }
 
-        val referencedKeys = findReferencedKeys(expired.keys)
+        val protectedKeys = findReviewProtectedKeys(expired.keys)
+        val purgeable = expired.keys - protectedKeys
+        if (protectedKeys.isNotEmpty()) {
+            log.info("skipping {} expired object(s) still in the verification review flow", protectedKeys.size)
+        }
+
+        val referencedKeys = findReferencedKeys(purgeable)
         var deleted = 0
         var tombstoned = 0
 
-        for ((key, _) in expired) {
+        for (key in purgeable) {
             if (dryRun) {
                 log.info("dry-run: would purge {} (referenced={})", key, key in referencedKeys)
                 continue
@@ -79,9 +92,41 @@ class VerificationPhotoRetention(
         }
 
         return Result(
-            dryRun, retentionDays, objects.size, expired.size, referencedKeys.size,
-            deleted, tombstoned, System.currentTimeMillis() - start,
+            dryRun, retentionDays, objects.size, expired.size, protectedKeys.size,
+            referencedKeys.size, deleted, tombstoned, System.currentTimeMillis() - start,
         )
+    }
+
+    /**
+     * Keys whose worker is still inside the verification review loop. The
+     * worker id is the second path segment (`verification/{workerId}/…`);
+     * keys that don't parse or whose worker row is gone cannot be in a
+     * review flow, so they are NOT protected.
+     */
+    private fun findReviewProtectedKeys(keys: Set<String>): Set<String> {
+        val byWorker = keys.mapNotNull { key ->
+            WORKER_KEY_PATTERN.find(key)?.let { it.groupValues[1].toInt() to key }
+        }.groupBy({ it.first }, { it.second })
+        if (byWorker.isEmpty()) return emptySet()
+
+        val protectedWorkers = HashSet<Int>()
+        dataSource.connection.use { conn ->
+            conn.prepareStatement(
+                """
+                SELECT id FROM workers
+                WHERE id = ANY(?)
+                  AND (verification_status IN ('pending', 'needs_info')
+                       OR verification_government_id_status IN ('pending', 'resubmit')
+                       OR verification_proof_of_address_status IN ('pending', 'resubmit'))
+                """.trimIndent()
+            ).use { ps ->
+                ps.setArray(1, conn.createArrayOf("integer", byWorker.keys.toTypedArray()))
+                ps.executeQuery().use { rs ->
+                    while (rs.next()) protectedWorkers.add(rs.getInt(1))
+                }
+            }
+        }
+        return byWorker.filterKeys { it in protectedWorkers }.values.flatten().toSet()
     }
 
     /** Which of [keys] are still referenced by a `media.url` row. */
@@ -113,5 +158,6 @@ class VerificationPhotoRetention(
     companion object {
         const val PREFIX = "verification/"
         const val TOMBSTONE_PREFIX = "purged:"
+        private val WORKER_KEY_PATTERN = Regex("""^verification/(\d+)/""")
     }
 }
