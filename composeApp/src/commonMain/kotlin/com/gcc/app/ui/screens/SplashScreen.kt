@@ -55,15 +55,22 @@ import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-// ── Timeline thresholds (5 phases, 12 seconds total) ──
-private const val PHASE1_END = 0.167f         // 0–2.0s    NL close-up
-private const val PHASE2_START = 0.167f       // 2.0s
-private const val PHASE2_END = 0.375f         // 4.5s      Chicago zoom-out
-private const val PHASE3_START = 0.375f       // 4.5s
-private const val PHASE3_END = 0.667f         // 8.0s      Continental US + green spread
-private const val PHASE4_START = 0.667f       // 8.0s
-private const val PHASE4_END = 0.833f         // 10.0s     Globe crossfade
-private const val PHASE5_START = 0.833f       // 10.0s     Logo reveal
+// ── Timeline thresholds (12 seconds total, overlapping crossfade windows) ──
+// The four map phases overlap by FADE so each boundary is a crossfade, and
+// every layer runs a scale settle (1.10x -> 1.0x) across its window — the
+// combined read is one continuous pull-back:
+//   neighborhood -> city -> state -> country -> world.
+private const val PHASE1_END = 0.15f          // 0–1.8s      North Lawndale close-up
+private const val PHASE2_START = 0.13f        // 1.56s
+private const val PHASE2_END = 0.31f          // 3.72s       Chicago zoom-out (city)
+private const val PHASE3_START = 0.29f        // 3.48s
+private const val PHASE3_END = 0.47f          // 5.64s       Illinois (state)
+private const val PHASE4_START = 0.45f        // 5.4s
+private const val PHASE4_END = 0.68f          // 8.16s       Continental US (country)
+private const val PHASE5_START = 0.66f        // 7.92s       Globe crossfade (world)
+private const val PHASE5_END = 0.84f        // 10.08s
+private const val PHASE6_START = 0.84f        // 10.08s      Logo reveal
+private const val PHASE_FADE = 0.025f         // ~300ms crossfade between map phases
 
 // ── Colors ──
 private val GreyBase = Color(0xFF4A4A4A)
@@ -105,9 +112,9 @@ fun SplashScreen(onFinished: () -> Unit, shortMode: Boolean = false) {
     }
 
     // Short mode (returning users) starts the master timeline at the logo
-    // phase; the phase branches below key off `progress`, so phases 1–4 are
+    // phase; the phase branches below key off `progress`, so phases 1–5 are
     // skipped cleanly with no special-case drawing code.
-    val masterProgress = remember { Animatable(if (shortMode) PHASE5_START else 0f) }
+    val masterProgress = remember { Animatable(if (shortMode) PHASE6_START else 0f) }
     val splashAlpha = remember { Animatable(1f) }
     var skipped by remember { mutableStateOf(false) }
 
@@ -138,7 +145,7 @@ fun SplashScreen(onFinished: () -> Unit, shortMode: Boolean = false) {
 
     // Master animation: 0 -> 1 over 12 seconds (waits for GeoJSON and for the
     // video slot to resolve to fallback; short mode runs only the final
-    // ~1.5s logo phase from PHASE5_START).
+    // ~1.9s logo phase from PHASE6_START).
     LaunchedEffect(geoData, videoOutcome) {
         if (geoData == null) return@LaunchedEffect
         if (videoOutcome != false) return@LaunchedEffect
@@ -202,12 +209,15 @@ fun SplashScreen(onFinished: () -> Unit, shortMode: Boolean = false) {
         }?.sortedBy { it.second }
     }
 
-    // Logo scale for phase 5 spring bounce
+    // Illinois boundary for the state phase (from the US states GeoJSON)
+    val illinois = remember(geoData) { geoData?.usStates?.find { it.name == "Illinois" } }
+
+    // Logo scale for phase 6 spring bounce
     val logoScale = remember { Animatable(0f) }
     val progress = masterProgress.value
 
     LaunchedEffect(progress) {
-        if (progress >= PHASE5_START && logoScale.value == 0f) {
+        if (progress >= PHASE6_START && logoScale.value == 0f) {
             logoScale.animateTo(
                 targetValue = 1f,
                 animationSpec = spring(
@@ -247,83 +257,134 @@ fun SplashScreen(onFinished: () -> Unit, shortMode: Boolean = false) {
         // (or short mode, which never attempts video) — otherwise the opaque
         // Canvas background and phase labels would cover the video surface.
         if (videoOutcome == false) {
-        // ── Canvas layer: Background + Phases 1-3 + transition effects ──
+        // ── Background layer: always; globe glow + particles during phase 5 ──
         Canvas(modifier = Modifier.fillMaxSize()) {
             val w = size.width
             val h = size.height
             val p = progress
 
-            // Background always
             drawRect(SplashBackground)
 
-            val geo = geoData ?: return@Canvas
-
-            when {
-                // ── Phase 1: North Lawndale Close-Up (0 - 0.1875) ──
-                p < PHASE1_END -> {
-                    val phase1Progress = p / PHASE1_END
-                    val nl = geo.northLawndale ?: return@Canvas
-                    drawPhase1NorthLawndale(phase1Progress, w, h, nl)
-                }
-
-                // ── Phase 2: Chicago Zoom-Out (0.1875 - 0.4375) ──
-                p < PHASE2_END -> {
-                    val phase2Progress = (p - PHASE2_START) / (PHASE2_END - PHASE2_START)
-                    drawPhase2Chicago(phase2Progress, w, h, geo, sortedAreas)
-                }
-
-                // ── Phase 3: Continental US + green spread (0.375 - 0.667) ──
-                p < PHASE3_END -> {
-                    val phase3Progress = (p - PHASE3_START) / (PHASE3_END - PHASE3_START)
-                    drawPhase3US(phase3Progress, w, h, geo, sortedStates)
-                }
-
-                // ── Phase 4+: Radial green glow behind globe ──
-                else -> {
-                    val glowProgress = ((p - PHASE4_START) / 0.1f).coerceIn(0f, 1f)
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                GlowGreen.copy(alpha = 0.15f * glowProgress),
-                                GlowGreen.copy(alpha = 0.05f * glowProgress),
-                                Color.Transparent,
-                            ),
-                            center = Offset(w / 2f, h * 0.40f),
-                            radius = w * 0.6f,
+            // Radial green glow behind the globe (phases 5+)
+            if (p >= PHASE5_START) {
+                val glowProgress = ((p - PHASE5_START) / 0.1f).coerceIn(0f, 1f)
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            GlowGreen.copy(alpha = 0.15f * glowProgress),
+                            GlowGreen.copy(alpha = 0.05f * glowProgress),
+                            Color.Transparent,
                         ),
-                        radius = w * 0.6f,
                         center = Offset(w / 2f, h * 0.40f),
-                    )
-                }
+                        radius = w * 0.6f,
+                    ),
+                    radius = w * 0.6f,
+                    center = Offset(w / 2f, h * 0.40f),
+                )
             }
 
-            // Particle-like green dots floating outward during phase 4 transition
-            if (p in PHASE4_START..PHASE4_END) {
-                val particleProgress = (p - PHASE4_START) / (PHASE4_END - PHASE4_START)
+            // Particle-like green dots floating outward during the globe transition
+            if (p in PHASE5_START..PHASE5_END) {
+                val particleProgress = (p - PHASE5_START) / (PHASE5_END - PHASE5_START)
                 drawTransitionParticles(particleProgress, w, h)
             }
         }
 
-        // ── Lottie Globe layer (phases 4-5) ──
+        // ── Map phase layers (phases 1–4): each phase renders in its own
+        // Canvas so the crossfade + scale-settle compositing comes from
+        // graphicsLayer rather than hand-mixed color math inside the draw
+        // functions. The settle (1.10x -> 1.0x, ease-out) is what makes the
+        // sequence read as one continuous camera pull-back. ──
+        val geo = geoData
+        if (geo != null && progress < PHASE5_START) {
+
+            // Phase 1: North Lawndale close-up (neighborhood)
+            mapPhaseLayer(progress, 0f, PHASE1_END) { local, alpha, scale ->
+                val nl = geo.northLawndale
+                if (nl != null) {
+                    Canvas(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                this.alpha = alpha
+                                scaleX = scale
+                                scaleY = scale
+                            },
+                    ) {
+                        drawPhase1NorthLawndale(local, size.width, size.height, nl)
+                    }
+                }
+            }
+
+            // Phase 2: Chicago zoom-out (city)
+            mapPhaseLayer(progress, PHASE2_START, PHASE2_END) { local, alpha, scale ->
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            this.alpha = alpha
+                            scaleX = scale
+                            scaleY = scale
+                        },
+                ) {
+                    drawPhase2Chicago(local, size.width, size.height, geo, sortedAreas)
+                }
+            }
+
+            // Phase 3: Illinois (state)
+            mapPhaseLayer(progress, PHASE3_START, PHASE3_END) { local, alpha, scale ->
+                val il = illinois
+                if (il != null) {
+                    Canvas(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                this.alpha = alpha
+                                scaleX = scale
+                                scaleY = scale
+                            },
+                    ) {
+                        drawPhaseIllinois(local, size.width, size.height, il)
+                    }
+                }
+            }
+
+            // Phase 4: Continental US + green spread (country)
+            mapPhaseLayer(progress, PHASE4_START, PHASE4_END) { local, alpha, scale ->
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            this.alpha = alpha
+                            scaleX = scale
+                            scaleY = scale
+                        },
+                ) {
+                    drawPhase3US(local, size.width, size.height, geo, sortedStates)
+                }
+            }
+        }
+
+        // ── Lottie Globe layer (phases 5-6) ──
         val globeAlpha = when {
-            progress < PHASE4_START -> 0f
-            progress < PHASE4_START + 0.0625f -> // fade in over ~500ms
-                ((progress - PHASE4_START) / 0.0625f).coerceIn(0f, 1f)
+            progress < PHASE5_START -> 0f
+            progress < PHASE5_START + 0.0625f -> // fade in over ~750ms
+                ((progress - PHASE5_START) / 0.0625f).coerceIn(0f, 1f)
             else -> 1f
         }
 
-        // Globe size transitions: larger during phase 4, shrinks for logo in phase 5
+        // Globe size transitions: larger during phase 5, shrinks for logo in phase 6
         val globeSizeDp = when {
-            progress < PHASE5_START -> 280.dp
+            progress < PHASE6_START -> 280.dp
             else -> {
-                val shrink = ((progress - PHASE5_START) / (1f - PHASE5_START)).coerceIn(0f, 1f)
+                val shrink = ((progress - PHASE6_START) / (1f - PHASE6_START)).coerceIn(0f, 1f)
                 (280 - (shrink * 80).toInt()).dp // 280dp -> 200dp
             }
         }
         val globeOffsetY = when {
-            progress < PHASE5_START -> (-20).dp
+            progress < PHASE6_START -> (-20).dp
             else -> {
-                val shift = ((progress - PHASE5_START) / (1f - PHASE5_START)).coerceIn(0f, 1f)
+                val shift = ((progress - PHASE6_START) / (1f - PHASE6_START)).coerceIn(0f, 1f)
                 ((-20) - (shift * 50).toInt()).dp // moves up for logo
             }
         }
@@ -345,7 +406,7 @@ fun SplashScreen(onFinished: () -> Unit, shortMode: Boolean = false) {
         }
 
         // ── Phase labels ──
-        // Phase 1 label: "North Lawndale, Chicago"
+        // Phase 1 label: "North Lawndale" (neighborhood)
         if (progress < PHASE1_END && geoData != null) {
             val phase1Progress = progress / PHASE1_END
             val labelAlpha = when {
@@ -355,7 +416,7 @@ fun SplashScreen(onFinished: () -> Unit, shortMode: Boolean = false) {
             }.coerceIn(0f, 1f)
 
             Text(
-                text = "North Lawndale, Chicago",
+                text = "North Lawndale",
                 style = TextStyle(
                     color = Color.White.copy(alpha = labelAlpha),
                     fontSize = 17.sp,
@@ -368,7 +429,7 @@ fun SplashScreen(onFinished: () -> Unit, shortMode: Boolean = false) {
             )
         }
 
-        // Phase 2 label: "Chicago, IL"
+        // Phase 2 label: "Chicago" (city)
         if (progress in PHASE2_START..PHASE2_END && geoData != null) {
             val phase2Progress = (progress - PHASE2_START) / (PHASE2_END - PHASE2_START)
             val labelAlpha = when {
@@ -378,7 +439,7 @@ fun SplashScreen(onFinished: () -> Unit, shortMode: Boolean = false) {
             }.coerceIn(0f, 1f)
 
             Text(
-                text = "Chicago, IL",
+                text = "Chicago",
                 style = TextStyle(
                     color = Color.White.copy(alpha = labelAlpha),
                     fontSize = 18.sp,
@@ -391,12 +452,35 @@ fun SplashScreen(onFinished: () -> Unit, shortMode: Boolean = false) {
             )
         }
 
-        // Phase 3 label: "United States"
+        // Phase 3 label: "Illinois" (state)
         if (progress in PHASE3_START..PHASE3_END && geoData != null) {
             val phase3Progress = (progress - PHASE3_START) / (PHASE3_END - PHASE3_START)
             val labelAlpha = when {
-                phase3Progress < 0.3f -> phase3Progress / 0.3f
+                phase3Progress < 0.2f -> phase3Progress / 0.2f
                 phase3Progress > 0.9f -> (1f - phase3Progress) / 0.1f
+                else -> 1f
+            }.coerceIn(0f, 1f)
+
+            Text(
+                text = "Illinois",
+                style = TextStyle(
+                    color = Color.White.copy(alpha = labelAlpha),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 1.sp,
+                ),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .offset(y = (-60).dp),
+            )
+        }
+
+        // Phase 4 label: "United States" (country)
+        if (progress in PHASE4_START..PHASE4_END && geoData != null) {
+            val phase4Progress = (progress - PHASE4_START) / (PHASE4_END - PHASE4_START)
+            val labelAlpha = when {
+                phase4Progress < 0.3f -> phase4Progress / 0.3f
+                phase4Progress > 0.9f -> (1f - phase4Progress) / 0.1f
                 else -> 1f
             }.coerceIn(0f, 1f)
 
@@ -414,10 +498,10 @@ fun SplashScreen(onFinished: () -> Unit, shortMode: Boolean = false) {
             )
         }
 
-        // ── Logo + Text overlay (phase 5) ──
-        if (progress >= PHASE5_START) {
-            val phase5Progress = ((progress - PHASE5_START) / (1f - PHASE5_START)).coerceIn(0f, 1f)
-            val textAlpha = ((phase5Progress - 0.3f) / 0.5f).coerceIn(0f, 1f)
+        // ── Logo + Text overlay (phase 6) ──
+        if (progress >= PHASE6_START) {
+            val phase6Progress = ((progress - PHASE6_START) / (1f - PHASE6_START)).coerceIn(0f, 1f)
+            val textAlpha = ((phase6Progress - 0.3f) / 0.5f).coerceIn(0f, 1f)
 
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -802,6 +886,131 @@ private fun DrawScope.drawPhase3US(
         radius = glowRadius * 0.4f,
         center = chicagoPos,
     )
+}
+
+// ── Map phase layer compositing ──
+// Emits [content] only while [progress] is inside [start, end], with a
+// PHASE_FADE crossfade at both edges and an ease-out scale settle
+// (1.10x -> 1.0x) across the window — the settle is what chains the four
+// maps into one continuous city -> state -> country -> world pull-back.
+@Composable
+private fun mapPhaseLayer(
+    progress: Float,
+    start: Float,
+    end: Float,
+    content: @Composable (local: Float, alpha: Float, scale: Float) -> Unit,
+) {
+    if (progress < start || progress > end) return
+    val alpha = minOf(
+        (progress - start) / PHASE_FADE,
+        (end - progress) / PHASE_FADE,
+        1f,
+    ).coerceIn(0f, 1f)
+    val local = ((progress - start) / (end - start)).coerceIn(0f, 1f)
+    val settle = 1f - (1f - local).let { it * it * it } // ease-out cubic
+    content(local, alpha, 1.10f - 0.10f * settle)
+}
+
+// ── Phase 3: Illinois (state) — sweep-to-green + Chicago origin dot ──
+private fun DrawScope.drawPhaseIllinois(
+    progress: Float,
+    w: Float,
+    h: Float,
+    illinois: SplashPolygon,
+) {
+    val rings = illinois.rings
+    if (rings.isEmpty()) return
+
+    // Bounding box across every ring (Illinois is one landmass, but stay general)
+    val allPoints = rings.flatten()
+    val minLat = allPoints.minOf { it.first }
+    val maxLat = allPoints.maxOf { it.first }
+    val minLng = allPoints.minOf { it.second }
+    val maxLng = allPoints.maxOf { it.second }
+    val latRange = maxLat - minLat
+    val lngRange = maxLng - minLng
+
+    // Map to ~65% screen height, centered, maintaining aspect ratio
+    val mapH = h * 0.65f
+    val mapW = (mapH * (lngRange / latRange)).toFloat()
+    val actualMapW = if (mapW > w * 0.85f) w * 0.85f else mapW
+    val actualMapH = if (mapW > w * 0.85f) (actualMapW * (latRange / lngRange)).toFloat() else mapH
+    val offX = (w - actualMapW) / 2f
+    val offY = (h - actualMapH) / 2f
+
+    fun toCanvas(lat: Double, lng: Double): Offset {
+        val x = offX + ((lng - minLng) / lngRange * actualMapW).toFloat()
+        val y = offY + ((maxLat - lat) / latRange * actualMapH).toFloat()
+        return Offset(x, y)
+    }
+
+    fun buildPath(ring: List<Pair<Double, Double>>): Path {
+        val path = Path()
+        ring.forEachIndexed { i, (lat, lng) ->
+            val pos = toCanvas(lat, lng)
+            if (i == 0) path.moveTo(pos.x, pos.y) else path.lineTo(pos.x, pos.y)
+        }
+        path.close()
+        return path
+    }
+
+    val statePath = Path()
+    rings.forEach { statePath.addPath(buildPath(it)) }
+    val bounds = statePath.getBounds()
+
+    // Subtle radial glow behind the state
+    drawCircle(
+        brush = Brush.radialGradient(
+            colors = listOf(
+                GlowGreen.copy(alpha = 0.10f * progress),
+                Color.Transparent,
+            ),
+            center = Offset(w / 2f, h / 2f),
+            radius = w * 0.5f,
+        ),
+        radius = w * 0.5f,
+        center = Offset(w / 2f, h / 2f),
+    )
+
+    // Grey base fill
+    drawPath(statePath, color = GreyBase)
+
+    // Green sweep radiating out from Chicago's longitude (smoothstep eased) —
+    // the same "cleaning spreads outward" language as phases 1/2/4.
+    val easedSweep = progress * progress * (3f - 2f * progress)
+    val chicagoPos = toCanvas(CHICAGO_LAT, CHICAGO_LNG)
+    val maxSpread = maxOf(bounds.right - chicagoPos.x, chicagoPos.x - bounds.left)
+        .coerceAtLeast(1f)
+    val spreadX = maxSpread * easedSweep
+    clipRect(
+        left = chicagoPos.x - spreadX,
+        top = bounds.top,
+        right = chicagoPos.x + spreadX,
+        bottom = bounds.bottom,
+    ) {
+        drawPath(statePath, color = GccGreen)
+    }
+
+    // Chicago origin dot: red pulse until the sweep reaches it, then green
+    val dotRadius = w * 0.012f
+    val cleaned = easedSweep > 0.02f
+    val pulsePhase = sin(progress * PI.toFloat() * 6f)
+    if (!cleaned) {
+        drawCircle(
+            color = HotspotRed.copy(alpha = 0.25f + 0.1f * pulsePhase),
+            radius = dotRadius * 2.2f,
+            center = chicagoPos,
+        )
+    }
+    drawCircle(
+        color = if (cleaned) lerp(HotspotRed, GccGreen, (easedSweep / 0.15f).coerceIn(0f, 1f)) else HotspotRed,
+        radius = if (cleaned) dotRadius * 0.8f else dotRadius * (1f + 0.25f * pulsePhase),
+        center = chicagoPos,
+    )
+
+    // White border + green glow stroke
+    drawPath(statePath, color = Color.White.copy(alpha = 0.25f), style = Stroke(width = 2f))
+    drawPath(statePath, color = GccGreen.copy(alpha = 0.1f), style = Stroke(width = 6f))
 }
 
 // ── Transition particles (green dots floating outward) ──
