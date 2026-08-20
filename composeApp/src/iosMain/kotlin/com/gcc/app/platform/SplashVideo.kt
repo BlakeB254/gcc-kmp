@@ -16,6 +16,14 @@ import platform.AVFoundation.AVPlayerActionAtItemEndPause
 import platform.AVFoundation.AVPlayerItem
 import platform.AVFoundation.AVPlayerItemDidPlayToEndTimeNotification
 import platform.AVFoundation.AVPlayerLayer
+// K/N imports ObjC category members as package-level extensions — they must
+// be imported by name (same pattern as `fileDataRepresentation` in
+// CameraManager.kt), or AVPlayer.play()/pause()/muted/actionAtItemEnd
+// fail with "unresolved reference".
+import platform.AVFoundation.actionAtItemEnd
+import platform.AVFoundation.muted
+import platform.AVFoundation.pause
+import platform.AVFoundation.play
 import platform.CoreGraphics.CGRect
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSBundle
