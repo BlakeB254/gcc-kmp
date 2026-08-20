@@ -4,11 +4,20 @@ import { workers } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { hashPassword, createMobileToken } from '@/lib/mobile-auth'
 import { mapWorkerToMobile } from '@/lib/worker-mapper'
+import { createMagicLink, sendMagicLinkEmail } from '@/lib/magic-link'
+import { clientIp, isRateLimited } from '@/lib/rate-limit'
 
 export const runtime = 'nodejs'
 
 export async function POST(request: NextRequest) {
   try {
+    if (await isRateLimited(`register:${clientIp(request)}`)) {
+      return Response.json(
+        { data: null, success: false, message: 'Too many requests. Please try again later.' },
+        { status: 429 }
+      )
+    }
+
     const body = await request.json()
     const { name, email: rawEmail, phone, password, addressStreet, addressCity, addressState, addressZip } = body
     const email = rawEmail?.trim().toLowerCase()
@@ -29,21 +38,25 @@ export async function POST(request: NextRequest) {
       return Response.json({ data: null, success: false, message: 'Email already registered' }, { status: 409 })
     }
 
-    // If user exists without a password (magic-link user), set their password
+    // If user exists without a password (magic-link / phone-created account),
+    // NEVER set a password or issue a session from public register — anyone
+    // who knows the email could take the account over (audit F-01). Require
+    // email-control proof instead: send a magic link; the owner signs in with
+    // it and can then set a password from their account
+    // (see /api/workers/set-password).
     if (existing && !existing.hash) {
-      const { hash: newHash, salt: newSalt } = hashPassword(password)
-      await db
-        .update(workers)
-        .set({ hash: newHash, salt: newSalt, updatedAt: new Date().toISOString() })
-        .where(eq(workers.id, existing.id))
-
-      const { token, exp } = await createMobileToken(existing.id, email)
-      const worker = mapWorkerToMobile({ ...existing, hash: newHash, salt: newSalt })
+      const { token: magicLinkToken, isRateLimited: magicLinkLimited } = createMagicLink(email)
+      if (!magicLinkLimited) {
+        const sent = await sendMagicLinkEmail(email, magicLinkToken)
+        if (!sent.success) {
+          console.error('Register: magic link send failed:', sent.error)
+        }
+      }
       return Response.json({
-        data: { token, worker, exp, requiresTwoFactor: false, twoFactorToken: null },
-        success: true,
-        message: null,
-      })
+        data: null,
+        success: false,
+        message: 'This email is already registered. We sent a sign-in link to that address — use it to sign in, then set a password from your account.',
+      }, { status: 409 })
     }
 
     // Hash password

@@ -3,6 +3,7 @@ import { db } from '@/db'
 import { workers } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { createToken } from '@/lib/auth'
+import { normalizePhone, verifyPhoneRegistrationToken } from '@/lib/phone-verification'
 
 export const runtime = 'nodejs'
 
@@ -30,33 +31,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate registration token
-    try {
-      const tokenData = JSON.parse(Buffer.from(registrationToken, 'base64').toString())
-
-      if (tokenData.phone !== phone) {
-        return NextResponse.json(
-          { error: 'Invalid registration token' },
-          { status: 400 }
-        )
-      }
-
-      if (tokenData.exp < Date.now()) {
-        return NextResponse.json(
-          { error: 'Registration session expired. Please verify your phone again.' },
-          { status: 400 }
-        )
-      }
-
-      if (!tokenData.verified) {
-        return NextResponse.json(
-          { error: 'Phone not verified' },
-          { status: 400 }
-        )
-      }
-    } catch {
+    // Validate registration token — HMAC-signed by verify-phone, bound to
+    // this phone number, 15-minute expiry (F-02). Anything unsigned,
+    // expired, or minted for a different number is rejected.
+    const tokenData = await verifyPhoneRegistrationToken(
+      registrationToken,
+      normalizePhone(phone),
+    )
+    if (!tokenData) {
       return NextResponse.json(
-        { error: 'Invalid registration token' },
+        { error: 'Invalid or expired registration token. Please verify your phone again.' },
         { status: 400 }
       )
     }

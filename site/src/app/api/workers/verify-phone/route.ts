@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { workers } from '@/db/schema'
 import { eq } from 'drizzle-orm'
-import { verifyCode, normalizePhone } from '@/lib/phone-verification'
+import { verifyCode, normalizePhone, createPhoneRegistrationToken } from '@/lib/phone-verification'
 import { createToken } from '@/lib/auth'
+import { createTwoFactorChallengeToken } from '@/lib/mobile-auth'
+import { clientIp, isRateLimited } from '@/lib/rate-limit'
 
 export const runtime = 'nodejs'
 
@@ -14,6 +16,13 @@ export const runtime = 'nodejs'
  */
 export async function POST(request: NextRequest) {
   try {
+    if (await isRateLimited(`verify-phone:${clientIp(request)}`)) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please try again later.' },
+        { status: 429 }
+      )
+    }
+
     const { phone, code } = await request.json()
 
     if (!phone || !code) {
@@ -24,7 +33,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify the code
-    const { isValid, error } = verifyCode(phone, code)
+    const { isValid, error } = await verifyCode(phone, code)
 
     if (!isValid) {
       return NextResponse.json(
@@ -51,12 +60,27 @@ export async function POST(request: NextRequest) {
         isNewUser: true,
         phone: normalizedPhone,
         message: 'Phone verified. Please complete your registration.',
-        // Include a temporary token for registration
-        registrationToken: Buffer.from(JSON.stringify({
-          phone: normalizedPhone,
-          verified: true,
-          exp: Date.now() + 30 * 60 * 1000, // 30 minutes
-        })).toString('base64'),
+        // Signed, short-lived, phone-bound token for registration (F-02)
+        registrationToken: await createPhoneRegistrationToken(normalizedPhone),
+      })
+    }
+
+    // Phone is verified — but if the worker has TOTP enabled, don't issue a
+    // session here (that bypassed 2FA entirely — audit F-04). Mirror the
+    // password-login flow: return a challenge and let /api/auth/verify-2fa
+    // issue the real session after a valid authenticator/recovery code.
+    if (worker.twoFactorEnabled && worker.totpSecret) {
+      const twoFactorToken = await createTwoFactorChallengeToken(
+        worker.id,
+        worker.email || `phone:${normalizedPhone}`,
+      )
+      return NextResponse.json({
+        success: true,
+        requiresTwoFactor: true,
+        twoFactorToken,
+        token: null,
+        worker: null,
+        exp: 0,
       })
     }
 

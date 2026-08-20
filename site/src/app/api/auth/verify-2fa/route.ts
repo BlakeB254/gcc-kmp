@@ -17,11 +17,19 @@ import { createMobileToken, verifyTwoFactorChallengeToken } from '@/lib/mobile-a
 import { verifyTotpCode, consumeRecoveryCode } from '@/lib/totp'
 import { mapWorkerToMobile } from '@/lib/worker-mapper'
 import { sendSecurityAlert } from '@/lib/account-settings'
+import { clientIp, isRateLimited } from '@/lib/rate-limit'
 
 export const runtime = 'nodejs'
 
 export async function POST(request: NextRequest) {
   try {
+    if (await isRateLimited(`verify-2fa:${clientIp(request)}`)) {
+      return Response.json(
+        { data: null, success: false, message: 'Too many requests. Please try again later.' },
+        { status: 429 },
+      )
+    }
+
     const { twoFactorToken, code } = await request.json()
 
     if (!twoFactorToken || typeof code !== 'string' || !code) {

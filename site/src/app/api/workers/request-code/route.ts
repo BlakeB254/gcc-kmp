@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate code
-    const { code, isRateLimited } = generateVerificationCode(phone)
+    const { code, isRateLimited } = await generateVerificationCode(phone)
 
     if (isRateLimited) {
       return NextResponse.json(

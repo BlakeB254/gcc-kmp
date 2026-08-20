@@ -1,6 +1,7 @@
 import {
   pgTable,
   serial,
+  bigserial,
   varchar,
   text,
   boolean,
@@ -2254,3 +2255,34 @@ export const cronLeases = pgTable('cron_leases', {
 
 export type CronLeaseRow = typeof cronLeases.$inferSelect
 export type NewCronLeaseRow = typeof cronLeases.$inferInsert
+
+// Fixed-window rate-limit hits for the public auth endpoints (audit F-06).
+// One row per request; lib/rate-limit.ts prunes rows older than the window
+// for the key being checked, so the table stays small without a sweeper.
+export const rateLimitEvents = pgTable('rate_limit_events', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  key: varchar('key', { length: 255 }).notNull(),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+export type RateLimitEventRow = typeof rateLimitEvents.$inferSelect
+export type NewRateLimitEventRow = typeof rateLimitEvents.$inferInsert
+
+// SMS verification codes (audit F-03). Durable replacement for the old
+// in-memory Map — serverless instances share no memory, so a code requested
+// on instance A could never be verified on instance B. `failedAttempts`
+// locks a code out after repeated wrong guesses; `lastSentAt` /
+// `sendCount` + `windowStartedAt` back the resend cooldown and the
+// per-phone send quota. See lib/phone-verification.ts.
+export const phoneVerificationCodes = pgTable('phone_verification_codes', {
+  phone: varchar('phone', { length: 20 }).primaryKey(),
+  code: varchar('code', { length: 6 }).notNull(),
+  expiresAt: timestamp('expires_at', { mode: 'string', withTimezone: true }).notNull(),
+  failedAttempts: integer('failed_attempts').default(0).notNull(),
+  sendCount: integer('send_count').default(0).notNull(),
+  windowStartedAt: timestamp('window_started_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  lastSentAt: timestamp('last_sent_at', { mode: 'string', withTimezone: true }),
+})
+
+export type PhoneVerificationCodeRow = typeof phoneVerificationCodes.$inferSelect
+export type NewPhoneVerificationCodeRow = typeof phoneVerificationCodes.$inferInsert

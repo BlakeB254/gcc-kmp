@@ -4,11 +4,19 @@ import { workers } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { verifyPassword, createMobileToken, createTwoFactorChallengeToken } from '@/lib/mobile-auth'
 import { mapWorkerToMobile } from '@/lib/worker-mapper'
+import { clientIp, isRateLimited } from '@/lib/rate-limit'
 
 export const runtime = 'nodejs'
 
 export async function POST(request: NextRequest) {
   try {
+    if (await isRateLimited(`login:${clientIp(request)}`)) {
+      return Response.json(
+        { data: null, success: false, message: 'Too many requests. Please try again later.' },
+        { status: 429 }
+      )
+    }
+
     const body = await request.json()
     const { email: rawEmail, password } = body
     const email = rawEmail?.replace(/\s/g, '').toLowerCase()

@@ -6,11 +6,19 @@ import { generateSessionToken } from '@/lib/auth'
 import { sendEmail } from '@/lib/email'
 import { passwordResetEmail } from '@/lib/email/templates/password-reset'
 import { appUrl } from '@/lib/env'
+import { clientIp, isRateLimited } from '@/lib/rate-limit'
 
 export const runtime = 'nodejs'
 
 export async function POST(request: NextRequest) {
   try {
+    if (await isRateLimited(`forgot-password:${clientIp(request)}`)) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please try again later.' },
+        { status: 429 }
+      )
+    }
+
     const { email } = await request.json()
 
     if (!email) {

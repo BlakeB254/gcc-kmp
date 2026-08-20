@@ -29,6 +29,7 @@ import { workers } from '@/db/schema'
 import { eq, sql } from 'drizzle-orm'
 import { verifyPassword, createToken } from '@/lib/auth'
 import { createMobileToken } from '@/lib/mobile-auth'
+import { clientIp, isRateLimited } from '@/lib/rate-limit'
 
 export const runtime = 'nodejs'
 
@@ -53,6 +54,13 @@ function cookieOpts() {
 
 export async function POST(request: NextRequest) {
   try {
+    if (await isRateLimited(`universal-login:${clientIp(request)}`)) {
+      return NextResponse.json(
+        { success: false, error: 'Too many requests. Please try again later.' },
+        { status: 429 },
+      )
+    }
+
     const body = await request.json()
     const password: string | undefined = body?.password
     const email: string | undefined = body?.email?.replace?.(/\s/g, '').toLowerCase()

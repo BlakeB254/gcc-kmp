@@ -169,7 +169,14 @@ export async function sendMagicLinkEmail(
 
   const resend = getResend()
   if (!resend) {
-    console.warn('[Magic link] SKIPPED — RESEND_API_KEY not configured. Token:', token)
+    // Never log the token or the link — anyone with log access would get a
+    // working sign-in (audit F-07). In production, fail closed: a login
+    // email that silently never sends is a broken auth system, not a
+    // degraded one.
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('RESEND_API_KEY is not configured — cannot send magic link email')
+    }
+    console.warn('[Magic link] SKIPPED — RESEND_API_KEY not configured; email not sent (token redacted)')
     return { success: false, error: 'Email service not configured (missing RESEND_API_KEY)' }
   }
 
