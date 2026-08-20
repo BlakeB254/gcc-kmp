@@ -288,7 +288,7 @@ function DeviceScene({ isVisible }: { isVisible: boolean }) {
     const tick = () => {
       cx += (tx - cx) * 0.06
       cy += (ty - cy) * 0.06
-      phone.style.transform = `rotateY(calc(-14deg + ${cx * 4}deg)) rotateX(calc(5deg + ${cy * -3}deg)) translate3d(${cx * 10}px, ${cy * 8}px, 0)`
+      phone.style.transform = `rotateY(calc(-22deg + ${cx * 4}deg)) rotateX(calc(7deg + ${cy * -3}deg)) rotateZ(2deg) translate3d(${cx * 10}px, ${cy * 8}px, 0)`
       cards.style.transform = `translate3d(${cx * -14}px, ${cy * -10}px, 0)`
       raf = requestAnimationFrame(tick)
     }
@@ -302,15 +302,23 @@ function DeviceScene({ isVisible }: { isVisible: boolean }) {
   }, [reducedMotion])
 
   return (
-    <div ref={sceneRef} className="relative w-[min(390px,44vh)] aspect-[1536/2752]" style={{ perspective: '1400px' }}>
+    <div ref={sceneRef} className="relative w-[min(340px,40vh)] aspect-[1536/2752]" style={{ perspective: '1400px' }}>
       {/* soft brand glow anchoring the device to the backdrop */}
       <div className="absolute inset-0 -m-10 rounded-full bg-brand-green-500/20 blur-3xl" aria-hidden />
+
+      {/* floor shadow — seats the device so it reads as propped in space,
+          not a flat screenshot pasted over the photo */}
+      <div
+        aria-hidden
+        className="absolute -bottom-6 left-1/2 h-10 w-[70%] -translate-x-1/2 rounded-[50%] bg-black/55 blur-xl"
+        style={{ transform: 'translateX(-50%) rotateX(70deg)' }}
+      />
 
       <div
         ref={phoneRef}
         className={`relative w-full h-full will-change-transform ${reducedMotion ? '' : 'hero-device-float'}`}
         style={{
-          transform: 'rotateY(-14deg) rotateX(5deg)',
+          transform: 'rotateY(-22deg) rotateX(7deg) rotateZ(2deg)',
           transformStyle: 'preserve-3d',
           transition: 'transform 120ms linear',
         }}
@@ -325,13 +333,14 @@ function DeviceScene({ isVisible }: { isVisible: boolean }) {
         />
       </div>
 
-      {/* Floating callout cards — counter-parallaxed against the phone for depth */}
+      {/* Floating callout cards — counter-parallaxed against the phone for depth.
+          Positioned to clear both the device and the background photo's faces. */}
       <div ref={cardsRef} className="absolute inset-0 z-10 will-change-transform pointer-events-none" style={{ transition: 'transform 120ms linear' }}>
         <FloatCard
           isVisible={isVisible}
           delay={600}
-          className="absolute -left-6 top-[10%]"
-          lineClass="left-full top-1/2 w-6"
+          className="absolute -left-16 top-[4%]"
+          lineClass="left-full top-1/2 w-16"
           reducedMotion={reducedMotion}
         >
           <p className="text-[10px] font-semibold uppercase tracking-widest text-brand-green-300">Block claimed</p>
@@ -342,8 +351,8 @@ function DeviceScene({ isVisible }: { isVisible: boolean }) {
         <FloatCard
           isVisible={isVisible}
           delay={750}
-          className="absolute -right-24 top-[42%]"
-          lineClass="right-full top-1/2 w-24"
+          className="absolute -right-14 top-[16%]"
+          lineClass="right-full top-1/2 w-14"
           reducedMotion={reducedMotion}
         >
           <div className="flex items-center gap-2">
@@ -358,8 +367,8 @@ function DeviceScene({ isVisible }: { isVisible: boolean }) {
         <FloatCard
           isVisible={isVisible}
           delay={900}
-          className="absolute -left-5 bottom-[8%]"
-          lineClass="left-full top-1/2 w-5"
+          className="absolute -left-10 bottom-[10%]"
+          lineClass="left-full top-1/2 w-10"
           reducedMotion={reducedMotion}
         >
           <p className="text-[10px] font-semibold uppercase tracking-widest text-brand-sky-300">Scan progress</p>
