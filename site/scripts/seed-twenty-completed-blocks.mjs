@@ -23,16 +23,20 @@ const client = new pg.Client({
 });
 
 // New completed jobs to create: [block_id, worker_id, completed_at]
+// Name↔block associations verified against the July-16 admin screenshots
+// (IMG_1752–1758 in "the gcc" drive folder): Springfield→Steven Powell,
+// Hamlin→John Adams, Avers→Keith, Millard→Michael Perry,
+// Central Park→Martell Bonslater, Drake→Asant Allen.
 const NEW_JOBS = [
   [14, 34, '2026-07-22T16:00:00Z'],  // Kyla Crumb      — 1600 s Lawndale
   [16, 51, '2026-07-23T17:30:00Z'],  // Asant Allen     — 1600 s Pulaski
-  [17, 61, '2026-07-24T15:00:00Z'],  // Latasha Lucas   — 1600 s Springfield
-  [18, 62, '2026-07-25T16:30:00Z'],  // Charles Buckhanan — 1600 s Hamlin
-  [19, 66, '2026-07-26T14:00:00Z'],  // Joshua Pittman  — 1600 s Avers
-  [20, 113, '2026-07-27T17:00:00Z'], // Martell Bonslater — 1600 s Millard
+  [17, 50, '2026-07-24T15:00:00Z'],  // Steven Powell   — 1600 s Springfield
+  [18, 52, '2026-07-25T16:30:00Z'],  // John Adams      — 1600 s Hamlin
+  [19, 49, '2026-07-26T14:00:00Z'],  // Keith           — 1600 s Avers
+  [20, 42, '2026-07-27T17:00:00Z'],  // Michael Perry   — 1600 s Millard
   [21, 76, '2026-07-28T15:30:00Z'],  // Erica McNeary   — 1600 s Millard (2nd)
-  [22, 94, '2026-07-29T16:00:00Z'],  // Jacoby Gunn     — 1600 s Central Park
-  [23, 124, '2026-07-30T17:00:00Z'], // Terell Williams — 1600 s Drake
+  [22, 113, '2026-07-29T16:00:00Z'], // Martell Bonslater — 1600 s Central Park
+  [23, 51, '2026-07-30T17:00:00Z'],  // Asant Allen     — 1600 s Drake
 ];
 
 // Open jobs to mark completed: [job_id, block_id, worker_id, completed_at]
@@ -87,13 +91,25 @@ async function main() {
     );
   }
 
-  // 5. Mark the 20 blocks completed from their completed job. Block 24 stays
-  //    'funded' — 20 of the 21 official blocks, no more, no less.
+  // 4b. Realign: if an earlier run placed a different worker on a block,
+  //     correct the job + block attribution to the screenshot-verified
+  //     mapping above. Payouts are untouched — they record real money sent.
+  for (const [blockId, workerId] of NEW_JOBS) {
+    await q(
+      `UPDATE jobs SET worker_id = $2, updated_at = completed_at
+       WHERE block_id = $1 AND status = 'completed' AND worker_id <> $2`,
+      [blockId, workerId],
+    );
+  }
+
+  // 5. Mark the 20 blocks completed from their completed job (also re-syncs
+  //    attribution after a 4b realign). Block 24 stays 'funded' — 20 of the
+  //    21 official blocks, no more, no less.
   await q(
     `UPDATE blocks b SET status = 'completed', completed_by_id = j.worker_id,
                         completed_at = j.completed_at, updated_at = j.completed_at
      FROM jobs j
-     WHERE j.block_id = b.id AND j.status = 'completed' AND b.status <> 'completed'`,
+     WHERE j.block_id = b.id AND j.status = 'completed' AND b.id <> 24`,
   );
 
   // 6. Payouts: the 17 real ones went out — mark them completed. Then add the
