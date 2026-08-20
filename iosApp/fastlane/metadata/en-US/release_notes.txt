@@ -1,3 +1,6 @@
+• Build 183 (v1.1.0): Admins can now publish, unpublish, archive, open/close claims, and delete routes right from the app — no web console needed.
+• New Release Queue tab in the admin panel: create release batches, reorder routes in the queue, watch offers, and cancel waves.
+• Route claiming is more reliable and secure: claims now always run under your signed-in account.
 • Build 182 (v1.0.9): New cinematic splash intro with tap-to-skip, plus a first-launch welcome carousel that shows how cleaning a block earns you money.
 • First-block tutorial: step-by-step guidance on your first assigned block, from claiming to scan-verified clean.
 • Smoother scan flow: clearer progress, fewer dead ends, and better recovery when a scan is interrupted.
