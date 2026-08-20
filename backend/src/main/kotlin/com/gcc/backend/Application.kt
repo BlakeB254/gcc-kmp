@@ -97,6 +97,40 @@ fun Application.module(config: Config) {
         }
     }
 
+    // Verification-photo retention sweep (PII hygiene for government ID
+    // uploads) — same keep-alive-coroutine pattern. Only constructed when the
+    // operator opts in with VERIFICATION_RETENTION_DAYS > 0, and dry-run even
+    // then unless VERIFICATION_RETENTION_DRY_RUN=false.
+    val retention = if (r2 != null && config.verificationRetentionDays > 0) {
+        VerificationPhotoRetention(r2, dataSource, config.verificationRetentionDays, config.verificationRetentionDryRun)
+    } else null
+    if (retention != null) {
+        log.info(
+            "verification retention enabled: {} days, dryRun={}, every {}m",
+            config.verificationRetentionDays, config.verificationRetentionDryRun,
+            config.verificationRetentionIntervalMinutes,
+        )
+    }
+    if (retention != null && config.verificationRetentionIntervalMinutes > 0) {
+        scope.launch {
+            while (isActive) {
+                try {
+                    val result = withContext(Dispatchers.IO) { retention.runOnce() }
+                    log.info(
+                        "verification-retention sweep: {} scanned, {} expired ({} referenced), {} deleted, {} tombstoned, dryRun={} ({}ms)",
+                        result.scanned, result.expired, result.expiredReferenced,
+                        result.deleted, result.tombstoned, result.dryRun, result.durationMs,
+                    )
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    log.error("verification-retention sweep failed", e)
+                }
+                delay(config.verificationRetentionIntervalMinutes.minutes)
+            }
+        }
+    }
+
     monitor.subscribe(ApplicationStopping) {
         scope.cancel()
         r2?.close()
@@ -123,13 +157,32 @@ fun Application.module(config: Config) {
             call.respond(result)
         }
 
-        // Manual trigger for an immediate Chicago-311 mirror sweep (same guard).
+        // Manual trigger for the Chicago-311 mirror sweep (same guard).
         post("/admin/sync-civic") {
             if (!authorized(call.request.header(HttpHeaders.Authorization), config.indexSecret)) {
                 call.respond(HttpStatusCode.Unauthorized, ErrorResponse("unauthorized"))
                 return@post
             }
             val result = withContext(Dispatchers.IO) { civicSync.runOnce() }
+            call.respond(result)
+        }
+
+        // Manual trigger for a verification-photo retention sweep (same guard).
+        // Honors the configured dry-run mode — deletion requires
+        // VERIFICATION_RETENTION_DRY_RUN=false in the environment.
+        post("/admin/purge-verification") {
+            if (!authorized(call.request.header(HttpHeaders.Authorization), config.indexSecret)) {
+                call.respond(HttpStatusCode.Unauthorized, ErrorResponse("unauthorized"))
+                return@post
+            }
+            if (retention == null) {
+                call.respond(
+                    HttpStatusCode.ServiceUnavailable,
+                    ErrorResponse("retention disabled (set VERIFICATION_RETENTION_DAYS > 0)"),
+                )
+                return@post
+            }
+            val result = withContext(Dispatchers.IO) { retention.runOnce() }
             call.respond(result)
         }
     }

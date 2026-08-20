@@ -5,6 +5,7 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
 import software.amazon.awssdk.http.apache.ApacheHttpClient
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
 import software.amazon.awssdk.services.s3.model.GetObjectRequest
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 import java.net.URI
@@ -48,9 +49,16 @@ class R2Storage(private val config: R2Config) : AutoCloseable {
         .forcePathStyle(true)
         .build()
 
+    /** Size + last-modified for one object in a listing. */
+    data class ObjectInfo(val size: Long, val lastModifiedEpochMs: Long)
+
     /** Every object under [prefix], as key -> size in bytes. Paginates fully. */
-    fun listAll(prefix: String): Map<String, Long> {
-        val out = LinkedHashMap<String, Long>()
+    fun listAll(prefix: String): Map<String, Long> =
+        listAllWithInfo(prefix).mapValues { it.value.size }
+
+    /** Every object under [prefix], as key -> size + last-modified. Paginates fully. */
+    fun listAllWithInfo(prefix: String): Map<String, ObjectInfo> {
+        val out = LinkedHashMap<String, ObjectInfo>()
         var token: String? = null
         do {
             val currentToken = token
@@ -60,10 +68,17 @@ class R2Storage(private val config: R2Config) : AutoCloseable {
                 .let { if (currentToken != null) it.continuationToken(currentToken) else it }
                 .build()
             val response = client.listObjectsV2(request)
-            for (obj in response.contents()) out[obj.key()] = obj.size()
+            for (obj in response.contents()) {
+                out[obj.key()] = ObjectInfo(obj.size(), obj.lastModified()?.toEpochMilli() ?: 0L)
+            }
             token = if (response.isTruncated == true) response.nextContinuationToken() else null
         } while (token != null)
         return out
+    }
+
+    /** Delete a single object. Callers decide policy; this is just the verb. */
+    fun deleteObject(key: String) {
+        client.deleteObject(DeleteObjectRequest.builder().bucket(config.bucket).key(key).build())
     }
 
     /** Fetch a (small, text) object — used to read manifest JSON. */

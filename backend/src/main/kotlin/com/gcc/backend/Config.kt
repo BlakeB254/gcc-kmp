@@ -18,6 +18,11 @@ package com.gcc.backend
  *                             seven cleanup types in the 2026-07-10 civic-loop spec)
  *  - CIVIC_BACKFILL_DAYS      initial watermark lookback (default 90)
  *  - SOCRATA_APP_TOKEN        optional; lifts the shared SODA throttle
+ *  - VERIFICATION_RETENTION_DAYS    purge verification/ ID photos older than
+ *                                   this many days (default 0 = job disabled)
+ *  - VERIFICATION_RETENTION_DRY_RUN "false" actually deletes; anything else
+ *                                   (default true) only logs what it would do
+ *  - VERIFICATION_RETENTION_INTERVAL_MINUTES  sweep cadence (default 720)
  */
 data class Config(
     val port: Int,
@@ -29,6 +34,9 @@ data class Config(
     val civicSrTypes: List<String>,
     val civicBackfillDays: Long,
     val socrataAppToken: String?,
+    val verificationRetentionDays: Long,
+    val verificationRetentionDryRun: Boolean,
+    val verificationRetentionIntervalMinutes: Long,
 ) {
     companion object {
         val DEFAULT_CIVIC_SR_TYPES = listOf(
@@ -56,6 +64,10 @@ data class Config(
                     ?: DEFAULT_CIVIC_SR_TYPES,
                 civicBackfillDays = System.getenv("CIVIC_BACKFILL_DAYS")?.toLongOrNull() ?: 90L,
                 socrataAppToken = System.getenv("SOCRATA_APP_TOKEN")?.takeIf { it.isNotBlank() },
+                verificationRetentionDays = System.getenv("VERIFICATION_RETENTION_DAYS")?.toLongOrNull() ?: 0L,
+                verificationRetentionDryRun = System.getenv("VERIFICATION_RETENTION_DRY_RUN")?.trim()?.lowercase() != "false",
+                verificationRetentionIntervalMinutes =
+                    System.getenv("VERIFICATION_RETENTION_INTERVAL_MINUTES")?.toLongOrNull() ?: 720L,
             )
         }
     }
