@@ -18,7 +18,8 @@ const SCHEDULE: Record<string, string> = {
   '2026-06-01-issue-02': '2026-06-01T08:00:00-05:00',
   '2026-07-03-issue-03': '2026-07-03T08:00:00-05:00',
   '2026-07-31-issue-04': '2026-07-31T08:00:00-05:00',
-  '2026-08-19-issue-05': '2026-08-19T08:00:00-05:00',
+  '2026-08-01-issue-05': '2026-08-01T08:00:00-05:00',
+  '2026-08-19-issue-06': '2026-08-19T08:00:00-05:00',
 }
 
 function isPublished(slug: string): boolean {
@@ -32,7 +33,8 @@ const POSTS = [
   '2026-06-01-issue-02',
   '2026-07-03-issue-03',
   '2026-07-31-issue-04',
-  '2026-08-19-issue-05',
+  '2026-08-01-issue-05',
+  '2026-08-19-issue-06',
 ]
 
 export async function generateStaticParams() {
@@ -103,14 +105,30 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       },
     }
   }
-  if (slug === '2026-08-19-issue-05') {
+  if (slug === '2026-08-01-issue-05') {
     if (!isPublished(slug)) return {} // don't advertise an unpublished post in <head>
     return {
-      title: 'From cleaning blocks to mapping them in 3D — Global Community Cleaners Issue #5',
+      title: 'Twenty blocks, twenty paychecks — Global Community Cleaners Issue #5',
       description:
-        "GCC's fifth newsletter. 20 of 100 blocks cleaned and $2,000 paid out to North Lawndale residents, 158 scan sessions captured, LiDAR depth + camera poses + GPS fusing into per-block 3D, a litter classifier in training, iOS v1.0.8 in TestFlight, and the new honor wall.",
+        "GCC's fifth newsletter. The July field report: 20 North Lawndale blocks cleaned by residents, $2,000 paid out at $100 a block, powered by a $2,000 community-collaboration sponsorship from the University of Illinois Chicago — plus an honest paragraph on what broke in the app and what v1.0.9 fixed.",
       openGraph: {
-        title: 'From cleaning blocks to mapping them in 3D — GCC Issue #5',
+        title: 'Twenty blocks, twenty paychecks — GCC Issue #5',
+        description:
+          '20 blocks cleaned by North Lawndale residents, $2,000 paid out, every block verified with photos, GPS, and timestamps — and an honest paragraph on what we fixed.',
+        type: 'article',
+        publishedTime: '2026-08-01',
+        images: ['/newsletter/issue-05/hero-bags-curb.jpg'],
+      },
+    }
+  }
+  if (slug === '2026-08-19-issue-06') {
+    if (!isPublished(slug)) return {} // don't advertise an unpublished post in <head>
+    return {
+      title: 'From cleaning blocks to mapping them in 3D — Global Community Cleaners Issue #6',
+      description:
+        "GCC's sixth newsletter. 20 of 100 blocks cleaned and $2,000 paid out to North Lawndale residents, 158 scan sessions captured, LiDAR depth + camera poses + GPS fusing into per-block 3D, a litter classifier in training, iOS v1.0.8 in TestFlight, and the new honor wall.",
+      openGraph: {
+        title: 'From cleaning blocks to mapping them in 3D — GCC Issue #6',
         description:
           '20 blocks cleaned, $2,000 paid to residents, and 158 scan sessions fusing into a digital twin of the neighborhood — built for accountability, not for show.',
         type: 'article',
@@ -130,7 +148,8 @@ export default async function BlogPostPage({
   const { slug } = await params
   if (!POSTS.includes(slug) || !isPublished(slug)) notFound()
 
-  if (slug === '2026-08-19-issue-05') return <Issue5 />
+  if (slug === '2026-08-19-issue-06') return <Issue6 />
+  if (slug === '2026-08-01-issue-05') return <Issue5 />
   if (slug === '2026-07-31-issue-04') return <Issue4 />
   if (slug === '2026-07-03-issue-03') return <Issue3 />
   if (slug === '2026-06-01-issue-02') return <Issue2 />
@@ -1021,13 +1040,175 @@ function Issue4() {
 }
 
 function Issue5() {
+  const media = '/newsletter/issue-05'
+  return (
+    <article className="bg-neutral-50 pb-24 pt-12">
+      <div className="mx-auto max-w-3xl px-5">
+        <header className="text-center">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-700">
+            GCC Blog · Issue #5 · Field Report
+          </p>
+          <p className="mt-2 text-sm text-neutral-500">August 1, 2026</p>
+          <h1 className="mt-6 font-serif text-5xl font-bold tracking-tight text-neutral-900 sm:text-6xl">
+            Twenty blocks, twenty paychecks
+          </h1>
+          <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-neutral-600">
+            The pilot stopped being a plan in July. Twenty blocks cleaned by the people who live on them, $2,000 paid out at $100 a block — and an honest paragraph about what broke along the way.
+          </p>
+        </header>
+
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={`${media}/hero-bags-curb.jpg`}
+          alt="A GCC participant crouching beside a full row of filled trash bags at the curb"
+          className="mt-10 w-full rounded-xl shadow-sm"
+        />
+
+        {/* §1 What July looked like */}
+        <Section label="§1 · What July looked like">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            The pilot became real: 20 blocks cleaned, $2,000 paid out.
+          </h2>
+          <p>
+            In{' '}
+            <a className="font-semibold text-emerald-700 underline" href="/blog/2026-07-31-issue-04">
+              Issue #4
+            </a>
+            , the first cleanups had just run and we were calling them alpha tests. July turned them into a program. <strong>Twenty blocks in North Lawndale were cleaned by North Lawndale residents</strong>, each one paid <strong>$100 per block</strong> — <strong>$2,000 total</strong>, every dollar going directly to the person who did the work on their own street.
+          </p>
+          <p>
+            The work was powered by a <strong>$2,000 community-collaboration sponsorship from the University of Illinois Chicago</strong> — the gift we reported in Issue #3, now converted into clean curbs and paid neighbors. And every block was verified the way we said it would be: <strong>photos, GPS, and timestamps</strong>, logged before the payout went out.
+          </p>
+          <Pull>Twenty blocks cleaned. Twenty residents paid. Eighty to go — and every one of them will be verified the same way.</Pull>
+        </Section>
+
+        {/* §2 The people who did the work */}
+        <Section label="§2 · The people who did the work">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            This is what $100 a block actually looks like.
+          </h2>
+          <p>
+            We promised photos when the work was done. Here it is — the mornings, the rakes, and the bag counts, straight from the Roosevelt corridor.
+          </p>
+          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {[
+              { src: `${media}/participant-rake-vest.jpg`, caption: 'A GCC participant with the morning\'s haul.' },
+              { src: `${media}/participant-bags-row.jpg`, caption: 'Another block finished, another bag count for the record.' },
+              { src: `${media}/participant-lot-rake.jpg`, caption: 'Hard at work on the Roosevelt corridor.' },
+              { src: `${media}/participant-bags-held.jpg`, caption: 'Proof of work, bag by bag.' },
+              { src: `${media}/participant-sidewalk.jpg`, caption: 'A sidewalk worth walking down again.' },
+              { src: `${media}/hero-bags-curb.jpg`, caption: 'One block, one morning, one paycheck earned.' },
+            ].map((p) => (
+              <figure key={p.src}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={p.src} alt={p.caption} className="aspect-[3/4] w-full rounded-lg object-cover" />
+                <figcaption className="mt-2 text-xs italic text-neutral-500">{p.caption}</figcaption>
+              </figure>
+            ))}
+          </div>
+          <p className="mt-4 text-sm italic text-neutral-500">
+            Participants review and approve how we share their work — names stay private unless they ask otherwise.
+          </p>
+        </Section>
+
+        {/* §3 An honest paragraph */}
+        <Section label="§3 · An honest paragraph">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            The app hit real bugs in the field. We fixed fast — and v1.0.9 is the result.
+          </h2>
+          <p>
+            Here&rsquo;s the part a polished newsletter would leave out. When participants used the live app <strong>unsupervised, on real blocks</strong>, it stumbled: upload failures on spotty connections, and a scan flow that confused first-time users at exactly the wrong moment. So the team did the simple, correct thing — we <strong>photographed completions directly and paid out manually</strong>. The work never waited on the software, and nobody&rsquo;s paycheck did either.
+          </p>
+          <p>
+            Then we shipped the fix. <strong>iOS v1.0.9</strong> carries a rebuilt first-run experience — a welcome carousel, a first-block tutorial, and a cinematic splash that explains the mission before it asks for anything — plus a smoother scan flow and <strong>on-device litter identification</strong> improvements. Every change traces back to something a participant tripped over in July.
+          </p>
+          <Pull>We build in public and we fix fast. The loop between the street and the build stays short on purpose.</Pull>
+        </Section>
+
+        {/* §4 The corridor, mapped */}
+        <Section label="§4 · The corridor, mapped">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            Every green segment is a funded, cleaned block along Roosevelt Road.
+          </h2>
+          <p>
+            Twenty of the pilot&rsquo;s <strong>100 blocks are done</strong> — 80 to go. And the pilot is only the corridor: beyond Roosevelt Road, roughly <strong>1,600 side-street blocks</strong> are next.
+          </p>
+          <div className="mt-5 rounded-xl border border-neutral-200 bg-white p-6">
+            <p className="text-xs font-bold uppercase tracking-widest text-neutral-500">Roosevelt Rd corridor · GCC mobile app</p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`${media}/corridor-map.png`} alt="GCC app map of the Roosevelt Road corridor with cleaned blocks marked in green" className="mx-auto mt-4 max-w-md rounded-lg" />
+            <p className="mt-3 text-center text-xs italic text-neutral-500">
+              20 of 100 pilot blocks cleaned and verified. The side streets come next.
+            </p>
+          </div>
+        </Section>
+
+        {/* §5 What's next */}
+        <Section label="§5 · What's next">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            Eighty blocks to go. One of them can have your name on it.
+          </h2>
+          <p>
+            <strong>$100 funds one block and one resident paycheck</strong> — the same $100 that cleaned every block in this issue. The work is verified with photos, GPS, and timestamps, and the before-and-after photo set lands in your inbox.
+          </p>
+          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <a
+              href="/sponsor"
+              className="rounded-lg bg-emerald-700 px-5 py-4 text-center text-base font-semibold text-white hover:bg-emerald-800"
+            >
+              Sponsor a block — $100
+            </a>
+            <a
+              href="/sponsor?amount=2000"
+              className="rounded-lg bg-neutral-900 px-5 py-4 text-center text-base font-semibold text-white hover:bg-neutral-800"
+            >
+              Recognized sponsor — $2,000
+            </a>
+          </div>
+          <p className="mt-4 text-sm text-neutral-700">
+            <strong>$100</strong> = one cleanup, one paid resident, one before-and-after photo set in your inbox.<br />
+            <strong>$2,000</strong> = your name on our public wall alongside UIC, a digital certificate, a 501(c)(3) tax receipt, a feature in this newsletter, and social-media recognition.
+          </p>
+          <p className="mt-6">
+            And for the neighbors who&rsquo;ve been asking: <strong>Android is in development</strong>. A large share of North Lawndale carries Android, and closing that gap is one of our top priorities.
+          </p>
+          <p className="mt-4 font-semibold">Dr. King&rsquo;s apartment is six blocks away. The work continues.</p>
+          <p className="mt-2 italic text-neutral-500">— The team at Global Community Cleaners NFP</p>
+        </Section>
+
+        {/* Footer / share */}
+        <div className="mt-16 border-t border-neutral-200 pt-8 text-center text-sm text-neutral-500">
+          <p>
+            <a className="text-emerald-700 underline" href="/sponsor">
+              Sponsor a block →
+            </a>
+            {' · '}
+            <a className="text-emerald-700 underline" href="/blog/2026-07-31-issue-04">
+              Read Issue #4
+            </a>
+            {' · '}
+            <a className="text-emerald-700 underline" href="/">
+              GCC home
+            </a>
+          </p>
+          <p className="mt-3 text-xs">
+            Global Community Cleaners NFP · 1844 S. Harding Ave, 2nd Floor · Chicago, IL 60623 ·
+            501(c)(3) tax-exempt · EIN 39-3553882
+          </p>
+        </div>
+      </div>
+    </article>
+  )
+}
+
+function Issue6() {
   const media = '/newsletter/issue-02'
   return (
     <article className="bg-neutral-50 pb-24 pt-12">
       <div className="mx-auto max-w-3xl px-5">
         <header className="text-center">
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-700">
-            GCC Blog · Issue #5 · The Digital Twin
+            GCC Blog · Issue #6 · The Digital Twin
           </p>
           <p className="mt-2 text-sm text-neutral-500">August 19, 2026</p>
           <h1 className="mt-6 font-serif text-5xl font-bold tracking-tight text-neutral-900 sm:text-6xl">

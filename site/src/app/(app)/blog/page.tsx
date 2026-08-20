@@ -23,14 +23,24 @@ function isPublished(publishAt: string): boolean {
 
 const POSTS: PostCard[] = [
   {
-    slug: '2026-08-19-issue-05',
+    slug: '2026-08-19-issue-06',
     title: 'From cleaning blocks to mapping them in 3D',
     date: '2026-08-19',
     publishAt: '2026-08-19T08:00:00-05:00',
     description:
-      "Issue #5 — The Digital Twin. 20 of 100 blocks cleaned and $2,000 paid out to North Lawndale residents, 158 scan sessions captured, LiDAR depth + camera poses + GPS fusing into per-block 3D, a litter classifier in training, iOS v1.0.8 in TestFlight, and the new honor wall naming our major sponsors.",
+      "Issue #6 — The Digital Twin. 20 of 100 blocks cleaned and $2,000 paid out to North Lawndale residents, 158 scan sessions captured, LiDAR depth + camera poses + GPS fusing into per-block 3D, a litter classifier in training, iOS v1.0.8 in TestFlight, and the new honor wall naming our major sponsors.",
     heroImage: '/newsletter/issue-02/heatmap.png',
-    badge: 'Issue #5 · The Digital Twin',
+    badge: 'Issue #6 · The Digital Twin',
+  },
+  {
+    slug: '2026-08-01-issue-05',
+    title: 'Twenty blocks, twenty paychecks',
+    date: '2026-08-01',
+    publishAt: '2026-08-01T08:00:00-05:00',
+    description:
+      "Issue #5 — Field Report. The July pilot became real: 20 North Lawndale blocks cleaned by residents, $2,000 paid out at $100 a block, powered by UIC's $2,000 community-collaboration sponsorship — plus an honest paragraph on what broke in the app and what v1.0.9 fixed.",
+    heroImage: '/newsletter/issue-05/hero-bags-curb.jpg',
+    badge: 'Issue #5 · Field Report',
   },
   {
     slug: '2026-07-31-issue-04',
