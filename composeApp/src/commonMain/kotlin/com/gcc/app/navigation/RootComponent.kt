@@ -10,6 +10,7 @@ import com.arkivanov.decompose.router.stack.push
 import com.arkivanov.decompose.router.stack.replaceAll
 import com.arkivanov.decompose.router.stack.replaceCurrent
 import com.arkivanov.decompose.value.Value
+import com.gcc.app.platform.FirstRunStore
 import com.gcc.app.viewmodel.LoginViewModel
 import com.gcc.shared.auth.TokenManager
 import org.koin.mp.KoinPlatform
@@ -18,12 +19,23 @@ import org.koin.mp.KoinPlatform
 class RootComponent(
     componentContext: ComponentContext,
     private val tokenManager: TokenManager? = null,
+    private val firstRunStore: FirstRunStore? = null,
 ) : ComponentContext by componentContext {
 
     private val navigation = StackNavigation<Screen>()
 
+    // When not injected (the platform mains pass only TokenManager), resolve
+    // from Koin — same lookup pattern as handleDeepLink's LoginViewModel.
+    private val koinFirstRunStore: FirstRunStore? by lazy {
+        runCatching { KoinPlatform.getKoin().get<FirstRunStore>() }.getOrNull()
+    }
+
+    private fun firstRunStore(): FirstRunStore? = firstRunStore ?: koinFirstRunStore
+
     private val initialScreen: Screen
         get() {
+            // First-ever launch: intro carousel before anything auth-related.
+            if (firstRunStore()?.introSeen == false) return Screen.Intro
             val tm = tokenManager ?: return Screen.Login
             return when {
                 // Valid token — gate with Face ID before entering app
@@ -44,9 +56,29 @@ class RootComponent(
     )
 
     fun onLoginSuccess() {
-        // After manual login (credentials already verified), skip biometric gate
-        // and go straight to Dashboard. Face ID only gates cold app launch.
-        navigation.replaceAll(Screen.Dashboard)
+        // After manual login (credentials already verified), skip biometric gate.
+        // Face ID only gates cold app launch. A first-ever login (Google/Apple
+        // included) detours through the intro carousel; onIntroComplete
+        // continues from there.
+        if (firstRunStore()?.introSeen == false) {
+            navigation.replaceAll(Screen.Intro)
+        } else {
+            navigation.replaceAll(Screen.Dashboard)
+        }
+    }
+
+    /** Intro carousel finished (Skip or "Get started") — mark seen, route onward. */
+    fun onIntroComplete() {
+        firstRunStore()?.introSeen = true
+        val tm = tokenManager
+        when {
+            // Pre-auth intro (first download): land on Login.
+            tm == null || !tm.isLoggedIn() -> navigation.replaceAll(Screen.Login)
+            // Post-registration / first social login: keep the original
+            // post-registration Onboarding screen reachable.
+            !tm.isOnboardingComplete() -> navigation.replaceAll(Screen.Onboarding)
+            else -> navigation.replaceAll(Screen.Dashboard)
+        }
     }
 
     fun onBiometricSuccess() {
@@ -58,6 +90,12 @@ class RootComponent(
     }
 
     fun onRegisterSuccess() {
+        // First run: intro carousel first; onIntroComplete continues to the
+        // post-registration Onboarding screen from there.
+        if (firstRunStore()?.introSeen == false) {
+            navigation.replaceAll(Screen.Intro)
+            return
+        }
         val tm = tokenManager
         if (tm != null && !tm.isOnboardingComplete()) {
             navigation.replaceAll(Screen.Onboarding)
@@ -169,6 +207,9 @@ class RootComponent(
     }
 
     fun navigateToRouteScan(routeId: Int, allowUnpublished: Boolean = false, completeJobId: Int? = null) {
+        // Entering the scan completes the first-block tutorial (§4): the
+        // Dashboard sheet / claim coach mark are never needed again.
+        firstRunStore()?.tutorialBlockSeen = true
         navigation.push(Screen.RouteScan(routeId, allowUnpublished, completeJobId = completeJobId))
     }
 

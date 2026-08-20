@@ -3,6 +3,7 @@ package com.gcc.app.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -119,6 +120,20 @@ fun ArRouteScreen(
     val visibilityBeam by viewModel.visibilityBeam.collectAsState()
     val (outerRing, innerRings) = minimapBoundaries
     val corridorCenters = remember(outerRing) { viewModel.corridorCellCenters() }
+
+    // Lap-1 gate inputs, hoisted (F4/F5): the top fill bar, the gate pips
+    // row, and the Complete Scout pill all read these same values.
+    val coverageReady = ui.coveragePercent >= RouteScanViewModel.LAP_COMPLETE_PERCENT
+    val closeReady = ui.deviceType != com.gcc.shared.model.DeviceType.AR ||
+        ui.closeCoveragePercent >= RouteScanViewModel.LAP_CLOSE_COMPLETE_PERCENT
+    val reconstructionReady = ui.deviceType != com.gcc.shared.model.DeviceType.AR ||
+        ui.reconstructionCaptureReady
+    val lapDone = coverageReady && closeReady && reconstructionReady && ui.isLoopClosed
+    // F6: the minimap stays visible even while the rectify sheet is up — the
+    // sheet's column pads around it instead of the old hide-on-sheet pop.
+    val minimapVisible = ui.currentLat != 0.0 || ui.currentLng != 0.0
+    val miniMapWidth: Dp = 160.dp
+    val miniMapHeight: Dp = miniMapWidth * 0.78f
 
     // Floating "+N pts" pips, fed by the ViewModel's one-shot pip events.
     var pips by remember { mutableStateOf(listOf<PointsPip>()) }
@@ -361,13 +376,9 @@ fun ArRouteScreen(
         ) {
             // Lap progress: the required block area's fill percentage. Turns
             // celebratory at LAP_COMPLETE_PERCENT (the lap-1 → lap-2 shift).
+            // Gate inputs are hoisted above the Box (shared with the gate
+            // pips and the Complete Scout pill).
             val fillFraction = (ui.coveragePercent / 100.0).toFloat().coerceIn(0f, 1f)
-            val closeReady = ui.deviceType != com.gcc.shared.model.DeviceType.AR ||
-                ui.closeCoveragePercent >= RouteScanViewModel.LAP_CLOSE_COMPLETE_PERCENT
-            val lapDone = ui.coveragePercent >= RouteScanViewModel.LAP_COMPLETE_PERCENT &&
-                closeReady &&
-                (ui.deviceType != com.gcc.shared.model.DeviceType.AR || ui.reconstructionCaptureReady) &&
-                ui.isLoopClosed
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -398,6 +409,42 @@ fun ArRouteScreen(
                     color = if (lapDone) GccGreen else GccGreen.copy(alpha = 0.85f),
                     trackColor = Color.White.copy(alpha = 0.25f),
                 )
+                // F4: per-gate pips — the caption above can only name one
+                // unmet gate at a time; the pips show all four at a glance.
+                if (ui.lapNumber < 2) {
+                    Spacer(modifier = Modifier.height(5.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        LapGatePip("Coverage", coverageReady)
+                        LapGatePip("Close", closeReady)
+                        LapGatePip("3D", reconstructionReady)
+                        LapGatePip("Loop", ui.isLoopClosed)
+                    }
+                }
+            }
+
+            // F5: loop closure promoted from the single caption line to its
+            // own banner when it's the LAST unmet gate — "return to start"
+            // is a navigation task, not scan feedback, so it reads louder.
+            if (ui.lapNumber < 2 && coverageReady && closeReady && reconstructionReady && !ui.isLoopClosed) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(GccGreen.copy(alpha = 0.9f))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "Almost there — return to the start marker to close the loop",
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White,
+                    )
+                }
             }
 
             if (isOutsideBoundary) {
@@ -419,126 +466,187 @@ fun ArRouteScreen(
             }
         }
 
-        // Tracking-health recovery prompt (bottom) — only for degraded tracking.
-        // NOT_AVAILABLE means no AR at all (stub targets, session warming up), so
-        // no prompt; NORMAL needs none.
-        if (trackingState == TrackingState.LIMITED) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = 88.dp, start = 16.dp, end = 16.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color.Black.copy(alpha = 0.65f))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "Hold steady — improving AR tracking. Move slowly and keep the area lit.",
-                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
-                    color = Color.White,
+        // F6: ONE inset-aware bottom chrome column — the tracking/pace
+        // prompts, tap candidate pill, rectify sheet, and the lap actions
+        // stack here instead of floating at hand-tuned bottom paddings
+        // (88/76/120dp) that popped when several showed at once.
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 16.dp, start = 16.dp, end = 16.dp),
+        ) {
+            // Tracking-health recovery prompt — only for degraded tracking.
+            // NOT_AVAILABLE means no AR at all (stub targets, session warming
+            // up), so no prompt; NORMAL needs none.
+            if (trackingState == TrackingState.LIMITED) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.Black.copy(alpha = 0.65f))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "Hold steady — improving AR tracking. Move slowly and keep the area lit.",
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color.White,
+                    )
+                }
+            }
+
+            // Walking-pace prompt — the tracking prompt wins when both apply
+            // (degraded tracking already tells them to slow down).
+            if (ui.movingTooFast && trackingState != TrackingState.LIMITED) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.Black.copy(alpha = 0.65f))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "Slow down — scanning works best at an easy walking pace.",
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color.White,
+                    )
+                }
+            }
+
+            // Tap-to-confirm candidate pill (env-scan parity).
+            if (tapCandidate.phase != TapPhase.IDLE) {
+                TapCandidatePill(
+                    state = tapCandidate,
+                    onConfirm = {
+                        // Snapshot before dismissing: collectAsState propagation
+                        // isn't synchronous, so reading tapCandidate again after
+                        // overlay.dismissTapCandidate() below risks a stale value.
+                        val candidate = tapCandidate
+                        if (!captureAllowed) {
+                            overlay.dismissTapCandidate()
+                            viewModel.confirmRouteTapItem(candidate, null) // surfaces the gate error banner
+                        } else {
+                            overlay.confirmTapCandidate()?.let { confirmed ->
+                                tapConfirmScope.launch {
+                                    val photo = overlay.captureTapEvidencePhoto()
+                                    viewModel.confirmRouteTapItem(confirmed, photo)
+                                }
+                            }
+                        }
+                    },
+                    onReject = {
+                        overlay.rejectTapCandidate()?.let { rejected ->
+                            viewModel.rejectRouteTapItem(rejected)
+                        }
+                    },
+                    onDismiss = { overlay.dismissTapCandidate() },
                 )
             }
-        }
 
-        // Walking-pace prompt — same slot as the tracking prompt, which wins
-        // when both apply (degraded tracking already tells them to slow down).
-        if (ui.movingTooFast && trackingState != TrackingState.LIMITED) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = 88.dp, start = 16.dp, end = 16.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color.Black.copy(alpha = 0.65f))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "Slow down — scanning works best at an easy walking pace.",
-                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
-                    color = Color.White,
-                )
-            }
-        }
-
-        // Expected-observation confirm sheet (rectify flow).
-        nearbyExpected?.let { obs ->
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = 76.dp, start = 16.dp, end = 16.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color.Black.copy(alpha = 0.8f))
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(
-                    text = "Trash was reported here — is it still there?",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = Color.White,
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Row {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(Color.White.copy(alpha = 0.15f))
-                            .clickable { viewModel.dismissExpectedObservation(obs) }
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                    ) {
-                        Text(
-                            text = "Still there",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = Color.White,
-                        )
+            // Expected-observation confirm sheet (rectify flow). Padded clear
+            // of the minimap's band when the minimap is visible — the old
+            // layout hid the minimap while this sheet was up (F6).
+            nearbyExpected?.let { obs ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = if (minimapVisible) miniMapWidth + 24.dp else 0.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color.Black.copy(alpha = 0.8f))
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        text = "Trash was reported here — is it still there?",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color.White,
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(Color.White.copy(alpha = 0.15f))
+                                .clickable { viewModel.dismissExpectedObservation(obs) }
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                        ) {
+                            Text(
+                                text = "Still there",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = Color.White,
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(GccGreen)
+                                .clickable { viewModel.rectifyObservation(obs) }
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                        ) {
+                            Text(
+                                text = "Already clean · +25 pts",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White,
+                            )
+                        }
                     }
-                    Spacer(modifier = Modifier.width(12.dp))
+                }
+            }
+
+            // Lap actions: F5's Complete Scout pill (bottom-center, enabled
+            // when every lap-1 gate passes) with Back to Map on the end.
+            Box(modifier = Modifier.fillMaxWidth()) {
+                if (ui.lapNumber < 2) {
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(GccGreen)
-                            .clickable { viewModel.rectifyObservation(obs) }
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                            .align(Alignment.Center)
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(if (lapDone) GccGreen else GccGreen.copy(alpha = 0.45f))
+                            .clickable(enabled = lapDone) {
+                                // Phase flips to SCOUT_REVIEW inside
+                                // completeScout; leave the AR surface first
+                                // so the review screen owns the camera-free UI.
+                                viewModel.exitArRoute()
+                                viewModel.completeScout()
+                            }
+                            .padding(horizontal = 20.dp, vertical = 14.dp),
                     ) {
                         Text(
-                            text = "Already clean · +25 pts",
-                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                            text = "Complete Scout ✓",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
                             color = Color.White,
                         )
                     }
                 }
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(GccGreen)
+                        .clickable { onExit() }
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                ) {
+                    Text(
+                        text = "Back to Map",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                    )
+                }
             }
-        }
-
-        // Back to the scout map (bottom-right) — coverage keeps accruing there.
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .navigationBarsPadding()
-                .padding(end = 16.dp, bottom = 16.dp)
-                .clip(RoundedCornerShape(24.dp))
-                .background(GccGreen)
-                .clickable { onExit() }
-                .padding(horizontal = 20.dp, vertical = 14.dp),
-        ) {
-            Text(
-                text = "Back to Map",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-            )
         }
 
         // Live minimap — fog (never scanned) / stale (re-visit) / this-session
         // scanned cells + hotspot pins, matching the spot-capture minimap.
-        // Suppressed while the rectify confirm sheet is showing: the sheet's
-        // buttons (below) would otherwise be covered by this BottomStart map,
-        // since the minimap is drawn later and wins z-order.
-        if (nearbyExpected == null && (ui.currentLat != 0.0 || ui.currentLng != 0.0)) {
-            val miniMapWidth: Dp = 160.dp
-            val miniMapHeight: Dp = miniMapWidth * 0.78f
+        // F6: no longer suppressed while the rectify sheet is up — the sheet's
+        // bottom-column slot pads around the minimap's band instead.
+        if (minimapVisible) {
 
             // Frame the whole block when boundaries exist: the minimap's job
             // during a block lap is showing the block filling in, not chasing
@@ -619,37 +727,8 @@ fun ArRouteScreen(
         )
 
 
-        // Tap-to-confirm candidate pill (bottom-center) — sits above the lap
-        // fill bar so its buttons stay reachable while a candidate is live.
-        if (tapCandidate.phase != TapPhase.IDLE) {
-            TapCandidatePill(
-                state = tapCandidate,
-                onConfirm = {
-                    // Snapshot before dismissing: collectAsState propagation
-                    // isn't synchronous, so reading tapCandidate again after
-                    // overlay.dismissTapCandidate() below risks a stale value.
-                    val candidate = tapCandidate
-                    if (!captureAllowed) {
-                        overlay.dismissTapCandidate()
-                        viewModel.confirmRouteTapItem(candidate, null) // surfaces the gate error banner
-                    } else {
-                        overlay.confirmTapCandidate()?.let { confirmed ->
-                            tapConfirmScope.launch {
-                                val photo = overlay.captureTapEvidencePhoto()
-                                viewModel.confirmRouteTapItem(confirmed, photo)
-                            }
-                        }
-                    }
-                },
-                onReject = {
-                    overlay.rejectTapCandidate()?.let { rejected ->
-                        viewModel.rejectRouteTapItem(rejected)
-                    }
-                },
-                onDismiss = { overlay.dismissTapCandidate() },
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 120.dp),
-            )
-        }
+        // Tap-to-confirm candidate pill — rendered inside the bottom chrome
+        // column above (F6).
 
         // Exit AR button (top-left) — returns to the scout map.
         TextButton(
@@ -669,5 +748,27 @@ fun ArRouteScreen(
                 Text("✕", style = MaterialTheme.typography.titleMedium, color = GccGreenDark)
             }
         }
+    }
+}
+
+/** F4: one lap-gate pip — green dot + label when the gate has passed. */
+@Composable
+private fun LapGatePip(label: String, met: Boolean) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(horizontal = 6.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(7.dp)
+                .clip(CircleShape)
+                .background(if (met) GccGreen else Color.White.copy(alpha = 0.35f)),
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+            color = if (met) Color.White else Color.White.copy(alpha = 0.6f),
+        )
     }
 }

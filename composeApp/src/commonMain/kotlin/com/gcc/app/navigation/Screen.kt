@@ -13,6 +13,10 @@ sealed class Screen {
     @Serializable
     data object Onboarding : Screen()
 
+    /** First-run (pre-auth) intro carousel — §3, gated on FirstRunStore.introSeen. */
+    @Serializable
+    data object Intro : Screen()
+
     @Serializable
     data object Dashboard : Screen()
 

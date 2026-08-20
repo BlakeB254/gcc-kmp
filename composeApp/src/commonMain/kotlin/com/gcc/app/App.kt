@@ -15,6 +15,7 @@ import com.arkivanov.decompose.extensions.compose.stack.animation.stackAnimation
 import com.gcc.app.di.SessionExpiredSignal
 import com.gcc.app.navigation.RootComponent
 import com.gcc.app.navigation.Screen
+import com.gcc.app.platform.FirstRunStore
 import com.gcc.app.ui.screens.*
 import com.gcc.app.ui.screens.admin.AdminPanelScreen
 import com.gcc.app.ui.screens.admin.AdminJobListScreen
@@ -27,10 +28,18 @@ import com.gcc.app.ui.screens.admin.AdminBountyDetailScreen
 import com.gcc.app.ui.screens.admin.AdminWorkerDetailScreen
 import com.gcc.app.ui.theme.GccTheme
 import com.gcc.shared.geo.routeCenterCoordinates
+import org.koin.mp.KoinPlatform
 
 @Composable
 fun App(component: RootComponent) {
     var showSplash by remember { mutableStateOf(true) }
+
+    // §5.2 splash gating: full sequence only when the intro was never seen
+    // (first download); returning users get the ~1.5s logo hold. Resolved
+    // from Koin — same lookup pattern RootComponent uses.
+    val firstRunStore: FirstRunStore? = remember {
+        runCatching { KoinPlatform.getKoin().get<FirstRunStore>() }.getOrNull()
+    }
 
     // Observe forced-logout signal from API 401/403
     val sessionExpired by SessionExpiredSignal.expired.collectAsState()
@@ -43,7 +52,10 @@ fun App(component: RootComponent) {
 
     GccTheme {
         if (showSplash) {
-            SplashScreen(onFinished = { showSplash = false })
+            SplashScreen(
+                shortMode = firstRunStore?.introSeen == true,
+                onFinished = { showSplash = false },
+            )
             return@GccTheme
         }
 
@@ -62,6 +74,9 @@ fun App(component: RootComponent) {
                 )
                 is Screen.Onboarding -> OnboardingScreen(
                     onComplete = component::onOnboardingComplete,
+                )
+                is Screen.Intro -> IntroScreen(
+                    onComplete = component::onIntroComplete,
                 )
                 is Screen.Dashboard -> DashboardScreen(
                     onRouteClick = component::navigateToRouteDetail,

@@ -2,6 +2,7 @@ package com.gcc.app.di
 
 import com.gcc.app.platform.BiometricAuth
 import com.gcc.app.platform.CameraManager
+import com.gcc.app.platform.FirstRunStore
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.LocationTrackingController
 import com.gcc.app.platform.OnDeviceAnalyzer
@@ -47,6 +48,7 @@ import org.koin.dsl.module
 
 val offlineAppModule = module {
     single<TokenManager> { OfflineTokenManager() }
+    single { FirstRunStore() }
     single { LocationProvider() }
     single { LocationTrackingController() }
     single { ShareManager() }

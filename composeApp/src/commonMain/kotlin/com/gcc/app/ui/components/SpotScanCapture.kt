@@ -84,6 +84,9 @@ fun SpotScanCapture(
     /** Background capture indicator pass-through (Pillar 1) — see
      *  [CameraCapture]'s `captureState` kdoc. */
     captureState: String? = null,
+    /** Fired once after the silent first-frame auto-capture succeeds (F8) —
+     *  the caller surfaces a "Photo captured" toast so the shot isn't invisible. */
+    onAutoCapture: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val locationProvider = koinInject<LocationProvider>()
@@ -214,11 +217,13 @@ fun SpotScanCapture(
         delay(2500L) // let the camera session + GPS settle
         if (!currentCanCapture) return@LaunchedEffect
         // Silent frame grab — the environment scan must not fire the system
-        // shutter sound on open (build 108 field report).
+        // shutter sound on open (build 108 field report). F8: it must not be
+        // invisible either — the caller shows a "Photo captured" toast.
         val photo = cameraManager.captureFrame()
         if (photo != null) {
             autoScanFired = true
             handleCapture(photo)
+            onAutoCapture()
         } else {
             DiagnosticsLog.error("camera", "auto-scan captureFrame() returned null")
         }

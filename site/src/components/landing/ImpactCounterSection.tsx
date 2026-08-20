@@ -30,6 +30,38 @@ export function ImpactCounterSection() {
           <ImpactCounter layout="grid" />
         </div>
 
+        {/* 100-block pilot progress — milestone figures are Blake-reported field totals
+            (cleanups + payouts run through the worker app, not the site's sponsor DB),
+            so they're curated here rather than computed. Update as the pilot advances. */}
+        <div className="max-w-3xl mx-auto mb-16 lg:mb-20">
+          <div className="bg-black/25 backdrop-blur-sm rounded-2xl p-6 sm:p-8 border border-white/15">
+            <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2 mb-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-brand-green-300 mb-1">100-block pilot</p>
+                <p className="text-2xl sm:text-3xl font-bold text-white">
+                  20<span className="text-brand-green-300">/100</span> blocks cleaned
+                </p>
+              </div>
+              <p className="text-brand-green-100 text-sm sm:text-base font-medium sm:text-right">
+                <span className="font-bold text-white">$2,000</span> paid to residents so far
+              </p>
+            </div>
+            <div
+              className="h-3 w-full rounded-full bg-white/10 overflow-hidden"
+              role="progressbar"
+              aria-valuenow={20}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label="100-block pilot progress: 20 of 100 blocks cleaned"
+            >
+              <div className="h-full w-[20%] rounded-full bg-gradient-to-r from-brand-green-400 to-brand-sky-400" />
+            </div>
+            <p className="text-xs text-brand-green-200/80 mt-3">
+              Every block is before-and-after documented by the workers who cleaned it.
+            </p>
+          </div>
+        </div>
+
         {/* Transparency callout */}
         <div className="max-w-3xl mx-auto mb-16 lg:mb-20">
           <div className="bg-gradient-to-r from-brand-green-600/30 to-brand-green-500/30 rounded-2xl p-6 sm:p-8 border border-brand-green-500/30">

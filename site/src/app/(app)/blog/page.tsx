@@ -23,12 +23,30 @@ function isPublished(publishAt: string): boolean {
 
 const POSTS: PostCard[] = [
   {
+    slug: '2026-08-19-issue-05',
+    title: 'From cleaning blocks to mapping them in 3D',
+    date: '2026-08-19',
+    publishAt: '2026-08-19T08:00:00-05:00',
+    description:
+      "Issue #5 — The Digital Twin. 20 of 100 blocks cleaned and $2,000 paid out to North Lawndale residents, 158 scan sessions captured, LiDAR depth + camera poses + GPS fusing into per-block 3D, a litter classifier in training, iOS v1.0.8 in TestFlight, and the new honor wall naming our major sponsors.",
+    heroImage: '/newsletter/issue-02/heatmap.png',
+    badge: 'Issue #5 · The Digital Twin',
+  },
+  {
+    slug: '2026-07-31-issue-04',
+    title: 'The scan system grows teeth',
+    date: '2026-07-31',
+    publishAt: '2026-07-31T08:00:00-05:00',
+    description:
+      "Issue #4 — Growing Teeth. The first North Lawndale cleanups ran July 5-6, UIC's $2,000 gift came through its Office of Community Collaboration, the iOS env-scan overhaul shipped across TestFlight builds 165-178, and the scan-powered heatmap sharpens with every session.",
+    heroImage: '/newsletter/issue-02/heatmap.png',
+    badge: 'Issue #4 · Growing Teeth',
+  },
+  {
     slug: '2026-07-03-issue-03',
     title: 'Boots on the ground',
     date: '2026-07-03',
-    // MANUAL HOLD — not scheduled yet, publish only once the team confirms
-    // a go-live time. Not a real target date; do not auto-flip this.
-    publishAt: '2099-01-01T00:00:00-05:00',
+    publishAt: '2026-07-03T08:00:00-05:00',
     description:
       "Issue #3 — Boots on the Ground. A cleaner site, a live iOS scanning feature (Android coming soon), a $2,000 gift from the University of Illinois Chicago toward our 100-block goal, the first North Lawndale cleanups landing July 5-6, a scan-powered heatmap getting sharper, and the next layer of our points economy taking shape.",
     heroImage: '/newsletter/issue-02/heatmap.png',

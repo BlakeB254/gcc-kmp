@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.theme.GccGreen
+import com.gcc.app.ui.theme.reducedMotionEnabled
 import kotlinx.coroutines.delay
 
 /**
@@ -38,7 +39,9 @@ fun EnvironmentScanEffects(
     creditTick: Int,
     modifier: Modifier = Modifier,
 ) {
-    if (!active) return
+    // F9: no full-screen pulses for reduced-motion users — the minimap and
+    // the stats chip already carry the same registration signal statically.
+    if (!active || reducedMotionEnabled()) return
 
     // Registration pulse: flare on each credit, fade over ~300ms. Subtler than
     // before (peak 0.28 -> 0.18) now that it's the only effect on screen.

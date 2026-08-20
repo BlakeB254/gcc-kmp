@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -20,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.components.*
 import com.gcc.app.util.padTwo
+import com.gcc.app.platform.FirstRunStore
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.findCommunityAreaForLocation
@@ -48,6 +50,7 @@ fun RouteDetailScreen(
 ) {
     val viewModel = koinInject<RouteDetailViewModel>()
     val locationProvider = koinInject<LocationProvider>()
+    val firstRunStore = koinInject<FirstRunStore>()
     val uiState by viewModel.uiState.collectAsState()
     val currentLocation by locationProvider.currentLocation.collectAsState()
     LaunchedEffect(Unit) {
@@ -409,6 +412,25 @@ fun RouteDetailScreen(
                 }
             }
         }
+
+        // §4 first-claim coach mark: one-shot bubble anchored above the
+        // bottom panel while the tutorial flag is unset (the Dashboard
+        // sheet's "Open route" CTA leads here). Dismissing sets the flag;
+        // entering the scan sets it too (RootComponent.navigateToRouteScan).
+        var coachDismissed by remember { mutableStateOf(false) }
+        if (!firstRunStore.tutorialBlockSeen && !coachDismissed) {
+            FirstClaimCoachMark(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(
+                        bottom = with(LocalDensity.current) { panelHeightPx.toDp() } + 12.dp,
+                    ),
+                onDismiss = {
+                    coachDismissed = true
+                    firstRunStore.tutorialBlockSeen = true
+                },
+            )
+        }
     }
 }
 
@@ -484,6 +506,48 @@ private fun InfoStat(
             label,
             style = MaterialTheme.typography.bodySmall,
             color = TextMuted,
+        )
+    }
+}
+
+/** §4 one-shot first-claim bubble, anchored above the bottom panel. */
+@Composable
+private fun FirstClaimCoachMark(
+    modifier: Modifier = Modifier,
+    onDismiss: () -> Unit,
+) {
+    Column(
+        modifier = modifier.padding(horizontal = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 4.dp,
+            shadowElevation = 8.dp,
+        ) {
+            Row(
+                modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    "Start from the route boundary — the app guides your first lap.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = onDismiss) {
+                    Text("Got it", color = GccGreen)
+                }
+            }
+        }
+        // Caret pointing down at the panel
+        Box(
+            modifier = Modifier
+                .offset(y = (-6).dp)
+                .size(12.dp)
+                .rotate(45f)
+                .background(MaterialTheme.colorScheme.surface),
         )
     }
 }

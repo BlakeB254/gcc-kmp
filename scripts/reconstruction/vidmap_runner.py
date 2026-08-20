@@ -826,6 +826,10 @@ def load_colmap_model(model_dir: str | os.PathLike[str]) -> ColmapModel | None:
 
 
 def find_colmap_model(output_dir: Path) -> Path | None:
+    # Prefer the first candidate that parses to a NON-empty model; an empty
+    # header-only text model (written after a failed run) must not shadow a
+    # real reconstruction in run/rec (P0 spike bug, 2026-08-19).
+    fallback: Path | None = None
     for candidate in (
         output_dir / "colmap",
         output_dir / "run" / "rec",
@@ -833,8 +837,12 @@ def find_colmap_model(output_dir: Path) -> Path | None:
         output_dir,
     ):
         if (candidate / "images.bin").is_file() or (candidate / "images.txt").is_file():
-            return candidate
-    return None
+            model = load_colmap_model(candidate)
+            if model is not None and not model.empty:
+                return candidate
+            if fallback is None:
+                fallback = candidate
+    return fallback
 
 
 # ---------------------------------------------------------------------------
@@ -951,6 +959,10 @@ def _empty_model() -> ColmapModel:
 
 
 def _copy_or_write_colmap(src: Path | None, dest: Path, model: ColmapModel) -> None:
+    if model.empty and (src is None or src.resolve() == dest.resolve()):
+        # Never materialize an empty model: header-only text files would shadow
+        # a real reconstruction in find_colmap_model on later runs.
+        return
     dest.mkdir(parents=True, exist_ok=True)
     if src is not None and src.resolve() != dest.resolve():
         for name in (

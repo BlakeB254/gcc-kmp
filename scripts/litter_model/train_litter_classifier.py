@@ -56,12 +56,33 @@ def main() -> None:
     split_root = DATASET.parent / f"{DATASET.name}-split"
     if split_root.exists():
         shutil.rmtree(split_root)
-    for class_dir in classes:
-        for img in class_dir.glob("*.jpg"):
-            part = "val" if (zlib.crc32(img.name.encode()) % 100) < 15 else "train"
-            dest_dir = split_root / part / class_dir.name
-            dest_dir.mkdir(parents=True, exist_ok=True)
+
+    def _place(img: pathlib.Path, class_name: str, part: str) -> None:
+        dest_dir = split_root / part / class_name
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        try:
             (dest_dir / img.name).symlink_to(img)
+        except OSError:
+            # exFAT and similar filesystems don't support symlinks —
+            # fall back to a real copy so the split still materializes.
+            shutil.copy2(img, dest_dir / img.name)
+
+    for class_dir in classes:
+        images = sorted(class_dir.glob("*.jpg"))
+        parts = {
+            img: ("val" if (zlib.crc32(img.name.encode()) % 100) < 15 else "train")
+            for img in images
+        }
+        # Tiny classes can hash entirely into train (or val), leaving the run
+        # with "requires N classes" warnings and no val signal for that class.
+        # Guarantee at least one image on each side, deterministically.
+        if len(images) >= 2:
+            if not any(p == "val" for p in parts.values()):
+                parts[images[0]] = "val"
+            if not any(p == "train" for p in parts.values()):
+                parts[images[-1]] = "train"
+        for img, part in parts.items():
+            _place(img, class_dir.name, part)
 
     MODELS.mkdir(parents=True, exist_ok=True)
     prev_best = MODELS / "best.pt"

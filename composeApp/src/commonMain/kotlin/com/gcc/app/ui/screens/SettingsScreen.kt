@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.gcc.app.platform.BiometricAuth
+import com.gcc.app.platform.FirstRunStore
 import com.gcc.app.ui.components.*
 import com.gcc.app.ui.theme.*
 import com.gcc.app.viewmodel.ProfileViewModel
@@ -30,10 +31,12 @@ fun SettingsScreen(
     val viewModel = koinInject<SettingsViewModel>()
     val profileVm = koinInject<ProfileViewModel>()
     val biometricAuth = koinInject<BiometricAuth>()
+    val firstRunStore = koinInject<FirstRunStore>()
     val biometricAvailable = remember { biometricAuth.isBiometricAvailable() }
     val uiState by viewModel.uiState.collectAsState()
     val profileState by profileVm.uiState.collectAsState()
     var showDeleteConfirmation by remember { mutableStateOf(false) }
+    var introReplayArmed by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { viewModel.loadSettings() }
     LaunchedEffect(Unit) { profileVm.loadProfile() }
@@ -358,6 +361,26 @@ fun SettingsScreen(
             SectionHeader(title = "Support")
             GccCard(onClick = { onNavigateToLegal("help") }) {
                 Text("Help & FAQ", style = MaterialTheme.typography.bodyLarge)
+            }
+            GccCard(
+                onClick = {
+                    firstRunStore.resetIntroAndTips()
+                    introReplayArmed = true
+                },
+            ) {
+                Text("Replay intro & tips", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "Show the intro carousel and first-block tutorial again",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted,
+                )
+            }
+            if (introReplayArmed) {
+                Text(
+                    "Will replay on your next launch.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = GccGreen,
+                )
             }
 
             // Danger Zone

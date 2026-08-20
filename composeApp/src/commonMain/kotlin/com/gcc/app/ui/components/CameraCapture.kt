@@ -6,8 +6,10 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.lazy.LazyRow
@@ -31,6 +33,7 @@ import com.gcc.app.platform.CameraManager
 import com.gcc.app.platform.CameraPreview
 import com.gcc.app.platform.CoverageTracker
 import com.gcc.app.platform.CapturedPhoto
+import com.gcc.app.platform.FirstRunStore
 import com.gcc.app.platform.decodeImageBitmap
 import com.gcc.app.platform.pickFromLibrary
 import com.gcc.app.platform.hasLiDAR
@@ -38,9 +41,17 @@ import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
 import com.gcc.app.ui.theme.*
 import com.gcc.shared.model.Coordinates
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.PI
 import kotlin.math.cos
+
+/** Hold duration that arms draw-to-mark on the scan viewfinder (F3). */
+private const val DRAW_HOLD_MS = 350L
+
+/** How the first 350ms of a scan-surface touch resolved. */
+private enum class ScanGestureOutcome { PENDING, TAP, QUICK_DRAG, DRAW }
 
 // Field report (TestFlight 145, "minimap shaking"): the first smoothed-center
 // attempt animated ABSOLUTE lat/lng through a Double→AnimationVector1D
@@ -154,63 +165,94 @@ fun CameraCapture(
             modifier = Modifier
                 .fillMaxSize()
                 .pointerInput(atLimit, environmentScanMode) {
-                    detectTapGestures { offset ->
-                        if (environmentScanMode) {
-                            // Global constraint 2: in a scan, a tap TARGETS.
-                            // It never captures. Accidental taps (and the taps
-                            // users make to keep the screen awake — see
-                            // KeepScreenAwake) must cost nothing. The tap opens
-                            // a provisional candidate the user must confirm.
-                            arOverlay?.focusAt(offset.x / size.width, offset.y / size.height)
-                            return@detectTapGestures
-                        }
+                    if (!environmentScanMode) {
                         // Non-scan flows keep tap-to-capture.
-                        if (arOverlay != null) {
-                            arOverlay.focusAt(offset.x / size.width, offset.y / size.height)
-                        }
-                        if (!isCapturing && !atLimit) {
-                            isCapturing = true
-                            coroutineScope.launch {
-                                val photo = manager.capturePhoto()
-                                if (photo != null) onCapture(photo)
-                                isCapturing = false
+                        detectTapGestures { offset ->
+                            if (arOverlay != null) {
+                                arOverlay.focusAt(offset.x / size.width, offset.y / size.height)
                             }
+                            if (!isCapturing && !atLimit) {
+                                isCapturing = true
+                                coroutineScope.launch {
+                                    val photo = manager.capturePhoto()
+                                    if (photo != null) onCapture(photo)
+                                    isCapturing = false
+                                }
+                            }
+                        }
+                        return@pointerInput
+                    }
+                    // Gesture arbitration (F3): previously ANY drag that fell
+                    // short of the 24px region threshold surfaced as a tap and
+                    // opened a spurious candidate pill. Now a tap targets, a
+                    // quick drag does nothing, and draw mode requires a
+                    // ~350ms hold FIRST, then the drag draws the region.
+                    awaitEachGesture {
+                        val down = awaitFirstDown()
+                        val slop = viewConfiguration.touchSlop
+                        var outcome = ScanGestureOutcome.PENDING
+                        val expired = withTimeoutOrNull(DRAW_HOLD_MS) {
+                            while (outcome == ScanGestureOutcome.PENDING) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                val wentUp = !change.pressed && change.previousPressed
+                                if (wentUp) {
+                                    change.consume()
+                                    outcome = ScanGestureOutcome.TAP
+                                } else if ((change.position - down.position).getDistance() > slop) {
+                                    outcome = ScanGestureOutcome.QUICK_DRAG
+                                }
+                            }
+                        }
+                        if (expired == null && outcome == ScanGestureOutcome.PENDING) {
+                            outcome = ScanGestureOutcome.DRAW
+                        }
+                        when (outcome) {
+                            ScanGestureOutcome.TAP -> {
+                                // Global constraint 2: in a scan, a tap TARGETS.
+                                // It never captures. Accidental taps (and the taps
+                                // users make to keep the screen awake — see
+                                // KeepScreenAwake) must cost nothing. The tap opens
+                                // a provisional candidate the user must confirm.
+                                arOverlay?.focusAt(down.position.x / size.width, down.position.y / size.height)
+                            }
+                            ScanGestureOutcome.QUICK_DRAG -> {
+                                // Swallow the rest of the gesture so it can't
+                                // surface later as a tap or a region.
+                                waitForUpOrCancellation()?.consume()
+                            }
+                            ScanGestureOutcome.DRAW -> {
+                                // Drawn-region marking (Blake 2026-07-28): drag a
+                                // rectangle over trash to mark it. The rubber band
+                                // renders below; on release the overlay geo-resolves
+                                // the region on its tick thread and SpotScreen files it.
+                                var current = down.position
+                                dragStart = down.position
+                                dragCurrent = current
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                    current = change.position
+                                    dragCurrent = current
+                                    change.consume()
+                                    if (!change.pressed && change.previousPressed) break
+                                }
+                                dragStart = null
+                                dragCurrent = null
+                                if (kotlin.math.abs(current.x - down.position.x) > 24f &&
+                                    kotlin.math.abs(current.y - down.position.y) > 24f
+                                ) {
+                                    arOverlay?.markRegion(
+                                        (down.position.x / size.width).toDouble(),
+                                        (down.position.y / size.height).toDouble(),
+                                        (current.x / size.width).toDouble(),
+                                        (current.y / size.height).toDouble(),
+                                    )
+                                }
+                            }
+                            ScanGestureOutcome.PENDING -> Unit
                         }
                     }
-                }
-                .pointerInput(environmentScanMode) {
-                    if (!environmentScanMode) return@pointerInput
-                    detectDragGestures(
-                        onDragStart = { offset ->
-                            dragStart = offset
-                            dragCurrent = offset
-                        },
-                        onDrag = { change, _ ->
-                            change.consume()
-                            dragCurrent = change.position
-                        },
-                        onDragCancel = {
-                            dragStart = null
-                            dragCurrent = null
-                        },
-                        onDragEnd = {
-                            val start = dragStart
-                            val end = dragCurrent
-                            dragStart = null
-                            dragCurrent = null
-                            if (start != null && end != null &&
-                                kotlin.math.abs(end.x - start.x) > 24f &&
-                                kotlin.math.abs(end.y - start.y) > 24f
-                            ) {
-                                arOverlay?.markRegion(
-                                    (start.x / size.width).toDouble(),
-                                    (start.y / size.height).toDouble(),
-                                    (end.x / size.width).toDouble(),
-                                    (end.y / size.height).toDouble(),
-                                )
-                            }
-                        },
-                    )
                 },
         ) {
             if (arOverlay != null) {
@@ -313,6 +355,34 @@ fun CameraCapture(
                         }
                     }
                 }
+                // One-time draw-gesture hint (F3): draw-to-mark needs a hold
+                // first, which is undiscoverable without saying so once.
+                // Marked seen the moment it renders so it never nags twice.
+                val firstRunStore = remember { FirstRunStore() }
+                var showDrawHint by remember {
+                    mutableStateOf(environmentScanMode && !firstRunStore.hintDrawModeSeen)
+                }
+                if (showDrawHint) {
+                    LaunchedEffect(Unit) {
+                        firstRunStore.hintDrawModeSeen = true
+                        delay(8_000)
+                        showDrawHint = false
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(GccGreen.copy(alpha = 0.85f))
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    ) {
+                        Text(
+                            text = "Hold and drag to mark an area",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = Color.White,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                }
             }
 
             // Mini-map: lower-right corner over the feed (Pokémon-GO layout;
@@ -333,22 +403,25 @@ fun CameraCapture(
                 val anchorLngScale = remember { cos(anchorLat * PI / 180.0) }
                 val smoothedNorthMeters = remember { Animatable(0f) }
                 val smoothedEastMeters = remember { Animatable(0f) }
-                LaunchedEffect(currentLocation.lat, currentLocation.lng) {
+                // F9: reduced-motion users get instant re-centers, no glide.
+                val reduceMotion = reducedMotionEnabled()
+                LaunchedEffect(currentLocation.lat, currentLocation.lng, reduceMotion) {
+                    val northMeters = ((currentLocation.lat - anchorLat) * 111_320.0).toFloat()
+                    val eastMeters = ((currentLocation.lng - anchorLng) * 111_320.0 * anchorLngScale).toFloat()
+                    if (reduceMotion) {
+                        smoothedNorthMeters.snapTo(northMeters)
+                        smoothedEastMeters.snapTo(eastMeters)
+                        return@LaunchedEffect
+                    }
                     val centerSpring = spring<Float>(
                         dampingRatio = Spring.DampingRatioNoBouncy,
                         stiffness = Spring.StiffnessVeryLow,
                     )
                     launch {
-                        smoothedNorthMeters.animateTo(
-                            ((currentLocation.lat - anchorLat) * 111_320.0).toFloat(),
-                            animationSpec = centerSpring,
-                        )
+                        smoothedNorthMeters.animateTo(northMeters, animationSpec = centerSpring)
                     }
                     launch {
-                        smoothedEastMeters.animateTo(
-                            ((currentLocation.lng - anchorLng) * 111_320.0 * anchorLngScale).toFloat(),
-                            animationSpec = centerSpring,
-                        )
+                        smoothedEastMeters.animateTo(eastMeters, animationSpec = centerSpring)
                     }
                 }
                 val smoothedCenterLat = anchorLat + smoothedNorthMeters.value / 111_320.0

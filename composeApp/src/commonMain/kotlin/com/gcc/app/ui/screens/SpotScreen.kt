@@ -29,7 +29,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.Image
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import com.gcc.app.ui.components.GccLogo
 import com.gcc.app.platform.ArEnvScanOverlay
 import com.gcc.app.platform.TrashCandidate
@@ -82,6 +84,7 @@ import com.gcc.app.platform.OutdoorGate
 import com.gcc.app.platform.OutdoorState
 import com.gcc.app.platform.retractionOutcome
 import com.gcc.app.platform.KeepScreenAwake
+import com.gcc.app.platform.decodeImageBitmap
 import com.gcc.app.platform.PROVENANCE_AUTO_DETECTED
 import com.gcc.app.platform.PROVENANCE_USER_CONFIRMED
 import com.gcc.app.platform.TrashItemCatalog
@@ -197,6 +200,7 @@ fun SpotScreen(
                         SpotPhase.CAMERA -> "Environment Scan"
                         SpotPhase.LOCATION -> "Confirm Location"
                         SpotPhase.DESCRIPTION -> "Add Details"
+                        SpotPhase.REVIEW -> "Review Scan Items"
                         SpotPhase.SUBMITTING -> "Submitting..."
                         SpotPhase.RESULT -> "Scan Session Complete"
                     },
@@ -212,14 +216,6 @@ fun SpotScreen(
                 .fillMaxSize()
                 .padding(padding),
         ) {
-            LaunchedEffect(uiState.scanFinishedWithoutReport) {
-                if (uiState.scanFinishedWithoutReport) {
-                    // Clear before leaving: the VM is a singleton, so a stale
-                    // true here instantly closed every later scan open.
-                    viewModel.consumeScanFinishedSignal()
-                    onBack()
-                }
-            }
             when (uiState.phase) {
                 SpotPhase.CAMERA -> CameraPhase(
                     photos = uiState.capturedPhotos,
@@ -227,6 +223,7 @@ fun SpotScreen(
                     onRemovePhoto = { index -> viewModel.removePhoto(index) },
                     onNext = { viewModel.nextPhase() },
                     onCompleteScan = { draft, captureHealthJson -> viewModel.completeScan(draft, captureHealthJson) },
+                    onAbortScan = { draft, captureHealthJson -> viewModel.abortScan(draft, captureHealthJson) },
                     onObjectCaptured = { outcome -> viewModel.attachObjectCapture(outcome) },
                     onBack = onBack,
                     spotLocation = currentLocation,
@@ -282,6 +279,15 @@ fun SpotScreen(
                     onSubmit = { viewModel.nextPhase() },
                 )
 
+                SpotPhase.REVIEW -> ReviewPhase(
+                    litterItems = clusterVisibleLitter(uiState.observedItems),
+                    litterEvidence = uiState.litterEvidence,
+                    photoCount = uiState.capturedPhotos.size,
+                    isSubmitting = uiState.isSubmitting,
+                    onDeleteItem = { atMs -> viewModel.deleteObservedItem(atMs) },
+                    onSubmit = { viewModel.submitReviewedScan() },
+                )
+
                 SpotPhase.SUBMITTING -> {
                     Box(
                         modifier = Modifier.fillMaxSize(),
@@ -332,6 +338,51 @@ fun SpotScreen(
                 )
             }
 
+            // F2: a finished-without-report scan (zero-cell close, or the
+            // voluntary ✕ abort) shows a small summary card instead of
+            // vanishing silently — the old instant onBack read as a crash.
+            if (uiState.scanFinishedWithoutReport) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.6f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .padding(32.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(MaterialTheme.colorScheme.surface)
+                            .padding(24.dp),
+                    ) {
+                        Text(
+                            "Scan archived",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = GccGreen,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "No litter confirmed this session — the ground you covered was saved.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted,
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        GccButton(
+                            text = "Done",
+                            onClick = {
+                                // Consume before leaving: the VM is a Koin
+                                // singleton, so a stale true here would flash
+                                // this card over every later scan open.
+                                viewModel.consumeScanFinishedSignal()
+                                onBack()
+                            },
+                            variant = GccButtonVariant.PRIMARY,
+                        )
+                    }
+                }
+            }
+
         }
     }
 }
@@ -345,6 +396,9 @@ private fun CameraPhase(
     /** Second param is the session's captureHealth JSON (Task 5) from
      *  [ArEnvScanOverlay.stopCapture] — null off-iOS/no capture/failure. */
     onCompleteScan: (EnvScanSessionDraft, String?) -> Unit,
+    /** F2: voluntary abort from the top-left ✕ (confirmed in-sheet). Same
+     *  draft/captureHealth pair as [onCompleteScan]; never files a report. */
+    onAbortScan: (EnvScanSessionDraft, String?) -> Unit = { _, _ -> },
     onBack: () -> Unit,
     onObjectCaptured: (com.gcc.app.platform.ObjectCaptureOutcome) -> Unit = {},
     spotLocation: Coordinates? = null,
@@ -1227,6 +1281,7 @@ private fun CameraPhase(
                 statusText = scanStatus,
                 arOverlay = arOverlay,
                 captureState = captureRecState,
+                onAutoCapture = { toast = "Photo captured ✓" },
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
@@ -1261,116 +1316,8 @@ private fun CameraPhase(
             )
         }
 
-        // "Previously littered — is it clean now?" confirm sheet.
-        nearbyDirty?.let { obs ->
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = 104.dp, start = 16.dp, end = 16.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color.Black.copy(alpha = 0.8f))
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(
-                    text = if (SessionAutoDetectPromptSource.isSessionObservationId(obs.id)) {
-                        "Your scan flagged litter here — is it still there?"
-                    } else {
-                        "Trash was reported here — is it still there?"
-                    },
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = Color.White,
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Row {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(Color.White.copy(alpha = 0.15f))
-                            .clickable {
-                                // One answer settles every unresolved
-                                // observation of this ≤5m cluster — ten old
-                                // records of one mess cost one question.
-                                // Clustered over promptPool so co-located
-                                // session detections settle with it.
-                                resolvedObservationIds.addAll(
-                                    clusterIdsAround(obs, promptPool.filter { it.id !in resolvedObservationIds })
-                                )
-                                nearbyPromptGate.onAnswered(Clock.System.now().toEpochMilliseconds())
-                                nearbyDirty = null
-                            }
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                    ) {
-                        Text("Still there", style = MaterialTheme.typography.labelLarge, color = Color.White)
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(GccGreen)
-                            .clickable {
-                                // Cluster-resolve like "Still there": the
-                                // server rectify below targets the answered
-                                // location; its ≤5m neighbors just stop
-                                // re-prompting this session.
-                                resolvedObservationIds.addAll(
-                                    clusterIdsAround(obs, promptPool.filter { it.id !in resolvedObservationIds })
-                                )
-                                expectedDirty = expectedDirty.filterNot { it.id == obs.id }
-                                // Local half of the answer: drop this
-                                // session's litter items near the answered
-                                // spot so the minimap zone and summary counts
-                                // correct immediately — the phantom-detection
-                                // fix (TestFlight 157). A no-op when nothing
-                                // from this session sits in the cluster.
-                                onMarkObservedItemsClean(obs.lat, obs.lng)
-                                nearbyPromptGate.onAnswered(Clock.System.now().toEpochMilliseconds())
-                                nearbyDirty = null
-                                val isSessionObs =
-                                    SessionAutoDetectPromptSource.isSessionObservationId(obs.id)
-                                rectifyScope.launch {
-                                    try {
-                                        val result = apiClient.rectifyObservationAtLocation(obs.lat, obs.lng)
-                                        toast = if (result.pointsAwarded > 0) {
-                                            "Area marked clean · +${result.pointsAwarded} pts ✓"
-                                        } else {
-                                            "Area marked clean ✓"
-                                        }
-                                    } catch (e: Exception) {
-                                        DiagnosticsLog.error("rectify", "env-scan rectify failed", e)
-                                        if (isSessionObs) {
-                                            // The session marker may not even
-                                            // have reached the server yet (30s
-                                            // queue) — a failed rectify is
-                                            // expected there, the local removal
-                                            // stands, and nothing is restored:
-                                            // re-adding a synthetic id to
-                                            // expectedDirty would duplicate the
-                                            // prompt-pool entry.
-                                            DiagnosticsLog.info(
-                                                "rectify",
-                                                "session-item rectify failed (marker may not be server-side yet) — local clean kept",
-                                            )
-                                        } else {
-                                            toast = "⚠ Couldn't record the clean update"
-                                            resolvedObservationIds.remove(obs.id)
-                                            expectedDirty = expectedDirty + obs
-                                        }
-                                    }
-                                }
-                            }
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                    ) {
-                        Text(
-                            "Already clean",
-                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                            color = Color.White,
-                        )
-                    }
-                }
-            }
-        }
+        // "Previously littered — is it clean now?" confirm sheet — rendered
+        // inside the bottom chrome column below (F6).
 
         // Scanning feedback: credited zones painted onto the ground ahead
         // (spatial replacement for the old zone counter), sweep + pulse,
@@ -1417,78 +1364,16 @@ private fun CameraPhase(
         // Undo window: the last confirm action (tap/sweep/drawn) can be
         // reversed for a few seconds — the friendliest mistake eraser.
         var undoVisibleUntilMs by remember { mutableStateOf(0L) }
-        if (trashCandidate == null && tapCandidate.phase != TapPhase.IDLE) {
-            TapCandidatePill(
-                state = tapCandidate,
-                onConfirm = {
-                    // I2: mirror TrashConfirmCard's outdoor-gate guard — a
-                    // confirm/reject that lands after an outdoor->indoor flip
-                    // must not persist or record. But NEVER silently (field
-                    // report: "I tapped confirm and nothing happened") — say
-                    // why the confirmation didn't take.
-                    if (!gate.captureAllowed.value) {
-                        arOverlay?.dismissTapCandidate()
-                        toast = "Scan paused indoors — step outside and tap the item again"
-                    } else {
-                        arOverlay?.confirmTapCandidate()?.let { confirmed ->
-                            // Evidence frame at confirm time (the item is
-                            // still in view): rides the marker upload AND
-                            // the report's photo set. Confirm-first so the
-                            // pill clears instantly; the photo is async.
-                            confirmScope.launch {
-                                val photo = arOverlay?.captureTapEvidencePhoto()
-                                onConfirmedTapItem(confirmed, photo, null, null)
-                                undoVisibleUntilMs = Clock.System.now().toEpochMilliseconds() + 6_000
-                            }
-                        }
-                    }
-                },
-                onReject = {
-                    if (!gate.captureAllowed.value) {
-                        arOverlay?.dismissTapCandidate()
-                        toast = "Scan paused indoors — step outside and tap the item again"
-                    } else {
-                        arOverlay?.rejectTapCandidate()?.let { rejected ->
-                            onRejectedTapItem(rejected)
-                        }
-                    }
-                },
-                onDismiss = { arOverlay?.dismissTapCandidate() },
-                // No label chips (Blake 2026-07-28 round 2): users confirm,
-                // the BACKEND names — labels ride the manifest for the recon
-                // pipeline instead of interrupting the field flow. The
-                // labelSource plumbing stays for the training flywheel.
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp),
-            )
-        }
+        // Tap candidate pill — rendered inside the bottom chrome column (F6).
         // "Is this litter?" prompt for a fully-scanned candidate the
         // classifier couldn't name (tracker stage-1 park). Field report
         // (TestFlight 157/158): the fill bar completed and then NOTHING —
         // the item was silently unknown-dismissed. Geometry still never
         // files on its own; the user's answer is now one tap away. Shown
-        // only when no tap pill and no lock-on card outranks it.
+        // only when no tap pill and no lock-on card outranks it. The pill
+        // itself is rendered inside the bottom chrome column (F6).
         val groundIntentPrompt by (arOverlay?.groundIntentPrompt
             ?: remember { MutableStateFlow<GroundIntentPrompt?>(null) }).collectAsState()
-        if (trashCandidate == null && tapCandidate.phase == TapPhase.IDLE && groundIntentPrompt != null) {
-            TapCandidatePill(
-                state = TapCandidateState(
-                    phase = TapPhase.AWAITING_CONFIRMATION,
-                    label = UNKNOWN_LITTER_LABEL,
-                ),
-                titleOverride = "Scanned an item I can't identify — is this litter?",
-                onConfirm = {
-                    if (!gate.captureAllowed.value) {
-                        arOverlay?.rejectGroundIntentPrompt()
-                        toast = "Scan paused indoors — step outside and rescan the item"
-                    } else {
-                        arOverlay?.confirmGroundIntentPrompt()
-                    }
-                },
-                onReject = { arOverlay?.rejectGroundIntentPrompt() },
-                onDismiss = { arOverlay?.rejectGroundIntentPrompt() },
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp),
-            )
-        }
         // Returning-scan anchors (Blake 2026-07-29): the server's known
         // dirty observations near this scan render as pulsing orange AR
         // discs — yesterday's find is visible IN PLACE, so still-there /
@@ -1520,48 +1405,8 @@ private fun CameraPhase(
                 arOverlay?.hideSelectionHighlight()
             }
         }
-        pendingDrawn?.takeIf { scanTuning.drawnMarkEnabled }?.let { drawn ->
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 216.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color.Black.copy(alpha = 0.72f))
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
-            ) {
-                Text(
-                    "Mark the drawn area as litter?",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White,
-                )
-                TextButton(onClick = {
-                    pendingDrawn = null
-                    arOverlay?.hideSelectionHighlight()
-                }) {
-                    Text("Cancel", color = Color.White.copy(alpha = 0.7f))
-                }
-                Button(
-                    onClick = {
-                        pendingDrawn = null
-                        arOverlay?.hideSelectionHighlight()
-                        if (!gate.captureAllowed.value) {
-                            toast = "Scan paused indoors — step outside and mark again"
-                        } else {
-                            confirmScope.launch {
-                                val photo = arOverlay?.captureTapEvidencePhoto()
-                                onConfirmedSweepItems(listOf(drawn), photo)
-                                arOverlay?.addConfirmedTrashMarker(drawn.worldX, drawn.worldY, drawn.worldZ)
-                                undoVisibleUntilMs = Clock.System.now().toEpochMilliseconds() + 6_000
-                                toast = "Marked trash area ✓"
-                            }
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
-                ) { Text("Confirm", color = Color.White) }
-            }
-        }
+        // The drawn-area confirm bar is rendered inside the bottom chrome
+        // column (F6).
         // The undo bar (auto-hides). Rendered whenever the window is open;
         // a ticking clock key re-evaluates visibility once a second.
         var undoClock by remember { mutableStateOf(0L) }
@@ -1609,46 +1454,8 @@ private fun CameraPhase(
                     drawCircle(GccGreen.copy(alpha = 0.35f), radius = 5.dp.toPx(), center = center)
                 }
             }
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 168.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color.Black.copy(alpha = 0.72f))
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
-            ) {
-                Text(
-                    "Found ${sweep.items.size} more item${if (sweep.items.size == 1) "" else "s"} in view",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White,
-                )
-                TextButton(onClick = { arOverlay?.dismissTapSweep() }) {
-                    Text("Dismiss", color = Color.White.copy(alpha = 0.7f))
-                }
-                Button(
-                    onClick = {
-                        if (!gate.captureAllowed.value) {
-                            arOverlay?.dismissTapSweep()
-                            toast = "Scan paused indoors — step outside and rescan"
-                        } else {
-                            val items = arOverlay?.consumeTapSweep().orEmpty()
-                            if (items.isNotEmpty()) {
-                                confirmScope.launch {
-                                    val photo = arOverlay?.captureTapEvidencePhoto()
-                                    onConfirmedSweepItems(items, photo)
-                                    items.forEach {
-                                        arOverlay?.addConfirmedTrashMarker(it.worldX, it.worldY, it.worldZ)
-                                    }
-                                    undoVisibleUntilMs = Clock.System.now().toEpochMilliseconds() + 6_000
-                                }
-                            }
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
-                ) { Text("Confirm all", color = Color.White) }
-            }
+            // The batch confirm bar is rendered inside the bottom chrome
+            // column (F6).
         }
         if (isScanMode) {
             // Live session tally (litter incidents + summed weight estimate)
@@ -1713,13 +1520,13 @@ private fun CameraPhase(
             }
             // Voluntary feedback only -- fuses AR tracking + GPS accuracy +
             // live detection confidence into one glanceable tier. Never gates
-            // capture or Complete Scan.
-            ScanQualityBadge(
-                signal = com.gcc.app.platform.ScanQualitySignal(
-                    trackingState = arTracking,
-                    gpsAccuracyMeters = gpsAccuracy,
-                    detectionConfidence = liveDetections.maxOfOrNull { it.confidence ?: 0f },
-                ),
+            // capture or Complete Scan. F4: the readiness pips sit directly
+            // under the badge so the worker sees WHICH of baseline / tracking
+            // / depth is still unmet (the text guidance loses to every
+            // higher-priority caption).
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(6.dp),
                 // Row 2 of the top-end chrome (TestFlight 145 overlap fix):
                 // row 1 (52dp) is the guidance caption's band; the 🐞
                 // diagnostics badge is row 3 (DiagnosticsOverlay). Keep the
@@ -1728,7 +1535,16 @@ private fun CameraPhase(
                     .align(Alignment.TopEnd)
                     .statusBarsPadding()
                     .padding(top = 96.dp, end = 16.dp),
-            )
+            ) {
+                ScanQualityBadge(
+                    signal = com.gcc.app.platform.ScanQualitySignal(
+                        trackingState = arTracking,
+                        gpsAccuracyMeters = gpsAccuracy,
+                        detectionConfidence = liveDetections.maxOfOrNull { it.confidence ?: 0f },
+                    ),
+                )
+                reconstructionReadiness?.let { ReadinessPips(readiness = it) }
+            }
         }
         ScanToast(message = toast)
 
@@ -1738,50 +1554,8 @@ private fun CameraPhase(
         // dead-code candidate for a future re-entry point; only the pill UI
         // and its launch wiring (showObjectCapture = true) were removed.
         // Close-range confirm card: a locked candidate with type + LiDAR
-        // size/weight estimates awaits Confirm / Not trash (above the
-        // Complete pill, below the rectify sheet's band).
-        trashCandidate?.let { candidate ->
-            TrashConfirmCard(
-                candidate = candidate,
-                onConfirm = { selectedType ->
-                    if (!gate.captureAllowed.value) {
-                        toast = "Scan paused indoors — step outside to confirm"
-                        return@TrashConfirmCard
-                    }
-                    val final = arOverlay?.confirmCandidate(selectedType)
-                    if (final != null) {
-                        val item = ObservedSpotItem(
-                            lat = final.lat,
-                            lng = final.lng,
-                            itemType = final.itemType,
-                            severity = null,
-                            confidence = final.confidence,
-                            estimatedWeightGrams = final.estimatedWeightGrams,
-                            estimatedWidthMeters = final.estimatedWidthMeters,
-                            yawDegrees = final.yawDegrees,
-                            // C1: this is the primary lock-on confirm flow —
-                            // an explicit user confirmation — so it must
-                            // carry provenance, or hasUserConfirmedLitter()
-                            // never sees it and report filing silently
-                            // never triggers off this path.
-                            provenance = PROVENANCE_USER_CONFIRMED,
-                        )
-                        // Confirm-time evidence frame, same as the tap pill:
-                        // the confirmed item must carry a photo (marker +
-                        // report set), not file photoless.
-                        confirmScope.launch {
-                            val photo = arOverlay?.captureTapEvidencePhoto()
-                            onScannedItemCompleted(item, photo)
-                        }
-                    }
-                },
-                onDismiss = { arOverlay?.dismissCandidate() },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = 104.dp, start = 16.dp, end = 16.dp),
-            )
-        }
+        // size/weight estimates awaits Confirm / Not trash — rendered inside
+        // the bottom chrome column (F6).
 
         // Indoors in a residence: nothing scans, nothing submits (capture,
         // coverage, tagging all gate-suppressed) — offer Close Scan instead.
@@ -1798,100 +1572,521 @@ private fun CameraPhase(
             modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 18.dp),
         )
 
-        // No top-left ✕ here by design: once an environment scan session is
-        // running, the bottom Complete Scan pill is the only way out — every
-        // finished scan submits, none are silently abandoned. (Indoors the
-        // GoOutsideOverlay above still offers Close Scan, since nothing can
-        // scan or submit from inside.)
-
-        // Primary action: Complete Scan, bottom-center (the Pokéball spot).
-        // ALWAYS tappable — it is the sole exit (no top ✕ by design), and the
-        // VM handles every state: photos → submit, none → archive + close.
-        // Gating the tap on captureAllowed stranded users whenever the gate
-        // sat in UNCERTAIN (no GoOutside escape there) or no photo was ever
-        // taken; capture itself is already gated upstream, so an always-on
-        // exit leaks no indoor data. Dim = "nothing to submit yet" cue only.
-        val canComplete = photos.isNotEmpty() && captureAllowed
+        // Session draft builder shared by Complete Scan and the ✕ abort.
+        val buildSessionDraft = {
+            sessionRecorder.draft(
+                scanCellCenters,
+                coveragePercent = coveragePercentValue,
+                closePercent = closePercentValue,
+                steadinessFraction = trackingTickCounts.steadinessFraction(),
+                surfaceBreakdown = tracker.surfaceCellCounts()
+                    .mapKeys { (surface, _) -> surface.wire },
+            )
+        }
         // Field report (TestFlight 157): guards the ~5s stop+drain window so
         // repeated taps don't stack completion coroutines, and flips the pill
         // label to show the tap landed. Without it the button read as dead —
-        // Blake pressed it repeatedly, then force-quit the app.
+        // Blake pressed it repeatedly, then force-quit the app. Declared
+        // above the bottom column so the "Saving your scan" overlay below
+        // can read it too.
         var completingScan by remember { mutableStateOf(false) }
-        Box(
+
+        // F2: voluntary abort — the top-left ✕ opens a "Discard this scan?"
+        // confirm sheet; confirming archives the session (coverage still
+        // counts, no report is ever filed) and closes through the same
+        // finished-without-report summary card as a zero-cell Complete Scan.
+        var showAbortConfirm by remember { mutableStateOf(false) }
+        TextButton(
+            onClick = { showAbortConfirm = true },
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .statusBarsPadding()
+                .padding(4.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.9f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("✕", style = MaterialTheme.typography.titleMedium, color = GccGreenDark)
+            }
+        }
+        if (showAbortConfirm) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.6f))
+                    .clickable { showAbortConfirm = false },
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .padding(32.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surface)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) {}
+                        .padding(24.dp),
+                ) {
+                    Text(
+                        "Discard this scan?",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "Your coverage is archived, but nothing you marked is filed as a report.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted,
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { showAbortConfirm = false }) {
+                            Text("Keep scanning")
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Button(
+                            onClick = {
+                                showAbortConfirm = false
+                                val draft = buildSessionDraft()
+                                if (arOverlay != null && captureStarted) {
+                                    // Same stop+drain sequencing as Complete
+                                    // Scan: the recorder must finalize before
+                                    // the overlay tears down on the way out.
+                                    flushScope.launch {
+                                        withContext(kotlinx.coroutines.NonCancellable) {
+                                            val captureHealthJson = try {
+                                                arOverlay.stopCapture().second
+                                            } catch (e: Throwable) {
+                                                DiagnosticsLog.error("capture", "stopCapture failed at scan abort", e)
+                                                null
+                                            }
+                                            onAbortScan(draft, captureHealthJson)
+                                        }
+                                    }
+                                } else {
+                                    onAbortScan(draft, null)
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = GccError),
+                        ) { Text("Discard", color = Color.White) }
+                    }
+                }
+            }
+        }
+
+        // F6: ONE inset-aware bottom chrome column. Every sheet/pill/row that
+        // used to float at its own hand-tuned bottom padding (96/104/168/216/
+        // 24dp — they overlapped and popped when several showed at once) now
+        // stacks here in priority order: transient confirms on top, the
+        // always-on Complete Scan row at the bottom.
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(bottom = 24.dp)
-                .clip(RoundedCornerShape(28.dp))
-                // Field feedback (Blake): the dimmed 0.4-alpha fill over a
-                // bright outdoor background (concrete, sky) washed the label
-                // out into an unlabeled green blob. Raised the floor so the
-                // "Complete Scan" text stays legible while still reading
-                // dimmer than the fully-active pill.
-                .background(if (canComplete) GccGreen else GccGreen.copy(alpha = 0.55f))
-                .clickable {
-                    if (completingScan) return@clickable
-                    val draft = sessionRecorder.draft(
-                        scanCellCenters,
-                        coveragePercent = coveragePercentValue,
-                        closePercent = closePercentValue,
-                        steadinessFraction = trackingTickCounts.steadinessFraction(),
-                        surfaceBreakdown = tracker.surfaceCellCounts()
-                            .mapKeys { (surface, _) -> surface.wire },
-                    )
-                    if (arOverlay != null && captureStarted) {
-                        completingScan = true
-                        // Stop+drain capture BEFORE the overlay tears down: the
-                        // native writer finalize is bounded ~5s and must run off
-                        // main (flushScope = Dispatchers.Default) — Task 4's
-                        // sequencing note. onCompleteScan (which flips the VM
-                        // phase and eventually disposes/tears down the overlay)
-                        // fires from INSIDE this coroutine so it can't race
-                        // ahead of the drain. NonCancellable: the dispose path
-                        // cancels flushScope (invokeOnCompletion after its exit
-                        // flush) — a mid-window disposal could otherwise cancel
-                        // AFTER stopCapture but BEFORE onCompleteScan, stranding
-                        // the scan with no completion.
-                        //
-                        // flushPending runs AFTER onCompleteScan, not before:
-                        // it uploads every pending chunk sequentially with a
-                        // 3-minute per-request timeout, so gating the summary
-                        // on it left the button visually dead for minutes on a
-                        // weak network (field report, TestFlight 157). The
-                        // manifest tolerates chunks that upload late — they're
-                        // keyed by sessionId in R2 regardless — so only the
-                        // drain (which books the chunks) must precede
-                        // completion. NonCancellable also covers the flush:
-                        // the dispose path cancels flushScope right after the
-                        // phase flips, and the uploads must survive that.
-                        flushScope.launch {
-                            withContext(kotlinx.coroutines.NonCancellable) {
-                                val captureHealthJson = try {
-                                    arOverlay.stopCapture().second
-                                } catch (e: Throwable) {
-                                    DiagnosticsLog.error("capture", "stopCapture failed at scan completion", e)
-                                    null
-                                }
-                                onCompleteScan(draft, captureHealthJson)
-                                try {
-                                    captureUploader.flushPending()
-                                } catch (e: Throwable) {
-                                    DiagnosticsLog.error("capture-upload", "flushPending failed at scan completion", e)
+                .padding(bottom = 16.dp, start = 16.dp, end = 16.dp),
+        ) {
+            // Tap-to-confirm candidate pill (moved out of its 96dp float).
+            if (trashCandidate == null && tapCandidate.phase != TapPhase.IDLE) {
+                TapCandidatePill(
+                    state = tapCandidate,
+                    onConfirm = {
+                        // I2: mirror TrashConfirmCard's outdoor-gate guard — a
+                        // confirm/reject that lands after an outdoor->indoor flip
+                        // must not persist or record. But NEVER silently (field
+                        // report: "I tapped confirm and nothing happened") — say
+                        // why the confirmation didn't take.
+                        if (!gate.captureAllowed.value) {
+                            arOverlay?.dismissTapCandidate()
+                            toast = "Scan paused indoors — step outside and tap the item again"
+                        } else {
+                            arOverlay?.confirmTapCandidate()?.let { confirmed ->
+                                // Evidence frame at confirm time (the item is
+                                // still in view): rides the marker upload AND
+                                // the report's photo set. Confirm-first so the
+                                // pill clears instantly; the photo is async.
+                                confirmScope.launch {
+                                    val photo = arOverlay?.captureTapEvidencePhoto()
+                                    onConfirmedTapItem(confirmed, photo, null, null)
+                                    undoVisibleUntilMs = Clock.System.now().toEpochMilliseconds() + 6_000
                                 }
                             }
                         }
-                    } else {
-                        onCompleteScan(draft, null)
+                    },
+                    onReject = {
+                        if (!gate.captureAllowed.value) {
+                            arOverlay?.dismissTapCandidate()
+                            toast = "Scan paused indoors — step outside and tap the item again"
+                        } else {
+                            arOverlay?.rejectTapCandidate()?.let { rejected ->
+                                onRejectedTapItem(rejected)
+                            }
+                        }
+                    },
+                    onDismiss = { arOverlay?.dismissTapCandidate() },
+                    // No label chips (Blake 2026-07-28 round 2): users confirm,
+                    // the BACKEND names — labels ride the manifest for the recon
+                    // pipeline instead of interrupting the field flow. The
+                    // labelSource plumbing stays for the training flywheel.
+                )
+            }
+            // "Is this litter?" prompt for a fully-scanned candidate the
+            // classifier couldn't name (tracker stage-1 park).
+            if (trashCandidate == null && tapCandidate.phase == TapPhase.IDLE && groundIntentPrompt != null) {
+                TapCandidatePill(
+                    state = TapCandidateState(
+                        phase = TapPhase.AWAITING_CONFIRMATION,
+                        label = UNKNOWN_LITTER_LABEL,
+                    ),
+                    titleOverride = "Scanned an item I can't identify — is this litter?",
+                    onConfirm = {
+                        if (!gate.captureAllowed.value) {
+                            arOverlay?.rejectGroundIntentPrompt()
+                            toast = "Scan paused indoors — step outside and rescan the item"
+                        } else {
+                            arOverlay?.confirmGroundIntentPrompt()
+                        }
+                    },
+                    onReject = { arOverlay?.rejectGroundIntentPrompt() },
+                    onDismiss = { arOverlay?.rejectGroundIntentPrompt() },
+                )
+            }
+            // Drawn-area confirm bar (moved out of its 216dp float).
+            pendingDrawn?.takeIf { scanTuning.drawnMarkEnabled }?.let { drawn ->
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(Color.Black.copy(alpha = 0.72f))
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                ) {
+                    Text(
+                        "Mark the drawn area as litter?",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White,
+                    )
+                    TextButton(onClick = {
+                        pendingDrawn = null
+                        arOverlay?.hideSelectionHighlight()
+                    }) {
+                        Text("Cancel", color = Color.White.copy(alpha = 0.7f))
+                    }
+                    Button(
+                        onClick = {
+                            pendingDrawn = null
+                            arOverlay?.hideSelectionHighlight()
+                            if (!gate.captureAllowed.value) {
+                                toast = "Scan paused indoors — step outside and mark again"
+                            } else {
+                                confirmScope.launch {
+                                    val photo = arOverlay?.captureTapEvidencePhoto()
+                                    onConfirmedSweepItems(listOf(drawn), photo)
+                                    arOverlay?.addConfirmedTrashMarker(drawn.worldX, drawn.worldY, drawn.worldZ)
+                                    undoVisibleUntilMs = Clock.System.now().toEpochMilliseconds() + 6_000
+                                    toast = "Marked trash area ✓"
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
+                    ) { Text("Confirm", color = Color.White) }
+                }
+            }
+            // Tap-sweep batch confirm bar (moved out of its 168dp float).
+            tapSweepState?.takeIf { scanTuning.sweepEnabled }?.let { sweep ->
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(Color.Black.copy(alpha = 0.72f))
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                ) {
+                    Text(
+                        "Found ${sweep.items.size} more item${if (sweep.items.size == 1) "" else "s"} in view",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White,
+                    )
+                    TextButton(onClick = { arOverlay?.dismissTapSweep() }) {
+                        Text("Dismiss", color = Color.White.copy(alpha = 0.7f))
+                    }
+                    Button(
+                        onClick = {
+                            if (!gate.captureAllowed.value) {
+                                arOverlay?.dismissTapSweep()
+                                toast = "Scan paused indoors — step outside and rescan"
+                            } else {
+                                val items = arOverlay?.consumeTapSweep().orEmpty()
+                                if (items.isNotEmpty()) {
+                                    confirmScope.launch {
+                                        val photo = arOverlay?.captureTapEvidencePhoto()
+                                        onConfirmedSweepItems(items, photo)
+                                        items.forEach {
+                                            arOverlay?.addConfirmedTrashMarker(it.worldX, it.worldY, it.worldZ)
+                                        }
+                                        undoVisibleUntilMs = Clock.System.now().toEpochMilliseconds() + 6_000
+                                    }
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
+                    ) { Text("Confirm all", color = Color.White) }
+                }
+            }
+            // Close-range confirm card: a locked candidate with type + LiDAR
+            // size/weight estimates awaits Confirm / Not trash.
+            trashCandidate?.let { candidate ->
+                TrashConfirmCard(
+                    candidate = candidate,
+                    onConfirm = { selectedType ->
+                        if (!gate.captureAllowed.value) {
+                            toast = "Scan paused indoors — step outside to confirm"
+                            return@TrashConfirmCard
+                        }
+                        val final = arOverlay?.confirmCandidate(selectedType)
+                        if (final != null) {
+                            val item = ObservedSpotItem(
+                                lat = final.lat,
+                                lng = final.lng,
+                                itemType = final.itemType,
+                                severity = null,
+                                confidence = final.confidence,
+                                estimatedWeightGrams = final.estimatedWeightGrams,
+                                estimatedWidthMeters = final.estimatedWidthMeters,
+                                yawDegrees = final.yawDegrees,
+                                // C1: this is the primary lock-on confirm flow —
+                                // an explicit user confirmation — so it must
+                                // carry provenance, or hasUserConfirmedLitter()
+                                // never sees it and report filing silently
+                                // never triggers off this path.
+                                provenance = PROVENANCE_USER_CONFIRMED,
+                            )
+                            // Confirm-time evidence frame, same as the tap pill:
+                            // the confirmed item must carry a photo (marker +
+                            // report set), not file photoless.
+                            confirmScope.launch {
+                                val photo = arOverlay?.captureTapEvidencePhoto()
+                                onScannedItemCompleted(item, photo)
+                            }
+                        }
+                    },
+                    onDismiss = { arOverlay?.dismissCandidate() },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            // "Previously littered — is it clean now?" confirm sheet.
+            nearbyDirty?.let { obs ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color.Black.copy(alpha = 0.8f))
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        text = if (SessionAutoDetectPromptSource.isSessionObservationId(obs.id)) {
+                            "Your scan flagged litter here — is it still there?"
+                        } else {
+                            "Trash was reported here — is it still there?"
+                        },
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color.White,
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(Color.White.copy(alpha = 0.15f))
+                                .clickable {
+                                    // One answer settles every unresolved
+                                    // observation of this ≤5m cluster — ten old
+                                    // records of one mess cost one question.
+                                    // Clustered over promptPool so co-located
+                                    // session detections settle with it.
+                                    resolvedObservationIds.addAll(
+                                        clusterIdsAround(obs, promptPool.filter { it.id !in resolvedObservationIds })
+                                    )
+                                    nearbyPromptGate.onAnswered(Clock.System.now().toEpochMilliseconds())
+                                    nearbyDirty = null
+                                }
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                        ) {
+                            Text("Still there", style = MaterialTheme.typography.labelLarge, color = Color.White)
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(GccGreen)
+                                .clickable {
+                                    // Cluster-resolve like "Still there": the
+                                    // server rectify below targets the answered
+                                    // location; its ≤5m neighbors just stop
+                                    // re-prompting this session.
+                                    resolvedObservationIds.addAll(
+                                        clusterIdsAround(obs, promptPool.filter { it.id !in resolvedObservationIds })
+                                    )
+                                    expectedDirty = expectedDirty.filterNot { it.id == obs.id }
+                                    // Local half of the answer: drop this
+                                    // session's litter items near the answered
+                                    // spot so the minimap zone and summary counts
+                                    // correct immediately — the phantom-detection
+                                    // fix (TestFlight 157). A no-op when nothing
+                                    // from this session sits in the cluster.
+                                    onMarkObservedItemsClean(obs.lat, obs.lng)
+                                    nearbyPromptGate.onAnswered(Clock.System.now().toEpochMilliseconds())
+                                    nearbyDirty = null
+                                    val isSessionObs =
+                                        SessionAutoDetectPromptSource.isSessionObservationId(obs.id)
+                                    rectifyScope.launch {
+                                        try {
+                                            val result = apiClient.rectifyObservationAtLocation(obs.lat, obs.lng)
+                                            toast = if (result.pointsAwarded > 0) {
+                                                "Area marked clean · +${result.pointsAwarded} pts ✓"
+                                            } else {
+                                                "Area marked clean ✓"
+                                            }
+                                        } catch (e: Exception) {
+                                            DiagnosticsLog.error("rectify", "env-scan rectify failed", e)
+                                            if (isSessionObs) {
+                                                // The session marker may not even
+                                                // have reached the server yet (30s
+                                                // queue) — a failed rectify is
+                                                // expected there, the local removal
+                                                // stands, and nothing is restored:
+                                                // re-adding a synthetic id to
+                                                // expectedDirty would duplicate the
+                                                // prompt-pool entry.
+                                                DiagnosticsLog.info(
+                                                    "rectify",
+                                                    "session-item rectify failed (marker may not be server-side yet) — local clean kept",
+                                                )
+                                            } else {
+                                                toast = "⚠ Couldn't record the clean update"
+                                                resolvedObservationIds.remove(obs.id)
+                                                expectedDirty = expectedDirty + obs
+                                            }
+                                        }
+                                    }
+                                }
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                        ) {
+                            Text(
+                                "Already clean",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White,
+                            )
+                        }
                     }
                 }
-                .padding(horizontal = 28.dp, vertical = 16.dp),
-        ) {
-            Text(
-                text = if (completingScan) "Finishing Scan…" else "Complete Scan ✓",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-            )
+            }
+
+            // Primary action: Complete Scan, bottom-center (the Pokéball
+            // spot), with the F1 "Add details" link beside it (routes to the
+            // LOCATION phase so a worker can override the AI fields; one-tap
+            // Complete Scan stays the primary path). Complete Scan is ALWAYS
+            // tappable — the VM handles every state: photos → review →
+            // submit, none → archive + close. Gating the tap on
+            // captureAllowed stranded users whenever the gate sat in
+            // UNCERTAIN (no GoOutside escape there) or no photo was ever
+            // taken; capture itself is already gated upstream, so an
+            // always-on exit leaks no indoor data. Dim = "nothing to submit
+            // yet" cue only.
+            val canComplete = photos.isNotEmpty() && captureAllowed
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(28.dp))
+                        // Field feedback (Blake): the dimmed 0.4-alpha fill over a
+                        // bright outdoor background (concrete, sky) washed the label
+                        // out into an unlabeled green blob. Raised the floor so the
+                        // "Complete Scan" text stays legible while still reading
+                        // dimmer than the fully-active pill.
+                        .background(if (canComplete) GccGreen else GccGreen.copy(alpha = 0.55f))
+                        .clickable {
+                            if (completingScan) return@clickable
+                            val draft = buildSessionDraft()
+                            if (arOverlay != null && captureStarted) {
+                                completingScan = true
+                                // Stop+drain capture BEFORE the overlay tears down: the
+                                // native writer finalize is bounded ~5s and must run off
+                                // main (flushScope = Dispatchers.Default) — Task 4's
+                                // sequencing note. onCompleteScan (which flips the VM
+                                // phase and eventually disposes/tears down the overlay)
+                                // fires from INSIDE this coroutine so it can't race
+                                // ahead of the drain. NonCancellable: the dispose path
+                                // cancels flushScope (invokeOnCompletion after its exit
+                                // flush) — a mid-window disposal could otherwise cancel
+                                // AFTER stopCapture but BEFORE onCompleteScan, stranding
+                                // the scan with no completion.
+                                //
+                                // flushPending runs AFTER onCompleteScan, not before:
+                                // it uploads every pending chunk sequentially with a
+                                // 3-minute per-request timeout, so gating the summary
+                                // on it left the button visually dead for minutes on a
+                                // weak network (field report, TestFlight 157). The
+                                // manifest tolerates chunks that upload late — they're
+                                // keyed by sessionId in R2 regardless — so only the
+                                // drain (which books the chunks) must precede
+                                // completion. NonCancellable also covers the flush:
+                                // the dispose path cancels flushScope right after the
+                                // phase flips, and the uploads must survive that.
+                                flushScope.launch {
+                                    withContext(kotlinx.coroutines.NonCancellable) {
+                                        val captureHealthJson = try {
+                                            arOverlay.stopCapture().second
+                                        } catch (e: Throwable) {
+                                            DiagnosticsLog.error("capture", "stopCapture failed at scan completion", e)
+                                            null
+                                        }
+                                        onCompleteScan(draft, captureHealthJson)
+                                        try {
+                                            captureUploader.flushPending()
+                                        } catch (e: Throwable) {
+                                            DiagnosticsLog.error("capture-upload", "flushPending failed at scan completion", e)
+                                        }
+                                    }
+                                }
+                            } else {
+                                onCompleteScan(draft, null)
+                            }
+                        }
+                        .padding(horizontal = 28.dp, vertical = 16.dp),
+                ) {
+                    Text(
+                        text = if (completingScan) "Finishing Scan…" else "Complete Scan ✓",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                    )
+                }
+                // F1: the "Add details" path — LOCATION/DESCRIPTION phases
+                // exist for overriding the AI fields; this is the entry.
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(Color.Black.copy(alpha = 0.55f))
+                        .clickable { onNext() }
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                ) {
+                    Text(
+                        text = "Add details",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color.White,
+                    )
+                }
+            }
         }
 
         if (completingScan) {
@@ -3086,6 +3281,125 @@ private fun BountyMatchCard(
                 TextButton(onClick = onAccept) {
                     Text("Accept", color = GccGreen, fontWeight = FontWeight.Bold)
                 }
+            }
+        }
+    }
+}
+
+/**
+ * F7 post-scan review: between the camera and the RESULT summary, the worker
+ * sees every litter item the scan would file — with its evidence frame when
+ * one was retained — and can delete a wrong detection before anything
+ * submits. Styling mirrors [ScoutReviewScreen]'s review cards and reuses the
+ * summary screen's [LitterEvidenceShot] strip data.
+ */
+@Composable
+private fun ReviewPhase(
+    litterItems: List<ObservedSpotItem>,
+    litterEvidence: List<LitterEvidenceShot>,
+    photoCount: Int,
+    isSubmitting: Boolean,
+    onDeleteItem: (Long) -> Unit,
+    onSubmit: () -> Unit,
+) {
+    val evidenceByStamp = remember(litterEvidence) { litterEvidence.associateBy { it.atMs } }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .navigationBarsPadding()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        GccCard(accentColor = CardAccentGreen) {
+            Text(
+                "Review before submitting",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                if (litterItems.isEmpty()) {
+                    "Nothing left to report — finishing closes the scan without filing one."
+                } else {
+                    "Delete anything that isn't litter. What's left is filed as the report."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            ScanSummaryRow(label = "Photos captured", value = "$photoCount")
+            ScanSummaryRow(label = "Litter identified", value = "${litterItems.size}")
+        }
+
+        litterItems.forEach { item ->
+            ReviewItemCard(
+                item = item,
+                evidence = item.atMs?.let { evidenceByStamp[it] },
+                onDelete = { item.atMs?.let(onDeleteItem) },
+            )
+        }
+
+        GccButton(
+            text = if (litterItems.isEmpty()) {
+                "Finish — no report"
+            } else {
+                "Submit ${litterItems.size} item${if (litterItems.size == 1) "" else "s"}"
+            },
+            onClick = onSubmit,
+            variant = GccButtonVariant.PRIMARY,
+            isLoading = isSubmitting,
+            enabled = !isSubmitting,
+        )
+    }
+}
+
+/** One reviewable litter item: evidence thumbnail, type, weight, delete. */
+@Composable
+private fun ReviewItemCard(
+    item: ObservedSpotItem,
+    evidence: LitterEvidenceShot?,
+    onDelete: () -> Unit,
+) {
+    GccCard(accentColor = CardAccentSky) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val bitmap = remember(evidence) { evidence?.let { decodeImageBitmap(it.bytes) } }
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(GccError.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (bitmap != null) {
+                    Image(
+                        bitmap = bitmap,
+                        contentDescription = item.itemType,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                } else {
+                    Text(
+                        "\uD83D\uDDD1\uFE0F",
+                        style = MaterialTheme.typography.headlineSmall,
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    item.itemType.replace('_', ' '),
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                )
+                item.estimatedWeightGrams?.let { grams ->
+                    Text(
+                        "~$grams g",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextMuted,
+                    )
+                }
+            }
+            TextButton(onClick = onDelete) {
+                Text("Delete", color = GccError)
             }
         }
     }

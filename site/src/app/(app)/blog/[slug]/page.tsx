@@ -16,9 +16,9 @@ export const dynamic = 'force-dynamic'
 const SCHEDULE: Record<string, string> = {
   '2026-05-01-issue-01': '2026-05-01T00:00:00-05:00',
   '2026-06-01-issue-02': '2026-06-01T08:00:00-05:00',
-  // MANUAL HOLD — not scheduled yet, publish only once the team confirms a
-  // go-live time. Not a real target date; do not auto-flip this.
-  '2026-07-03-issue-03': '2099-01-01T00:00:00-05:00',
+  '2026-07-03-issue-03': '2026-07-03T08:00:00-05:00',
+  '2026-07-31-issue-04': '2026-07-31T08:00:00-05:00',
+  '2026-08-19-issue-05': '2026-08-19T08:00:00-05:00',
 }
 
 function isPublished(slug: string): boolean {
@@ -27,7 +27,13 @@ function isPublished(slug: string): boolean {
   return Date.now() >= new Date(at).getTime()
 }
 
-const POSTS = ['2026-05-01-issue-01', '2026-06-01-issue-02', '2026-07-03-issue-03']
+const POSTS = [
+  '2026-05-01-issue-01',
+  '2026-06-01-issue-02',
+  '2026-07-03-issue-03',
+  '2026-07-31-issue-04',
+  '2026-08-19-issue-05',
+]
 
 export async function generateStaticParams() {
   return POSTS.map((slug) => ({ slug }))
@@ -81,6 +87,38 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       },
     }
   }
+  if (slug === '2026-07-31-issue-04') {
+    if (!isPublished(slug)) return {} // don't advertise an unpublished post in <head>
+    return {
+      title: 'The scan system grows teeth — Global Community Cleaners Issue #4',
+      description:
+        "GCC's fourth newsletter. The first North Lawndale cleanups ran July 5-6, UIC's $2,000 gift came through its Office of Community Collaboration, the iOS env-scan overhaul shipped across TestFlight builds 165-178, and the scan-powered heatmap sharpens with every session.",
+      openGraph: {
+        title: 'The scan system grows teeth — GCC Issue #4',
+        description:
+          "The first cleanups are on the books, UIC's gift came through the office built for this neighborhood, and the scan system grew teeth over fourteen TestFlight builds.",
+        type: 'article',
+        publishedTime: '2026-07-31',
+        images: ['/newsletter/issue-02/heatmap.png'],
+      },
+    }
+  }
+  if (slug === '2026-08-19-issue-05') {
+    if (!isPublished(slug)) return {} // don't advertise an unpublished post in <head>
+    return {
+      title: 'From cleaning blocks to mapping them in 3D — Global Community Cleaners Issue #5',
+      description:
+        "GCC's fifth newsletter. 20 of 100 blocks cleaned and $2,000 paid out to North Lawndale residents, 158 scan sessions captured, LiDAR depth + camera poses + GPS fusing into per-block 3D, a litter classifier in training, iOS v1.0.8 in TestFlight, and the new honor wall.",
+      openGraph: {
+        title: 'From cleaning blocks to mapping them in 3D — GCC Issue #5',
+        description:
+          '20 blocks cleaned, $2,000 paid to residents, and 158 scan sessions fusing into a digital twin of the neighborhood — built for accountability, not for show.',
+        type: 'article',
+        publishedTime: '2026-08-19',
+        images: ['/newsletter/issue-02/heatmap.png'],
+      },
+    }
+  }
   return {}
 }
 
@@ -92,6 +130,8 @@ export default async function BlogPostPage({
   const { slug } = await params
   if (!POSTS.includes(slug) || !isPublished(slug)) notFound()
 
+  if (slug === '2026-08-19-issue-05') return <Issue5 />
+  if (slug === '2026-07-31-issue-04') return <Issue4 />
   if (slug === '2026-07-03-issue-03') return <Issue3 />
   if (slug === '2026-06-01-issue-02') return <Issue2 />
   return <Issue1 />
@@ -810,6 +850,318 @@ function Issue3() {
             {' · '}
             <a className="text-emerald-700 underline" href="/blog/2026-06-01-issue-02">
               Read Issue #2
+            </a>
+            {' · '}
+            <a className="text-emerald-700 underline" href="/">
+              GCC home
+            </a>
+          </p>
+          <p className="mt-3 text-xs">
+            Global Community Cleaners NFP · 1844 S. Harding Ave, 2nd Floor · Chicago, IL 60623 ·
+            501(c)(3) tax-exempt · EIN 39-3553882
+          </p>
+        </div>
+      </div>
+    </article>
+  )
+}
+
+function Issue4() {
+  const media = '/newsletter/issue-02'
+  return (
+    <article className="bg-neutral-50 pb-24 pt-12">
+      <div className="mx-auto max-w-3xl px-5">
+        <header className="text-center">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-700">
+            GCC Blog · Issue #4 · Growing Teeth
+          </p>
+          <p className="mt-2 text-sm text-neutral-500">July 31, 2026</p>
+          <h1 className="mt-6 font-serif text-5xl font-bold tracking-tight text-neutral-900 sm:text-6xl">
+            The scan system grows teeth
+          </h1>
+          <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-neutral-600">
+            The first cleanups are on the books, a university&rsquo;s check came through the office built for this neighborhood, and the app learned to see what hasn&rsquo;t been scanned yet.
+          </p>
+        </header>
+
+        {/* §1 Where we left off */}
+        <Section label="§1 · Where we left off">
+          <p>
+            In{' '}
+            <a className="font-semibold text-emerald-700 underline" href="/blog/2026-07-03-issue-03">
+              Issue #3
+            </a>
+            , UIC had just backed the pilot, the first North Lawndale cleanups were days away, and the heatmap was about to start running on real scan data. All three happened. This issue is the field report: how the first two days went, what UIC&rsquo;s gift actually is, and how the scan system grew teeth over fourteen TestFlight builds.
+          </p>
+          <Pull>The plan from Issue #1 is now just the work. This is what the work looks like.</Pull>
+        </Section>
+
+        {/* §2 The first cleanups ran */}
+        <Section label="§2 · The first cleanups ran">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            July 5 and 6, right after the holiday, our first crews worked North Lawndale blocks.
+          </h2>
+          <p>
+            These were the alpha cleanups we described last issue &mdash; the first time real residents ran the full app-guided route process on real blocks, start to finish. We treated both days as a structured test, not a launch party: the residents doing the work told us where the app flow was smooth and where it clunked, and we wrote all of it down.
+          </p>
+          <p>
+            That feedback is already shaping the builds you&rsquo;ll read about below. The <strong>$100-per-block</strong> route mechanism gets tightened against what we learned on those two days before it goes anywhere else.
+          </p>
+        </Section>
+
+        {/* §3 The UIC gift, precisely */}
+        <Section label="§3 · The UIC gift, precisely">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            UIC&rsquo;s $2,000 came through the office that works in exactly two neighborhoods &mdash; and we&rsquo;re one of them.
+          </h2>
+          <p>
+            In Issue #3 we reported the University of Illinois Chicago&rsquo;s $2,000 donation toward the 100-block pilot. Here is the detail that makes it land: the gift arrived <strong>July 3</strong> through UIC&rsquo;s <strong>Office of Community Collaboration</strong> &mdash; the office that focuses its community work on exactly two Chicago neighborhoods: <strong>Auburn Gresham and North Lawndale</strong>.
+          </p>
+          <p>
+            That matters. This isn&rsquo;t a university writing a check to a zip code it barely knows. UIC studies North Lawndale, works in North Lawndale, and now funds blocks in North Lawndale &mdash; through the office that exists for exactly that.
+          </p>
+        </Section>
+
+        {/* §4 The scan overhaul */}
+        <Section label="§4 · Fourteen builds later">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            Between TestFlight builds 165 and 178, the iOS env-scan went through a full overhaul.
+          </h2>
+          <p>What shipped:</p>
+          <div className="mt-4 space-y-3">
+            <TypeCard n="01" name="Full-screen AR camera" desc="Scanning is the app now, not a feature buried in it. The camera fills the screen and the block fills the camera." />
+            <TypeCard n="02" name="An outdoor gate" desc="The scanner knows when you're indoors and tells you to step outside — scans only count where the trash actually is." />
+            <TypeCard n="03" name="Server-seeded fog in the AR view" desc="Areas nobody has scanned show up as fog right in the camera, so you can see the coverage gaps while you walk — and clear them." />
+            <TypeCard n="04" name="Route laps with a guided first lap" desc="The app walks you through your first cleanup route step by step, then lets you run laps on your own." />
+          </div>
+          <p className="mt-6">
+            Every one of these exists because of what the July 5&ndash;6 crews told us. The loop between the street and the build is short on purpose.
+          </p>
+        </Section>
+
+        {/* §5 The heatmap sharpens */}
+        <Section label="§5 · The heatmap sharpens">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            110+ hotspots mapped &mdash; and every scan session makes the picture more accurate.
+          </h2>
+          <p>
+            Residents have now mapped <strong>110+ trash hotspots</strong> across North Lawndale &mdash; every one photographed, GPS-tagged, and timestamped. The scan-powered heatmap gets sharper with every session: each walk adds density data the last version of the map didn&rsquo;t have. The picture of the neighborhood we&rsquo;re building isn&rsquo;t a snapshot. It&rsquo;s a time series.
+          </p>
+          <div className="mt-5 rounded-xl border border-neutral-200 bg-white p-6">
+            <p className="text-xs font-bold uppercase tracking-widest text-neutral-500">Live heatmap · GCC mobile app</p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`${media}/heatmap.png`} alt="GCC app heatmap of North Lawndale showing 110+ reported hotspots" className="mx-auto mt-4 max-w-md rounded-lg" />
+            <p className="mt-3 text-center text-xs italic text-neutral-500">
+              The map is open and growing. See it live on the{' '}
+              <a className="text-emerald-700 underline" href="/bounties">bounties map</a>.
+            </p>
+          </div>
+        </Section>
+
+        {/* §6 The ask */}
+        <Section label="§6 · The ask">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            UIC put 20 blocks&rsquo; worth of funding toward the goal. Here&rsquo;s how the rest get funded.
+          </h2>
+          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <a
+              href="/sponsor"
+              className="rounded-lg bg-emerald-700 px-5 py-4 text-center text-base font-semibold text-white hover:bg-emerald-800"
+            >
+              Sponsor a block — $100
+            </a>
+            <a
+              href="/sponsor?amount=2000"
+              className="rounded-lg bg-neutral-900 px-5 py-4 text-center text-base font-semibold text-white hover:bg-neutral-800"
+            >
+              Recognized sponsor — $2,000
+            </a>
+          </div>
+          <p className="mt-4 text-sm text-neutral-700">
+            <strong>$100</strong> = one cleanup, one paid resident, one before-and-after photo set in your inbox.<br />
+            <strong>$2,000</strong> = your name on our public wall, a digital certificate, a 501(c)(3) tax receipt, a feature in this newsletter, and social-media recognition &mdash; the same recognition UIC is receiving.
+          </p>
+        </Section>
+
+        {/* §7 What's next */}
+        <Section label="§7 · What's next">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            Next issue: the payoff numbers &mdash; and what the scan data becomes when you stack it up.
+          </h2>
+          <p>
+            Blocks cleaned, dollars paid out, and a first look at where all this scanning is headed. A hint: it&rsquo;s three-dimensional.
+          </p>
+          <p className="mt-4 font-semibold">Dr. King&rsquo;s apartment is six blocks away. The work continues.</p>
+          <p className="mt-2 italic text-neutral-500">— The team at Global Community Cleaners NFP</p>
+        </Section>
+
+        {/* Footer / share */}
+        <div className="mt-16 border-t border-neutral-200 pt-8 text-center text-sm text-neutral-500">
+          <p>
+            <a className="text-emerald-700 underline" href="/sponsor">
+              Sponsor a block →
+            </a>
+            {' · '}
+            <a className="text-emerald-700 underline" href="/blog/2026-07-03-issue-03">
+              Read Issue #3
+            </a>
+            {' · '}
+            <a className="text-emerald-700 underline" href="/">
+              GCC home
+            </a>
+          </p>
+          <p className="mt-3 text-xs">
+            Global Community Cleaners NFP · 1844 S. Harding Ave, 2nd Floor · Chicago, IL 60623 ·
+            501(c)(3) tax-exempt · EIN 39-3553882
+          </p>
+        </div>
+      </div>
+    </article>
+  )
+}
+
+function Issue5() {
+  const media = '/newsletter/issue-02'
+  return (
+    <article className="bg-neutral-50 pb-24 pt-12">
+      <div className="mx-auto max-w-3xl px-5">
+        <header className="text-center">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-700">
+            GCC Blog · Issue #5 · The Digital Twin
+          </p>
+          <p className="mt-2 text-sm text-neutral-500">August 19, 2026</p>
+          <h1 className="mt-6 font-serif text-5xl font-bold tracking-tight text-neutral-900 sm:text-6xl">
+            From cleaning blocks to mapping them in 3D
+          </h1>
+          <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-neutral-600">
+            Twenty blocks cleaned, $2,000 paid to the residents who cleaned them, and a scan archive that&rsquo;s becoming a three-dimensional record of the neighborhood &mdash; built for accountability, not for show.
+          </p>
+        </header>
+
+        {/* §1 Where we left off */}
+        <Section label="§1 · Where we left off">
+          <p>
+            In{' '}
+            <a className="font-semibold text-emerald-700 underline" href="/blog/2026-07-31-issue-04">
+              Issue #4
+            </a>
+            , the first cleanups had just run and the scan system had grown teeth &mdash; full-screen AR camera, coverage fog, guided routes. A month on, we crossed the pilot&rsquo;s first real milestone, and the scan archive started turning into something we didn&rsquo;t have a word for yet. Now we do: a digital twin.
+          </p>
+          <Pull>Before-and-after photos were the proof of concept. Before-and-after 3D is the proof.</Pull>
+        </Section>
+
+        {/* §2 The milestone */}
+        <Section label="§2 · The milestone">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            20 of 100 blocks cleaned. $2,000 paid out to North Lawndale residents.
+          </h2>
+          <p>
+            One hundred dollars per block, paid directly to the person who did the work on their own street. That&rsquo;s 20% of the pilot goal &mdash; done, documented, and paid &mdash; with 80 blocks and 80 paid residents to go.
+          </p>
+          <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-6">
+            <p className="text-xs font-bold uppercase tracking-widest text-emerald-800">Goal · North Lawndale pilot</p>
+            <p className="mt-1 text-lg font-bold text-neutral-900">100 blocks cleaned · 100 community members paid</p>
+            <div className="mt-3 flex h-5 overflow-hidden rounded-full border border-emerald-200 bg-white">
+              <div className="flex items-center justify-center bg-emerald-700 text-xs font-bold text-white" style={{ width: '20%' }}>
+                20%
+              </div>
+            </div>
+            <p className="mt-2 text-xs text-neutral-500">20 blocks cleaned and paid out so far. Sponsor a block to put number 21 on a resident&rsquo;s street.</p>
+          </div>
+        </Section>
+
+        {/* §3 What a scan captures now */}
+        <Section label="§3 · What a scan captures now">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            A scan is no longer a photo with a pin. It&rsquo;s a measured walk through real space.
+          </h2>
+          <p>
+            Every scan session now captures three streams at once: <strong>LiDAR depth</strong>, <strong>camera poses</strong>, and <strong>1Hz GPS</strong> &mdash; uploading in chunks to cloud storage as the user walks.
+          </p>
+          <p>
+            <strong>158 scan sessions</strong> captured so far. Each one is a stretch of North Lawndale measured twice &mdash; once by the camera, once by the satellite.
+          </p>
+        </Section>
+
+        {/* §4 The digital twin */}
+        <Section label="§4 · The digital twin">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            The reconstruction pipeline fuses all that depth into per-block 3D &mdash; and it matches the street to the meter.
+          </h2>
+          <p>
+            The ARKit camera poses anchoring each model have been verified metric-accurate against GPS. What comes out the other end is a block-by-block three-dimensional model of the neighborhood, built from residents&rsquo; walks.
+          </p>
+          <p>
+            Let&rsquo;s be clear about what this is for. It&rsquo;s not a game and it&rsquo;s not a toy rendering. It&rsquo;s <strong>accountability infrastructure</strong>. When a block gets cleaned, nobody has to take our word for it &mdash; we can show the block before and after, in three dimensions, measured the same way both times. A sponsor&rsquo;s $100 buys a cleanup. The twin proves it.
+          </p>
+        </Section>
+
+        {/* §5 Teaching the app to see litter */}
+        <Section label="§5 · Teaching the app to see litter">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            A litter-classifier model is in training &mdash; partly on our own blocks.
+          </h2>
+          <p>
+            The model trains on <strong>TACO</strong>, the open trash-annotation dataset, plus <strong>field-labelled crops from our own scans</strong>. North Lawndale&rsquo;s litter is specific, and a model trained partly on our own blocks will recognize it better than one trained on the internet&rsquo;s. When it&rsquo;s ready, identification moves <strong>on-device</strong>: the app names what it sees while you scan, no upload required.
+          </p>
+        </Section>
+
+        {/* §6 Shipping + honor wall */}
+        <Section label="§6 · Shipping, and naming the people who fund it">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            iOS v1.0.8 is in TestFlight &mdash; and the honor wall is up.
+          </h2>
+          <p>
+            Version 1.0.8 (build 181) carries the capture and upload work above. On the site, a new <strong>honor wall</strong> now recognizes our major sponsors &mdash; the organizations that have given <strong>$2,000 or more</strong> &mdash; starting with UIC. The people and institutions funding this work should be named where everyone can see them.
+          </p>
+        </Section>
+
+        {/* §7 The ask */}
+        <Section label="§7 · The ask">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            20 down, 80 to go. Here&rsquo;s how the next block gets funded.
+          </h2>
+          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <a
+              href="/sponsor"
+              className="rounded-lg bg-emerald-700 px-5 py-4 text-center text-base font-semibold text-white hover:bg-emerald-800"
+            >
+              Sponsor a block — $100
+            </a>
+            <a
+              href="/sponsor?amount=2000"
+              className="rounded-lg bg-neutral-900 px-5 py-4 text-center text-base font-semibold text-white hover:bg-neutral-800"
+            >
+              Recognized sponsor — $2,000
+            </a>
+          </div>
+          <p className="mt-4 text-sm text-neutral-700">
+            <strong>$100</strong> = one cleanup, one paid resident, one before-and-after photo set in your inbox.<br />
+            <strong>$2,000</strong> = your name on the honor wall alongside UIC, a digital certificate, a 501(c)(3) tax receipt, a feature in this newsletter, and social-media recognition.
+          </p>
+        </Section>
+
+        {/* §8 What's next */}
+        <Section label="§8 · What's next">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            Next issue: more blocks, more sessions, and the first before-and-after you can orbit.
+          </h2>
+          <p>
+            The twin is about to start doing the talking &mdash; a cleaned block you can look at from every angle, before and after, measured both times.
+          </p>
+          <p className="mt-4 font-semibold">Dr. King&rsquo;s apartment is six blocks away. The work continues.</p>
+          <p className="mt-2 italic text-neutral-500">— The team at Global Community Cleaners NFP</p>
+        </Section>
+
+        {/* Footer / share */}
+        <div className="mt-16 border-t border-neutral-200 pt-8 text-center text-sm text-neutral-500">
+          <p>
+            <a className="text-emerald-700 underline" href="/sponsor">
+              Sponsor a block →
+            </a>
+            {' · '}
+            <a className="text-emerald-700 underline" href="/blog/2026-07-31-issue-04">
+              Read Issue #4
             </a>
             {' · '}
             <a className="text-emerald-700 underline" href="/">

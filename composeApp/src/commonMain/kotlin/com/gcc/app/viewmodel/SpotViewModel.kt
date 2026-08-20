@@ -70,7 +70,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.PI
 import kotlin.math.sqrt
 
-enum class SpotPhase { CAMERA, LOCATION, DESCRIPTION, SUBMITTING, RESULT }
+enum class SpotPhase { CAMERA, LOCATION, DESCRIPTION, REVIEW, SUBMITTING, RESULT }
 
 enum class AreaMode { CIRCLE, RECTANGLE }
 
@@ -631,6 +631,30 @@ class SpotViewModel(
         return true
     }
 
+    /**
+     * F7: per-item delete on the post-scan review screen — same local +
+     * server-side removal as [undoLastConfirm], but for one reviewed item
+     * (keyed by its observation stamp) instead of the last confirm batch.
+     */
+    fun deleteObservedItem(atMs: Long) {
+        val removed = _uiState.value.observedItems.filter { it.atMs == atMs }
+        if (removed.isEmpty()) return
+        _uiState.value = _uiState.value.copy(
+            observedItems = _uiState.value.observedItems.filterNot { it.atMs == atMs },
+            litterEvidence = _uiState.value.litterEvidence.filterNot { it.atMs == atMs },
+        )
+        scope.launch {
+            removed.distinctBy { gridCell10m(it.lat, it.lng) }.forEach { item ->
+                runCatching { apiClient.rectifyObservationAtLocation(item.lat, item.lng) }
+                    .onFailure { DiagnosticsLog.error("review", "server-side delete rectify failed (local removed)", it) }
+            }
+        }
+        ScanSessionTelemetry.active?.detection(
+            label = null, confidence = null, distanceM = null,
+            source = "review", outcome = "removed:${removed.size}",
+        )
+    }
+
     /** Confirm-all on a tap sweep (Blake 2026-07-28): every swept region
      *  files as a user-confirmed item — one gesture, many items. Types are
      *  the classifier's guess or unknown; NAMING is the backend's job (the
@@ -932,20 +956,83 @@ class SpotViewModel(
         pendingCaptureHealthJson = captureHealthJson
         DiagnosticsLog.info(
             "spot-submit",
-            "one-tap Complete Scan with ${state.capturedPhotos.size} photo(s) + litter evidence — filing report",
+            "one-tap Complete Scan with ${state.capturedPhotos.size} photo(s) + litter evidence — review before filing",
         )
-        applyAiDescription()
         // The session summary is local UI and should never wait on multipart
-        // photo upload + report creation. Archive the durable session now,
-        // show the summary immediately, and let report sync finish behind it.
+        // photo upload + report creation. Archive the durable session now;
+        // the report itself waits for the post-scan REVIEW (F7), where the
+        // worker can delete a wrong item before anything submits.
         sessionDraft?.let { uploadEnvScanSession(it, reportId = null, captureHealthJson = captureHealthJson) }
         _uiState.value = _uiState.value.copy(
-            phase = SpotPhase.RESULT,
+            phase = SpotPhase.REVIEW,
             completedSession = sessionDraft,
+            error = null,
+        )
+    }
+
+    /**
+     * F7: continue from the post-scan REVIEW phase — files the report for
+     * the items that survived review (or closes coverage-only when the
+     * worker deleted them all), landing on RESULT exactly like the pre-F7
+     * one-tap flow. The session bundle was already archived in
+     * [completeScan] (archivedSessionIds dedupes the report-id re-archive).
+     */
+    fun submitReviewedScan() {
+        val state = _uiState.value
+        if (state.phase != SpotPhase.REVIEW) return
+        if (!hasUserConfirmedLitter(state.observedItems)) {
+            DiagnosticsLog.info(
+                "spot-submit",
+                "review removed all litter evidence — closing coverage-only, no report",
+            )
+            _uiState.value = _uiState.value.copy(phase = SpotPhase.RESULT)
+            return
+        }
+        DiagnosticsLog.info("spot-submit", "review confirmed — filing report")
+        applyAiDescription()
+        _uiState.value = _uiState.value.copy(
+            phase = SpotPhase.RESULT,
             isSubmitting = true,
             error = null,
         )
         submitReport(background = true)
+    }
+
+    /**
+     * F2: voluntary abort from the camera phase's ✕ ("discard scan?"). No
+     * report is ever filed on abort; the session bundle still archives
+     * (coverage counts) and the screen shows the "scan archived" summary
+     * card instead of vanishing silently. User-confirmed markers that
+     * already reached the server are rectified, same as the undo path.
+     */
+    fun abortScan(sessionDraft: EnvScanSessionDraft? = null, captureHealthJson: String? = null) {
+        val state = _uiState.value
+        if (state.phase != SpotPhase.CAMERA) return
+        DiagnosticsLog.info(
+            "spot-submit",
+            "scan aborted by user (${state.observedItems.size} item(s) discarded) — archiving session, no report",
+        )
+        state.observedItems
+            .filter { it.provenance == PROVENANCE_USER_CONFIRMED }
+            .distinctBy { gridCell10m(it.lat, it.lng) }
+            .forEach { item ->
+                scope.launch {
+                    runCatching { apiClient.rectifyObservationAtLocation(item.lat, item.lng) }
+                        .onFailure { DiagnosticsLog.error("abort", "server-side abort rectify failed (local discarded)", it) }
+                }
+            }
+        sessionDraft?.let { uploadEnvScanSession(it, reportId = null, captureHealthJson = captureHealthJson) }
+        rejectedItems.clear()
+        multiItemPhotoIndices.clear()
+        observedItemStamps.clear()
+        itemMediaUrls.clear()
+        uploadedPhotoUrlByContent.clear()
+        photoStamps.clear()
+        _uiState.value = _uiState.value.copy(
+            scanFinishedWithoutReport = true,
+            observedItems = emptyList(),
+            capturedPhotos = emptyList(),
+        )
     }
 
     /**
@@ -1249,6 +1336,7 @@ class SpotViewModel(
                 submitReport()
                 return
             }
+            SpotPhase.REVIEW -> return
             SpotPhase.SUBMITTING -> return
             SpotPhase.RESULT -> return
         }

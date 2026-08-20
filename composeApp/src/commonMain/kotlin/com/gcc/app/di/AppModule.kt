@@ -1,6 +1,7 @@
 package com.gcc.app.di
 
 import com.gcc.app.platform.CameraManager
+import com.gcc.app.platform.FirstRunStore
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.platform.LocationTrackingController
 import com.gcc.app.platform.OnDeviceAnalyzer
@@ -63,6 +64,7 @@ object SessionExpiredSignal {
 
 val appModule = module {
     single { TokenManager(settings = createSecureStorage()) }
+    single { FirstRunStore() }
     single { LocationProvider() }
     single { LocationTrackingController() }
     single { ShareManager() }

@@ -33,6 +33,7 @@ import com.gcc.app.ui.map.MyLocationButton
 import com.gcc.app.ui.map.RouteThumbnail
 import com.gcc.app.ui.map.resolveMapCenter
 import com.gcc.app.ui.theme.*
+import com.gcc.app.platform.FirstRunStore
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.viewmodel.DashboardViewModel
 import com.gcc.shared.auth.TokenManager
@@ -78,12 +79,13 @@ fun DashboardScreen(
     val viewModel = koinInject<DashboardViewModel>()
     val tokenManager = koinInject<TokenManager>()
     val locationProvider = koinInject<LocationProvider>()
+    val firstRunStore = koinInject<FirstRunStore>()
     val isAdmin = remember { tokenManager.isAdmin() }
     val uiState by viewModel.uiState.collectAsState()
     val currentLocation by locationProvider.currentLocation.collectAsState()
     var nowMillis by remember { mutableStateOf(Clock.System.now().toEpochMilliseconds()) }
-    val snackbarHostState = remember { SnackbarHostState() }
     var alertedAssignedJobIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
+    var showFirstBlockSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         locationProvider.startLocationUpdates()
@@ -114,13 +116,11 @@ fun DashboardScreen(
         }
         if (newAssignedJob != null) {
             alertedAssignedJobIds = alertedAssignedJobIds + newAssignedJob.id
-            val routeName = newAssignedJob.routeId
-                ?.let { uiState.assignedRoutesById[it]?.displayName }
-                ?: "Assigned route"
-            snackbarHostState.showSnackbar(
-                message = "$routeName is ready. Open it to start from the route boundary.",
-                duration = SnackbarDuration.Long,
-            )
+            // §4: the FIRST assignment opens the one-shot tutorial sheet
+            // (replaces the old snackbar); later assignments stay quiet.
+            if (!firstRunStore.tutorialBlockSeen) {
+                showFirstBlockSheet = true
+            }
         }
     }
 
@@ -185,9 +185,36 @@ fun DashboardScreen(
         )
     }
 
+    // §4 first-block tutorial sheet (one-shot; FirstRunStore.tutorialBlockSeen)
+    val firstBlockSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    if (showFirstBlockSheet) {
+        ModalBottomSheet(
+            onDismissRequest = {
+                showFirstBlockSheet = false
+                // Dismissed without the CTA: tutorial considered skipped. The
+                // CTA deliberately leaves the flag unset so the RouteDetail
+                // coach mark can finish the hand-off (entering the scan sets it).
+                firstRunStore.tutorialBlockSeen = true
+            },
+            sheetState = firstBlockSheetState,
+        ) {
+            FirstBlockTutorialSheet(
+                routeName = primaryAssignedPair?.second?.displayName ?: "Assigned route",
+                mapCenter = mapCenter,
+                routeCoordinates = primaryAssignedPair
+                    ?.let { listOf(it.second.routePathCoordinates()) }
+                    .orEmpty(),
+                currentLocation = currentLocation,
+                onOpenRoute = {
+                    showFirstBlockSheet = false
+                    primaryAssignedPair?.first?.routeId?.let(onRouteClick)
+                },
+            )
+        }
+    }
+
     Scaffold(
         contentWindowInsets = WindowInsets(0),
-        snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
             FloatingActionButton(
                 onClick = onSpotClick,

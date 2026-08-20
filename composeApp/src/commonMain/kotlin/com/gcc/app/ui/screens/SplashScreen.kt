@@ -35,9 +35,14 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.gcc.app.platform.SplashVideoPlayer
+import com.gcc.app.platform.isReducedMotionEnabled
 import com.gcc.app.ui.components.GccLogo
 import com.gcc.app.ui.theme.GccGreen
 import com.gcc.app.ui.theme.GccGreenDark
+import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 import gcc_kmp.composeapp.generated.resources.Res
 import io.github.alexzhirkevich.compottie.Compottie
 import io.github.alexzhirkevich.compottie.LottieCompositionSpec
@@ -90,10 +95,27 @@ private const val US_MAX_LNG = -66.0
 
 @OptIn(ExperimentalResourceApi::class)
 @Composable
-fun SplashScreen(onFinished: () -> Unit) {
-    val masterProgress = remember { Animatable(0f) }
+fun SplashScreen(onFinished: () -> Unit, shortMode: Boolean = false) {
+    // F9: reduced-motion users get the static poster + logo, never the video
+    // or the 12s animation.
+    val reducedMotion = remember { isReducedMotionEnabled() }
+    if (reducedMotion) {
+        ReducedMotionSplash(onFinished)
+        return
+    }
+
+    // Short mode (returning users) starts the master timeline at the logo
+    // phase; the phase branches below key off `progress`, so phases 1–4 are
+    // skipped cleanly with no special-case drawing code.
+    val masterProgress = remember { Animatable(if (shortMode) PHASE5_START else 0f) }
     val splashAlpha = remember { Animatable(1f) }
     var skipped by remember { mutableStateOf(false) }
+
+    // ── §5.2 video slot ──
+    // null = attempt in flight, false = fell back to the Canvas animation,
+    // true = real end-of-playback. Short mode never attempts the video.
+    var videoOutcome by remember { mutableStateOf<Boolean?>(if (shortMode) false else null) }
+    val videoStartedAt = remember { TimeSource.Monotonic.markNow() }
 
     // ── Load GeoJSON data ──
     var geoData by remember { mutableStateOf<SplashGeoData?>(null) }
@@ -114,16 +136,31 @@ fun SplashScreen(onFinished: () -> Unit) {
         )
     }
 
-    // Master animation: 0 -> 1 over 8 seconds (waits for GeoJSON to load)
-    LaunchedEffect(geoData) {
+    // Master animation: 0 -> 1 over 12 seconds (waits for GeoJSON and for the
+    // video slot to resolve to fallback; short mode runs only the final
+    // ~1.5s logo phase from PHASE5_START).
+    LaunchedEffect(geoData, videoOutcome) {
         if (geoData == null) return@LaunchedEffect
+        if (videoOutcome != false) return@LaunchedEffect
         masterProgress.animateTo(
             targetValue = 1f,
-            animationSpec = tween(durationMillis = 12000, easing = LinearEasing),
+            animationSpec = tween(
+                durationMillis = if (shortMode) 1500 else 12000,
+                easing = LinearEasing,
+            ),
         )
         // Animation complete -- fade out
         splashAlpha.animateTo(0f, tween(500))
         onFinished()
+    }
+
+    // Real video end-of-playback: fade out and continue (mirrors the
+    // animation-complete path above).
+    LaunchedEffect(videoOutcome) {
+        if (videoOutcome == true) {
+            splashAlpha.animateTo(0f, tween(500))
+            onFinished()
+        }
     }
 
     // Skip handler
@@ -189,6 +226,27 @@ fun SplashScreen(onFinished: () -> Unit) {
                 detectTapGestures { skipped = true }
             },
     ) {
+        // ── §5.2 video surface (full mode only, until the slot resolves) ──
+        // Stays composed after real end-of-playback so the end frame holds
+        // through the fade-out; removed on fallback so the swap is seamless.
+        if (videoOutcome != false) {
+            SplashVideoPlayer(
+                assetName = "splash-hero",
+                onFinished = {
+                    // The android/desktop actuals and a missing iOS resource
+                    // finish within the first frames; real playback takes
+                    // seconds. A fast finish means "no asset" → fall back to
+                    // the Canvas animation instead of ending the splash.
+                    videoOutcome = videoStartedAt.elapsedNow() >= 2.seconds
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        // Animation layers only once the video slot has resolved to fallback
+        // (or short mode, which never attempts video) — otherwise the opaque
+        // Canvas background and phase labels would cover the video surface.
+        if (videoOutcome == false) {
         // ── Canvas layer: Background + Phases 1-3 + transition effects ──
         Canvas(modifier = Modifier.fillMaxSize()) {
             val w = size.width
@@ -388,6 +446,80 @@ fun SplashScreen(onFinished: () -> Unit) {
                 )
             }
         }
+        }
+    }
+}
+
+// ── F9 reduced-motion splash: static brand poster + logo, ~1.2s ──
+@Composable
+private fun ReducedMotionSplash(onFinished: () -> Unit) {
+    val splashAlpha = remember { Animatable(1f) }
+    var skipped by remember { mutableStateOf(false) }
+    var finished by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        delay(1200)
+        if (!finished) {
+            finished = true
+            splashAlpha.animateTo(0f, tween(300))
+            onFinished()
+        }
+    }
+
+    // Same tap-to-skip affordance as the animated splash.
+    LaunchedEffect(skipped) {
+        if (skipped && !finished) {
+            finished = true
+            splashAlpha.animateTo(0f, tween(300))
+            onFinished()
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer { alpha = splashAlpha.value }
+            .pointerInput(Unit) {
+                detectTapGestures { skipped = true }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        // Static poster: brand background + soft glow, no motion.
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            drawRect(SplashBackground)
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        GlowGreen.copy(alpha = 0.15f),
+                        GlowGreen.copy(alpha = 0.05f),
+                        Color.Transparent,
+                    ),
+                    center = Offset(size.width / 2f, size.height * 0.40f),
+                    radius = size.width * 0.6f,
+                ),
+                radius = size.width * 0.6f,
+                center = Offset(size.width / 2f, size.height * 0.40f),
+            )
+        }
+
+        GccLogo(
+            size = 80.dp,
+            showGlow = true,
+            modifier = Modifier.offset(y = 50.dp),
+        )
+
+        Text(
+            text = "Global Community Cleaners",
+            style = TextStyle(
+                color = Color.White,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+            ),
+            modifier = Modifier
+                .align(Alignment.Center)
+                .offset(y = 105.dp),
+        )
     }
 }
 

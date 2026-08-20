@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import Image from 'next/image'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { MobileAppAnnouncementBanner } from './MobileAppAnnouncementBanner'
 
 export function HeroSection() {
@@ -58,15 +58,30 @@ export function HeroSection() {
             sizes="100vw"
           />
         </picture>
-        {/* Desktop gradient overlays — much lighter than before; the text card (not the whole image) carries contrast now */}
-        <div className="absolute inset-0 bg-gradient-to-r from-black/45 via-black/20 to-black/10 hidden sm:block" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-black/10 hidden sm:block" />
+        {/* Desktop gradient overlays — stronger on the right now so the device scene
+            reads off a calm backdrop instead of fighting the busy photo for edges */}
+        <div className="absolute inset-0 bg-gradient-to-r from-black/50 via-black/30 to-black/55 hidden sm:block" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/15 hidden sm:block" />
+        {/* Faint street-grid motif — texture that ties photo, copy and device together */}
+        <svg
+          aria-hidden
+          className="absolute inset-0 w-full h-full opacity-[0.07] hidden sm:block mix-blend-screen"
+          preserveAspectRatio="xMidYMid slice"
+          viewBox="0 0 1440 900"
+        >
+          <defs>
+            <pattern id="hero-grid" width="90" height="90" patternUnits="userSpaceOnUse">
+              <path d="M 90 0 L 0 0 0 90" fill="none" stroke="white" strokeWidth="1" />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#hero-grid)" />
+        </svg>
       </div>
 
       <div className="section-container relative z-10 h-full flex items-center py-[clamp(1rem,3vh,2rem)]">
-        <div className="grid lg:grid-cols-[1.1fr_0.9fr] gap-[clamp(1rem,3vh,2.5rem)] lg:gap-8 items-center max-w-6xl mx-auto w-full">
+        <div className="grid lg:grid-cols-[1.05fr_0.95fr] gap-[clamp(1rem,3vh,2.5rem)] lg:gap-4 items-center max-w-6xl mx-auto w-full">
           {/* Left column: copy — glass card with a real border + blur so it reads as a surface, not a gray slab */}
-          <div className="text-center lg:text-left bg-black/45 backdrop-blur-md rounded-3xl p-5 sm:p-6 lg:p-8 border border-white/10 shadow-2xl shadow-black/40">
+          <div className="text-center lg:text-left bg-black/45 backdrop-blur-md rounded-3xl p-5 sm:p-6 lg:p-8 border border-white/10 shadow-2xl shadow-black/40 lg:relative lg:z-20">
             {/* Full brand name for recognition */}
             <p
               className={`text-xs sm:text-sm font-semibold text-brand-green-300 uppercase tracking-[0.2em] mb-[clamp(0.5rem,1.5vh,1rem)] transition-all duration-700 ${
@@ -202,13 +217,13 @@ export function HeroSection() {
             </div>
           </div>
 
-          {/* Right column: phone mockup — desktop/tablet only, sized off viewport height so it always fits beside the copy */}
+          {/* Right column: composed device scene — desktop/tablet only */}
           <div
-            className={`hidden lg:flex justify-center transition-all duration-700 delay-300 ${
+            className={`hidden lg:flex justify-center transition-all duration-700 delay-300 lg:relative lg:z-10 ${
               isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
             }`}
           >
-            <PhoneMockup />
+            <DeviceScene isVisible={isVisible} />
           </div>
         </div>
 
@@ -235,18 +250,176 @@ export function HeroSection() {
   )
 }
 
-/** Floating device mockup of the GCC app's map/heatmap screen (North Lawndale) — angled iPhone render, background/baked-in shadow fully stripped so it composites cleanly with a real CSS shadow. */
-function PhoneMockup() {
+/**
+ * The product showcase: a 3D-tilted phone with floating UI callout cards that read as
+ * live moments from the app (claim, payout, scan progress), each tied to the device by a
+ * thin connector line. Gentle idle float + desktop mouse parallax sell depth; everything
+ * is transform-only and fully disabled under prefers-reduced-motion. Content mirrors the
+ * site's real numbers ($100/block, 15-30m payout, scan-to-clean flow) — no invented data.
+ */
+function DeviceScene({ isVisible }: { isVisible: boolean }) {
+  const sceneRef = useRef<HTMLDivElement>(null)
+  const phoneRef = useRef<HTMLDivElement>(null)
+  const cardsRef = useRef<HTMLDivElement>(null)
+  const [reducedMotion, setReducedMotion] = useState(false)
+
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
+    setReducedMotion(mq.matches)
+    const onChange = (e: MediaQueryListEvent) => setReducedMotion(e.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+
+  // Mouse parallax — phone and cards drift at different rates. rAF-lerped, transform-only.
+  useEffect(() => {
+    if (reducedMotion) return
+    const scene = sceneRef.current
+    const phone = phoneRef.current
+    const cards = cardsRef.current
+    if (!scene || !phone || !cards) return
+
+    let tx = 0, ty = 0, cx = 0, cy = 0, raf = 0
+    const onMove = (e: MouseEvent) => {
+      const r = scene.getBoundingClientRect()
+      tx = ((e.clientX - r.left) / r.width - 0.5) * 2
+      ty = ((e.clientY - r.top) / r.height - 0.5) * 2
+    }
+    const tick = () => {
+      cx += (tx - cx) * 0.06
+      cy += (ty - cy) * 0.06
+      phone.style.transform = `rotateY(calc(-14deg + ${cx * 4}deg)) rotateX(calc(5deg + ${cy * -3}deg)) translate3d(${cx * 10}px, ${cy * 8}px, 0)`
+      cards.style.transform = `translate3d(${cx * -14}px, ${cy * -10}px, 0)`
+      raf = requestAnimationFrame(tick)
+    }
+    const section = scene.closest('section')
+    section?.addEventListener('mousemove', onMove)
+    raf = requestAnimationFrame(tick)
+    return () => {
+      section?.removeEventListener('mousemove', onMove)
+      cancelAnimationFrame(raf)
+    }
+  }, [reducedMotion])
+
   return (
-    <div className="relative w-[min(380px,44vh)] aspect-[1536/2752]">
-      <Image
-        src="/images/optimized/hero-app-phone-mockup.webp"
-        alt="The GCC app's live map showing the North Lawndale cleanliness heatmap and open block routes"
-        fill
-        className="object-contain drop-shadow-[0_30px_45px_rgba(0,0,0,0.5)]"
-        sizes="(min-width: 1280px) 400px, 380px"
-        priority
-      />
+    <div ref={sceneRef} className="relative w-[min(390px,44vh)] aspect-[1536/2752]" style={{ perspective: '1400px' }}>
+      {/* soft brand glow anchoring the device to the backdrop */}
+      <div className="absolute inset-0 -m-10 rounded-full bg-brand-green-500/20 blur-3xl" aria-hidden />
+
+      <div
+        ref={phoneRef}
+        className={`relative w-full h-full will-change-transform ${reducedMotion ? '' : 'hero-device-float'}`}
+        style={{
+          transform: 'rotateY(-14deg) rotateX(5deg)',
+          transformStyle: 'preserve-3d',
+          transition: 'transform 120ms linear',
+        }}
+      >
+        <Image
+          src="/images/optimized/hero-app-phone-mockup.webp"
+          alt="The GCC app's live map showing the North Lawndale cleanliness heatmap and open block routes"
+          fill
+          className="object-contain drop-shadow-[0_40px_60px_rgba(0,0,0,0.6)]"
+          sizes="(min-width: 1280px) 430px, 380px"
+          priority
+        />
+      </div>
+
+      {/* Floating callout cards — counter-parallaxed against the phone for depth */}
+      <div ref={cardsRef} className="absolute inset-0 z-10 will-change-transform pointer-events-none" style={{ transition: 'transform 120ms linear' }}>
+        <FloatCard
+          isVisible={isVisible}
+          delay={600}
+          className="absolute -left-6 top-[10%]"
+          lineClass="left-full top-1/2 w-6"
+          reducedMotion={reducedMotion}
+        >
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-brand-green-300">Block claimed</p>
+          <p className="text-sm font-bold text-white mt-0.5">1500 S Pulaski Rd</p>
+          <p className="text-[11px] text-neutral-400 mt-0.5">Route 07 · boundary lap next</p>
+        </FloatCard>
+
+        <FloatCard
+          isVisible={isVisible}
+          delay={750}
+          className="absolute -right-24 top-[42%]"
+          lineClass="right-full top-1/2 w-24"
+          reducedMotion={reducedMotion}
+        >
+          <div className="flex items-center gap-2">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-green-500/25 text-brand-green-300 text-sm font-bold">$</span>
+            <div>
+              <p className="text-sm font-bold text-white leading-tight">$100 payout sent</p>
+              <p className="text-[11px] text-neutral-400">approved 15 min ago</p>
+            </div>
+          </div>
+        </FloatCard>
+
+        <FloatCard
+          isVisible={isVisible}
+          delay={900}
+          className="absolute -left-5 bottom-[8%]"
+          lineClass="left-full top-1/2 w-5"
+          reducedMotion={reducedMotion}
+        >
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-brand-sky-300">Scan progress</p>
+          <div className="mt-1.5 h-1.5 w-36 rounded-full bg-white/10 overflow-hidden">
+            <div className="h-full w-[83%] rounded-full bg-gradient-to-r from-brand-green-400 to-brand-sky-400" />
+          </div>
+          <p className="text-[11px] text-neutral-400 mt-1">10 of 12 checkpoints mapped</p>
+        </FloatCard>
+      </div>
+
+      {/* idle float keyframes, compiled out under reduced motion */}
+      <style jsx>{`
+        @keyframes hero-device-float {
+          0%, 100% { translate: 0 0; }
+          50% { translate: 0 -10px; }
+        }
+        .hero-device-float {
+          animation: hero-device-float 6s ease-in-out infinite;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .hero-device-float { animation: none !important; }
+        }
+      `}</style>
+    </div>
+  )
+}
+
+/** One floating callout card with a connector line back to the device. */
+function FloatCard({
+  isVisible,
+  delay,
+  className,
+  lineClass,
+  reducedMotion,
+  children,
+}: {
+  isVisible: boolean
+  delay: number
+  className: string
+  lineClass: string
+  reducedMotion: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <div
+      className={`${className} transition-all duration-700 ${
+        isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+      }`}
+      style={{ transitionDelay: reducedMotion ? '0ms' : `${delay}ms` }}
+    >
+      {/* connector line to the phone edge */}
+      <span
+        aria-hidden
+        className={`absolute ${lineClass} h-px bg-gradient-to-r from-white/40 to-transparent`}
+      >
+        <span className="absolute -top-[2px] left-0 h-[5px] w-[5px] rounded-full bg-white/60" />
+      </span>
+      <div className="rounded-2xl bg-black/55 backdrop-blur-md border border-white/15 px-3.5 py-2.5 shadow-xl shadow-black/40">
+        {children}
+      </div>
     </div>
   )
 }

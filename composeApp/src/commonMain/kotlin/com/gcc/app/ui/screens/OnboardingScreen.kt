@@ -1,195 +1,21 @@
 package com.gcc.app.ui.screens
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.foundation.background
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.gcc.app.ui.components.GccButton
-import com.gcc.app.ui.components.GccButtonVariant
-import com.gcc.app.ui.components.GccLogo
-import com.gcc.app.ui.theme.*
-import kotlinx.coroutines.launch
+import androidx.compose.runtime.Composable
 
-private data class OnboardingPage(
-    val title: String,
-    val subtitle: String,
-    val emoji: String,
-)
-
-private val onboardingPages = listOf(
-    OnboardingPage(
-        title = "Clean Your Community",
-        subtitle = "Accept routes, scan cleanup areas, and earn rewards for keeping Chicago clean.",
-        emoji = "\uD83E\uDDF9",
-    ),
-    OnboardingPage(
-        title = "Track Your Impact",
-        subtitle = "GPS-verified cleanups, photo documentation, and real-time progress tracking.",
-        emoji = "\uD83D\uDCCD",
-    ),
-    OnboardingPage(
-        title = "Get Paid & Level Up",
-        subtitle = "Weekly payouts, achievement badges, leaderboards, and early adopter tiers.",
-        emoji = "\uD83C\uDFC6",
-    ),
-)
-
+/**
+ * Post-registration explainer. Shares the intro carousel's slide content
+ * (IntroScreen.kt — Scan / Claim your block / Earn / See the change) so
+ * there is one carousel implementation; completes into
+ * RootComponent.onOnboardingComplete.
+ */
 @Composable
 fun OnboardingScreen(
     onComplete: () -> Unit = {},
     onBack: () -> Unit = onComplete,
 ) {
-    val pagerState = rememberPagerState(pageCount = { onboardingPages.size })
-    val coroutineScope = rememberCoroutineScope()
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(GccGreen, GccGreenDark, Color(0xFF0F4C2A))
-                )
-            ),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Spacer(modifier = Modifier.height(16.dp))
-
-            GccLogo(size = 48.dp)
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier.weight(1f),
-            ) { page ->
-                val pageData = onboardingPages[page]
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 32.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            pageData.emoji,
-                            fontSize = 72.sp,
-                        )
-
-                        Spacer(modifier = Modifier.height(32.dp))
-
-                        Text(
-                            pageData.title,
-                            style = MaterialTheme.typography.headlineMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                            ),
-                            color = Color.White,
-                            textAlign = TextAlign.Center,
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Text(
-                            pageData.subtitle,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = Color.White.copy(alpha = 0.85f),
-                            textAlign = TextAlign.Center,
-                        )
-                    }
-                }
-            }
-
-            // Dot indicators
-            Row(
-                modifier = Modifier.padding(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                repeat(onboardingPages.size) { index ->
-                    val isActive = index == pagerState.currentPage
-                    val color by animateColorAsState(
-                        targetValue = if (isActive) Color.White else Color.White.copy(alpha = 0.4f),
-                    )
-                    Box(
-                        modifier = Modifier
-                            .size(if (isActive) 10.dp else 8.dp)
-                            .clip(CircleShape)
-                            .background(color),
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Button
-            val isLastPage = pagerState.currentPage == onboardingPages.size - 1
-            GccButton(
-                text = if (isLastPage) "Get Started" else "Next",
-                onClick = {
-                    if (isLastPage) {
-                        onComplete()
-                    } else {
-                        coroutineScope.launch {
-                            pagerState.animateScrollToPage(pagerState.currentPage + 1)
-                        }
-                    }
-                },
-                variant = GccButtonVariant.SECONDARY,
-                modifier = Modifier.padding(horizontal = 32.dp),
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Skip button on non-last pages
-            if (!isLastPage) {
-                TextButton(onClick = onComplete) {
-                    Text(
-                        "Skip",
-                        color = Color.White.copy(alpha = 0.7f),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
-        }
-
-        TextButton(
-            onClick = onBack,
-            modifier = Modifier
-                .statusBarsPadding()
-                .padding(8.dp)
-                .align(Alignment.TopStart),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.9f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("\u2190", style = MaterialTheme.typography.titleMedium, color = GccGreenDark)
-            }
-        }
-    }
+    IntroCarousel(
+        onComplete = onComplete,
+        completeLabel = "Get Started",
+        onBack = onBack,
+    )
 }
