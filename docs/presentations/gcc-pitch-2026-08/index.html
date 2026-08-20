@@ -93,7 +93,7 @@
   #s4 .step p{font-size:clamp(12px,1vw,15px);line-height:1.55;color:var(--muted)}
   #s4 .arrow{display:none}
 
-  /* ---------- slide 5 counters + placeholder grid ---------- */
+  /* ---------- slide 5 counters + participant photo grid ---------- */
   #s5 .counters{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(14px,1.6vw,28px);margin-top:clamp(24px,4vh,48px)}
   #s5 .counter-card{border-top:2px solid var(--green);padding-top:clamp(14px,2vh,24px)}
   #s5 .big{font-size:clamp(38px,4.6vw,80px);font-weight:800;letter-spacing:-.03em;line-height:1;font-variant-numeric:tabular-nums}
@@ -102,11 +102,10 @@
   #s5 .bar{height:4px;background:rgba(255,255,255,.07);border-radius:2px;margin-top:14px;overflow:hidden}
   #s5 .bar i{display:block;height:100%;width:20%;background:var(--green);border-radius:2px}
   #s5 .tiles{display:grid;grid-template-columns:repeat(10,1fr);gap:8px;margin-top:clamp(22px,3.6vh,42px)}
-  #s5 .tile{aspect-ratio:4/3;border:1px dashed var(--line);border-radius:6px;display:flex;
-    align-items:center;justify-content:center;background:rgba(16,185,129,.03)}
-  #s5 .tile span{font-size:clamp(8px,.62vw,10px);letter-spacing:.14em;text-transform:uppercase;
-    color:var(--faint);text-align:center;line-height:1.5;padding:2px}
-  #s5 .tiles-cap{margin-top:12px;font-size:clamp(11px,.85vw,13px);color:var(--faint);letter-spacing:.08em}
+  #s5 .tile{aspect-ratio:4/3;border-radius:6px;overflow:hidden;background:var(--card)}
+  #s5 .tile img{width:100%;height:100%;object-fit:cover;object-position:center 25%;display:block;
+    filter:saturate(.95) brightness(.92)}
+  #s5 .tiles-cap{margin-top:12px;font-size:clamp(11px,.85vw,13px);color:var(--faint);letter-spacing:.04em;font-style:italic}
 
   /* ---------- slide 6 app cards ---------- */
   #s6 .cards{grid-template-columns:repeat(3,1fr)}
@@ -298,28 +297,28 @@
     </div>
   </div>
   <div class="tiles">
-    <!-- PARTICIPANT PHOTO 01 goes here --><div class="tile"><span>participant<br>photo</span></div>
-    <!-- PARTICIPANT PHOTO 02 goes here --><div class="tile"><span>participant<br>photo</span></div>
-    <!-- PARTICIPANT PHOTO 03 goes here --><div class="tile"><span>participant<br>photo</span></div>
-    <!-- PARTICIPANT PHOTO 04 goes here --><div class="tile"><span>participant<br>photo</span></div>
-    <!-- PARTICIPANT PHOTO 05 goes here --><div class="tile"><span>participant<br>photo</span></div>
-    <!-- PARTICIPANT PHOTO 06 goes here --><div class="tile"><span>participant<br>photo</span></div>
-    <!-- PARTICIPANT PHOTO 07 goes here --><div class="tile"><span>participant<br>photo</span></div>
-    <!-- PARTICIPANT PHOTO 08 goes here --><div class="tile"><span>participant<br>photo</span></div>
-    <!-- PARTICIPANT PHOTO 09 goes here --><div class="tile"><span>participant<br>photo</span></div>
-    <!-- PARTICIPANT PHOTO 10 goes here --><div class="tile"><span>participant<br>photo</span></div>
-    <!-- PARTICIPANT PHOTO 11 goes here --><div class="tile"><span>participant<br>photo</span></div>
-    <!-- PARTICIPANT PHOTO 12 goes here --><div class="tile"><span>participant<br>photo</span></div>
-    <!-- PARTICIPANT PHOTO 13 goes here --><div class="tile"><span>participant<br>photo</span></div>
-    <!-- PARTICIPANT PHOTO 14 goes here --><div class="tile"><span>participant<br>photo</span></div>
-    <!-- PARTICIPANT PHOTO 15 goes here --><div class="tile"><span>participant<br>photo</span></div>
-    <!-- PARTICIPANT PHOTO 16 goes here --><div class="tile"><span>participant<br>photo</span></div>
-    <!-- PARTICIPANT PHOTO 17 goes here --><div class="tile"><span>participant<br>photo</span></div>
-    <!-- PARTICIPANT PHOTO 18 goes here --><div class="tile"><span>participant<br>photo</span></div>
-    <!-- PARTICIPANT PHOTO 19 goes here --><div class="tile"><span>participant<br>photo</span></div>
-    <!-- PARTICIPANT PHOTO 20 goes here --><div class="tile"><span>participant<br>photo</span></div>
+    <div class="tile"><img src="assets/participant-01.jpg" alt="Pilot participant 01 after their cleanup" loading="lazy"></div>
+    <div class="tile"><img src="assets/participant-02.jpg" alt="Pilot participant 02 after their cleanup" loading="lazy"></div>
+    <div class="tile"><img src="assets/participant-03.jpg" alt="Pilot participant 03 after their cleanup" loading="lazy"></div>
+    <div class="tile"><img src="assets/participant-04.jpg" alt="Pilot participant 04 after their cleanup" loading="lazy"></div>
+    <div class="tile"><img src="assets/participant-05.jpg" alt="Pilot participant 05 after their cleanup" loading="lazy"></div>
+    <div class="tile"><img src="assets/participant-06.jpg" alt="Pilot participant 06 after their cleanup" loading="lazy"></div>
+    <div class="tile"><img src="assets/participant-07.jpg" alt="Pilot participant 07 after their cleanup" loading="lazy"></div>
+    <div class="tile"><img src="assets/participant-08.jpg" alt="Pilot participant 08 after their cleanup" loading="lazy"></div>
+    <div class="tile"><img src="assets/participant-09.jpg" alt="Pilot participant 09 after their cleanup" loading="lazy"></div>
+    <div class="tile"><img src="assets/participant-10.jpg" alt="Pilot participant 10 after their cleanup" loading="lazy"></div>
+    <div class="tile"><img src="assets/participant-11.jpg" alt="Pilot participant 11 after their cleanup" loading="lazy"></div>
+    <div class="tile"><img src="assets/participant-12.jpg" alt="Pilot participant 12 after their cleanup" loading="lazy"></div>
+    <div class="tile"><img src="assets/participant-13.jpg" alt="Pilot participant 13 after their cleanup" loading="lazy"></div>
+    <div class="tile"><img src="assets/participant-14.jpg" alt="Pilot participant 14 after their cleanup" loading="lazy"></div>
+    <div class="tile"><img src="assets/participant-15.jpg" alt="Pilot participant 15 after their cleanup" loading="lazy"></div>
+    <div class="tile"><img src="assets/participant-16.jpg" alt="Pilot participant 16 after their cleanup" loading="lazy"></div>
+    <div class="tile"><img src="assets/participant-17.jpg" alt="Pilot participant 17 after their cleanup" loading="lazy"></div>
+    <div class="tile"><img src="assets/participant-18.jpg" alt="Pilot participant 18 after their cleanup" loading="lazy"></div>
+    <div class="tile"><img src="assets/participant-19.jpg" alt="Pilot participant 19 after their cleanup" loading="lazy"></div>
+    <div class="tile"><img src="assets/participant-20.jpg" alt="Pilot participant 20 after their cleanup" loading="lazy"></div>
   </div>
-  <div class="tiles-cap">One tile per pilot participant — after-photos swap in as verification completes.</div>
+  <div class="tiles-cap">Residents of North Lawndale after their cleanups, July 2026 — shared with permission.</div>
 </section>
 
 <!-- ============ 06 · THE APP ============ -->
