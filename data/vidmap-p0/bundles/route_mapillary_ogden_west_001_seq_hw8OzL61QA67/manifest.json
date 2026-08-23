@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0",
+  "id": "route_mapillary_ogden_west_001_seq_hw8OzL61QA67",
+  "name": "Ogden Ave west walk (Mapillary sequence hw8OzL61QA67)",
+  "source_mode": "route_video_frames",
+  "source_type": "Mapillary street-level sequence (public, outdoor)",
+  "source_sequence_id": "hw8OzL61QA67gtmvPQjWoQ",
+  "source_dir": "/home/codex450/media/mapillary/ogden_west_001/sequence_hw8OzL61QA67",
+  "frame_count": 30,
+  "anchor": {
+    "lat": 41.858418055556,
+    "lon": -87.724651388889,
+    "heading_deg": 263.45268685876,
+    "altitude_m": 185.2914990643
+  },
+  "qa": {
+    "outdoor_verified": true,
+    "privacy": "public Mapillary imagery; no residential indoor content; not quarantined"
+  },
+  "staged_for": "vidmap-p0-spike",
+  "staged_at": "2026-08-19"
+}

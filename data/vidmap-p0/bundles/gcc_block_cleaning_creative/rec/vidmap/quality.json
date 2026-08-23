@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "status": "ok",
+  "reason": null,
+  "keyframe_count": 3,
+  "track_length": {
+    "count": 1359,
+    "min": 2,
+    "max": 3,
+    "mean": 2.8609271523178808,
+    "median": 3.0
+  },
+  "loop_closure": false,
+  "go": false,
+  "nogo_reasons": [
+    "too_few_keyframes"
+  ],
+  "gpu_used": true,
+  "dry_run": false,
+  "input": {
+    "video": "/home/codex450/cdx/dev-projects/gcc/data/vidmap-p0/bundles/gcc_block_cleaning_creative/video/gcc-03-worker-cleanup.mp4",
+    "frames_dir": null,
+    "gps_track": null
+  }
+}

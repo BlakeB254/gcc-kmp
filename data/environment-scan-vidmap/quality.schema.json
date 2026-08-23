@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "status": "not_run",
+  "reason": "vidmap_not_installed",
+  "keyframe_count": 0,
+  "track_length": {
+    "count": 0
+  },
+  "loop_closure": false,
+  "go": false,
+  "nogo_reasons": [
+    "vidmap_not_installed",
+    "too_few_keyframes"
+  ],
+  "gpu_used": false,
+  "dry_run": true,
+  "input": {
+    "video": null,
+    "frames_dir": null,
+    "gps_track": null
+  }
+}

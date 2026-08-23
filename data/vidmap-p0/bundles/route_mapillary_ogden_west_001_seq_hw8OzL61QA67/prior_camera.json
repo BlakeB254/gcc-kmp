@@ -1,0 +1,817 @@
+{
+  "schema_version": "1.0",
+  "bundle_id": "route_mapillary_ogden_west_001_seq_hw8OzL61QA67",
+  "note": "Approximate priors from Mapillary per-frame GPS+compass+camera_parameters. Replace with VidMap SfM solve before approving any recon output.",
+  "frames": [
+    {
+      "id": "0000",
+      "image": "frames/0000.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 873.4922899393946,
+        "fy": 873.4922899393946,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.12906977755052,
+        "k2": 0.017005219021926
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.858418055556,
+        "lon": -87.724651388889,
+        "altitude_m": 185.2914990643,
+        "heading_deg": 263.45268685876,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017266000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    },
+    {
+      "id": "0001",
+      "image": "frames/0001.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 873.4922899393946,
+        "fy": 873.4922899393946,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.12906977755052,
+        "k2": 0.017005219021926
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.858418055556,
+        "lon": -87.724716388889,
+        "altitude_m": 185.23813450523,
+        "heading_deg": 263.49466682319,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017267000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    },
+    {
+      "id": "0002",
+      "image": "frames/0002.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 873.4922899393946,
+        "fy": 873.4922899393946,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.12906977755052,
+        "k2": 0.017005219021926
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.858416388889,
+        "lon": -87.724771388889,
+        "altitude_m": 185.17275870312,
+        "heading_deg": 263.11523084756,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017268000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    },
+    {
+      "id": "0003",
+      "image": "frames/0003.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 873.4922899393946,
+        "fy": 873.4922899393946,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.12906977755052,
+        "k2": 0.017005219021926
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.858416388889,
+        "lon": -87.724806388889,
+        "altitude_m": 185.07564808708,
+        "heading_deg": 262.40275239013,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017269000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    },
+    {
+      "id": "0004",
+      "image": "frames/0004.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 873.4922899393946,
+        "fy": 873.4922899393946,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.12906977755052,
+        "k2": 0.017005219021926
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.858418055556,
+        "lon": -87.724828055556,
+        "altitude_m": 185.05601164885,
+        "heading_deg": 261.58529363433,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017270000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    },
+    {
+      "id": "0005",
+      "image": "frames/0005.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 873.4922899393946,
+        "fy": 873.4922899393946,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.12906977755052,
+        "k2": 0.017005219021926
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.858419722222,
+        "lon": -87.724836388889,
+        "altitude_m": 185.02622015402,
+        "heading_deg": 259.50002413841,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017271000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    },
+    {
+      "id": "0006",
+      "image": "frames/0006.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 873.4922899393946,
+        "fy": 873.4922899393946,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.12906977755052,
+        "k2": 0.017005219021926
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.858406388889,
+        "lon": -87.724866388889,
+        "altitude_m": 185.10679619573,
+        "heading_deg": 228.66246418717,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017273000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    },
+    {
+      "id": "0007",
+      "image": "frames/0007.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 873.4922899393946,
+        "fy": 873.4922899393946,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.12906977755052,
+        "k2": 0.017005219021926
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.858393055556,
+        "lon": -87.724893055556,
+        "altitude_m": 185.03874908108,
+        "heading_deg": 205.56526742194,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017274000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    },
+    {
+      "id": "0008",
+      "image": "frames/0008.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 873.4922899393946,
+        "fy": 873.4922899393946,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.12906977755052,
+        "k2": 0.017005219021926
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.858361388889,
+        "lon": -87.724926388889,
+        "altitude_m": 185.01503562834,
+        "heading_deg": 191.48140352531,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017275000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    },
+    {
+      "id": "0009",
+      "image": "frames/0009.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 873.4922899393946,
+        "fy": 873.4922899393946,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.12906977755052,
+        "k2": 0.017005219021926
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.858309722222,
+        "lon": -87.724953055556,
+        "altitude_m": 184.97294638213,
+        "heading_deg": 182.47847351653,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017276000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    },
+    {
+      "id": "0010",
+      "image": "frames/0010.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 873.4922899393946,
+        "fy": 873.4922899393946,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.12906977755052,
+        "k2": 0.017005219021926
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.858238055556,
+        "lon": -87.724965,
+        "altitude_m": 184.97680935636,
+        "heading_deg": 180.20182952086,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017277000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    },
+    {
+      "id": "0011",
+      "image": "frames/0011.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 873.4922899393946,
+        "fy": 873.4922899393946,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.12906977755052,
+        "k2": 0.017005219021926
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.858149722222,
+        "lon": -87.724963055556,
+        "altitude_m": 185.01929955743,
+        "heading_deg": 179.86790684633,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017278000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    },
+    {
+      "id": "0012",
+      "image": "frames/0012.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 873.4922899393946,
+        "fy": 873.4922899393946,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.12906977755052,
+        "k2": 0.017005219021926
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.856151388889,
+        "lon": -87.724895,
+        "altitude_m": 184.17766114417,
+        "heading_deg": 178.17895834339,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017297000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    },
+    {
+      "id": "0013",
+      "image": "frames/0013.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 873.4922899393946,
+        "fy": 873.4922899393946,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.12906977755052,
+        "k2": 0.017005219021926
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.856066388889,
+        "lon": -87.724891388889,
+        "altitude_m": 184.18976551201,
+        "heading_deg": 178.6505728086,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017298000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    },
+    {
+      "id": "0014",
+      "image": "frames/0014.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 873.4922899393946,
+        "fy": 873.4922899393946,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.12906977755052,
+        "k2": 0.017005219021926
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.855994722222,
+        "lon": -87.724888055556,
+        "altitude_m": 184.19075013418,
+        "heading_deg": 178.76372852325,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017299000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    },
+    {
+      "id": "0015",
+      "image": "frames/0015.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 873.4922899393946,
+        "fy": 873.4922899393946,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.12906977755052,
+        "k2": 0.017005219021926
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.855938055556,
+        "lon": -87.724884722222,
+        "altitude_m": 184.20143182483,
+        "heading_deg": 178.84236092316,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017300000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    },
+    {
+      "id": "0016",
+      "image": "frames/0016.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 873.4922899393946,
+        "fy": 873.4922899393946,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.12906977755052,
+        "k2": 0.017005219021926
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.855898055556,
+        "lon": -87.724883055556,
+        "altitude_m": 184.17183091957,
+        "heading_deg": 178.95369573872,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017301000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    },
+    {
+      "id": "0017",
+      "image": "frames/0017.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 873.4922899393946,
+        "fy": 873.4922899393946,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.12906977755052,
+        "k2": 0.017005219021926
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.855876388889,
+        "lon": -87.724879722222,
+        "altitude_m": 184.16159560345,
+        "heading_deg": 179.00041923987,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017302000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    },
+    {
+      "id": "0018",
+      "image": "frames/0018.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 873.4922899393946,
+        "fy": 873.4922899393946,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.12906977755052,
+        "k2": 0.017005219021926
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.85587,
+        "lon": -87.724879722222,
+        "altitude_m": 184.15558309294,
+        "heading_deg": 179.00781421654,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017303000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    },
+    {
+      "id": "0019",
+      "image": "frames/0019.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 873.4922899393946,
+        "fy": 873.4922899393946,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.12906977755052,
+        "k2": 0.017005219021926
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.85587,
+        "lon": -87.724878055556,
+        "altitude_m": 184.14913276117,
+        "heading_deg": 178.98002323909,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017304000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    },
+    {
+      "id": "0020",
+      "image": "frames/0020.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 873.4922899393946,
+        "fy": 873.4922899393946,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.12906977755052,
+        "k2": 0.017005219021926
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.855873055556,
+        "lon": -87.724878055556,
+        "altitude_m": 184.12810778525,
+        "heading_deg": 179.02768063898,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017314000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    },
+    {
+      "id": "0021",
+      "image": "frames/0021.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 873.4922899393946,
+        "fy": 873.4922899393946,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.12906977755052,
+        "k2": 0.017005219021926
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.855871388889,
+        "lon": -87.724878055556,
+        "altitude_m": 184.13087987807,
+        "heading_deg": 179.00882417478,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017315000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    },
+    {
+      "id": "0022",
+      "image": "frames/0022.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 873.4922899393946,
+        "fy": 873.4922899393946,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.12906977755052,
+        "k2": 0.017005219021926
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.855871388889,
+        "lon": -87.724876388889,
+        "altitude_m": 184.11021837126,
+        "heading_deg": 178.99434864717,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017316000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    },
+    {
+      "id": "0023",
+      "image": "frames/0023.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 873.4922899393946,
+        "fy": 873.4922899393946,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.12906977755052,
+        "k2": 0.017005219021926
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.855873055556,
+        "lon": -87.724876388889,
+        "altitude_m": 184.13072863966,
+        "heading_deg": 179.03010535012,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017318000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    },
+    {
+      "id": "0024",
+      "image": "frames/0024.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 873.4922899393946,
+        "fy": 873.4922899393946,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.12906977755052,
+        "k2": 0.017005219021926
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.855871388889,
+        "lon": -87.724876388889,
+        "altitude_m": 184.13658454269,
+        "heading_deg": 179.00082071696,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017319000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    },
+    {
+      "id": "0025",
+      "image": "frames/0025.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 873.4922899393946,
+        "fy": 873.4922899393946,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.12906977755052,
+        "k2": 0.017005219021926
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.85587,
+        "lon": -87.724878055556,
+        "altitude_m": 184.14419919532,
+        "heading_deg": 178.98119720324,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017320000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    },
+    {
+      "id": "0026",
+      "image": "frames/0026.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 873.4922899393946,
+        "fy": 873.4922899393946,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.12906977755052,
+        "k2": 0.017005219021926
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.855861388889,
+        "lon": -87.724878055556,
+        "altitude_m": 184.14269599691,
+        "heading_deg": 178.95636862852,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017322000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    },
+    {
+      "id": "0027",
+      "image": "frames/0027.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 883.651755796992,
+        "fy": 883.651755796992,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.14452240042836,
+        "k2": 0.021154723621508
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.855859722222,
+        "lon": -87.724876388889,
+        "altitude_m": 184.13649673481,
+        "heading_deg": 178.98759507379,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017323000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    },
+    {
+      "id": "0028",
+      "image": "frames/0028.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 883.651755796992,
+        "fy": 883.651755796992,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.14452240042836,
+        "k2": 0.021154723621508
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.855831388889,
+        "lon": -87.724876388889,
+        "altitude_m": 184.2227165224,
+        "heading_deg": 179.30404417075,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017326000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    },
+    {
+      "id": "0029",
+      "image": "frames/0029.jpg",
+      "width": 2048,
+      "height": 1152,
+      "intrinsics": {
+        "model": "simple_radial_approx_from_mapillary_camera_parameters",
+        "fx": 883.651755796992,
+        "fy": 883.651755796992,
+        "cx": 1024.0,
+        "cy": 576.0,
+        "k1": -0.14452240042836,
+        "k2": 0.021154723621508
+      },
+      "pose_prior": {
+        "authority": "mapillary_metadata_gps_compass",
+        "lat": 41.855789722222,
+        "lon": -87.724875,
+        "altitude_m": 184.26343204081,
+        "heading_deg": 179.21236075656,
+        "pitch_deg": 0,
+        "roll_deg": 0,
+        "captured_at_ms": 1535017327000,
+        "coordinate_system": "wgs84_plus_heading_degrees_true_north",
+        "confidence": "approximate"
+      }
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "source_crs": "colmap",
+  "target_crs": "EPSG:4978",
+  "geographic_crs": "EPSG:4326",
+  "transform": null,
+  "anchor": null,
+  "reason": "no_gps_track"
+}

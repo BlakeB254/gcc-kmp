@@ -1,0 +1,51 @@
+{
+  "schema_version": "1.0",
+  "name": "environment-scan-vidmap-reconstruction",
+  "project": {
+    "id": 122,
+    "slug": "gcc",
+    "name": "GCC"
+  },
+  "prd": "/home/codex450/cdx/dev-projects/gcc/docs/PRD_environment-scan-vidmap-reconstruction.md",
+  "runner": "/home/codex450/cdx/dev-projects/gcc/scripts/reconstruction/vidmap_runner.py",
+  "output_contract": {
+    "quality.json": {
+      "schema_version": 1,
+      "required": [
+        "status",
+        "reason",
+        "keyframe_count",
+        "track_length",
+        "loop_closure",
+        "go",
+        "nogo_reasons",
+        "gpu_used",
+        "dry_run",
+        "input"
+      ]
+    },
+    "poses_gps.json": {
+      "schema_version": 1,
+      "source_crs": "colmap",
+      "target_crs": "EPSG:4978",
+      "geographic_crs": "EPSG:4326",
+      "transform": "Sim3 or null",
+      "anchor": "{lat,lon,alt_m} or null",
+      "reason": "null when transform present"
+    },
+    "prior_camera.json": {
+      "schema": "worldmirror_prior_cam_v1",
+      "coordinate_system": "opencv_c2w",
+      "extrinsics": "list of {matrix: 4x4}",
+      "intrinsics": "list of {matrix: 3x3}"
+    },
+    "colmap": "rec/vidmap/colmap/{cameras,images,points3D}.{txt|bin}"
+  },
+  "row_identity": "scan_id = twin-asset-<asset_id> (FK: Twin /api/world-model/asset/{id})",
+  "privacy": {
+    "refused_markers": [
+      "rayban_wwgo3126_douglass_park"
+    ]
+  },
+  "license": "first-party-gcc-internal; VidMap engine Apache-2.0 (arXiv:2607.27194)"
+}

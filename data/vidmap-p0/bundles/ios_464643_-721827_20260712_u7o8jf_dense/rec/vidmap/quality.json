@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "status": "ok",
+  "reason": null,
+  "keyframe_count": 228,
+  "track_length": {
+    "count": 169614,
+    "min": 2,
+    "max": 23,
+    "mean": 2.7402808730411405,
+    "median": 2.0
+  },
+  "loop_closure": false,
+  "go": true,
+  "nogo_reasons": [],
+  "gpu_used": true,
+  "dry_run": false,
+  "input": {
+    "video": null,
+    "frames_dir": "data/vidmap-p0/bundles/ios_464643_-721827_20260712_u7o8jf_dense/frames",
+    "gps_track": "data/vidmap-p0/bundles/ios_464643_-721827_20260712_u7o8jf_dense/gps.jsonl"
+  }
+}

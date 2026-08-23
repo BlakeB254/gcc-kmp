@@ -1,0 +1,153 @@
+{
+  "fetched_at": "2026-08-18T20:48:37Z",
+  "before": {
+    "dest_exists": false,
+    "dest_rows": 0,
+    "core_dataset_search": 0,
+    "project_dataset_connections": 0,
+    "twin_manifest_items": 25
+  },
+  "after": {
+    "dest_exists": true,
+    "dest_rows": 22,
+    "core_dataset_search": 0,
+    "project_dataset_connections": 1,
+    "twin_manifest_items": 25,
+    "dataset_entity_id": 1963,
+    "connection_id": 320
+  },
+  "seeded_rows": 22,
+  "skipped": [
+    "non_exterior:49:generated",
+    "non_exterior:52:generated",
+    "non_exterior:55:generated"
+  ],
+  "map": {
+    "ok": true,
+    "entity_ids": {
+      "dataset": 1963,
+      "gcc-research": 1672,
+      "gcc-network": 92,
+      "vidmap": 1677,
+      "chicago": 897
+    },
+    "relationship_ids": [
+      3680,
+      3681,
+      3682,
+      3683,
+      3684
+    ],
+    "errors": [],
+    "warnings": []
+  },
+  "connection": {
+    "action": "created:201",
+    "id": 320,
+    "http": 201,
+    "body": "{\"id\":320,\"project_id\":122,\"kind\":\"dataset\",\"name\":\"environment-scan-vidmap-reconstruction\",\"config\":{\"path\":\"/home/codex450/cdx/dev-projects/gcc/data/environment-scan-vidmap\",\"query\":\"GET /api/v1/project-connections?project_id=122&kind=dataset\",\"source\":\"twin:/api/scans/manifest?route_to=twin-v4\",\"card_id\":\"t_ad748f36\",\"dataset\":\"environment-scan-vidmap-reconstruction\",\"license\":\"first-party-gcc-"
+  },
+  "corpus_status": 500,
+  "memory_status": 201,
+  "receipt": {
+    "http": 401,
+    "body": "{\"error\": \"unauthorized\"}"
+  },
+  "sample_query": {
+    "project_connections": {
+      "url": "http://127.0.0.1:7017/api/v1/project-connections?project_id=122&kind=dataset",
+      "totalDocs": 1,
+      "docs": [
+        {
+          "id": 320,
+          "name": "environment-scan-vidmap-reconstruction",
+          "kind": "dataset",
+          "row_count": 22,
+          "entity_id": 1963,
+          "fetched_at": "2026-08-18T20:48:37Z"
+        }
+      ]
+    },
+    "entity": {
+      "id": 1963,
+      "name": "GCC Environment Scan VidMap Reconstruction",
+      "slug": "gcc-environment-scan-vidmap-reconstruction",
+      "type": "organization",
+      "metadata_kind": "dataset",
+      "row_count": 22
+    },
+    "sample_row": {
+      "schema_version": 1,
+      "schema_ref": "vidmap_runner.SCHEMA_VERSION=1 + worldmirror_prior_cam_v1",
+      "scan_id": "twin-asset-305",
+      "source": "twin:/api/scans/manifest?route_to=twin-v4",
+      "source_kind": "observed_gcc_reconstruction",
+      "license": "first-party-gcc-internal; VidMap engine Apache-2.0 (arXiv:2607.27194)",
+      "fetched_at": "2026-08-18T20:48:37Z",
+      "asset_id": "305",
+      "filename": "splat.ply",
+      "format": "ply",
+      "category": "gcc_reconstruction_preview",
+      "scan_type": "exterior",
+      "file_url": "/api/world-model/asset/305",
+      "wgs84": {
+        "lat": 41.855672167430356,
+        "lng": -87.70257784722918,
+        "alt_m": 0,
+        "crs": "EPSG:4326"
+      },
+      "anchor": {
+        "lat": 41.855672167430356,
+        "lng": -87.70257784722918,
+        "north_aligned": true
+      },
+      "privacy": {
+        "quarantined": false,
+        "note": "PRD forbids rayban_wwgo3126_douglass_park; this Twin asset is exterior GCC reconstruction"
+      },
+      "vidmap": {
+        "quality": {
+          "schema_version": 1,
+          "status": "not_run",
+          "reason": "vidmap_not_installed",
+          "keyframe_count": 0,
+          "track_length": {
+            "count": 0
+          },
+          "loop_closure": false,
+          "go": false,
+          "nogo_reasons": [
+            "vidmap_not_installed",
+            "too_few_keyframes"
+          ],
+          "gpu_used": false,
+          "dry_run": true,
+          "input": {
+            "video": null,
+            "frames_dir": null,
+            "gps_track": null
+          }
+        },
+        "poses_gps": {
+          "schema_version": 1,
+          "source_crs": "colmap",
+          "target_crs": "EPSG:4978",
+          "geographic_crs": "EPSG:4326",
+          "transform": null,
+          "anchor": null,
+          "reason": "no_gps_track"
+        },
+        "prior_camera": {
+          "schema": "worldmirror_prior_cam_v1",
+          "source": "vidmap",
+          "coordinate_system": "opencv_c2w",
+          "extrinsics": [],
+          "intrinsics": []
+        },
+        "colmap": null,
+        "p0_status": "catalogued_not_run"
+      },
+      "notes": "Observed Twin-v4 GCC reconstruction asset. VidMap pose fields are empty schema v1 (engine not installed / not run). No invented cameras."
+    }
+  }
+}

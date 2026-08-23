@@ -1,0 +1,7 @@
+{
+  "schema": "worldmirror_prior_cam_v1",
+  "source": "vidmap",
+  "coordinate_system": "opencv_c2w",
+  "extrinsics": [],
+  "intrinsics": []
+}

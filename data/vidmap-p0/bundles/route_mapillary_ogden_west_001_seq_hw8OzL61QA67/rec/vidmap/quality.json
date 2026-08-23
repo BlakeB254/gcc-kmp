@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "status": "ok",
+  "reason": null,
+  "keyframe_count": 15,
+  "track_length": {
+    "count": 7489,
+    "min": 2,
+    "max": 8,
+    "mean": 2.792762718654026,
+    "median": 2.0
+  },
+  "loop_closure": false,
+  "go": true,
+  "nogo_reasons": [],
+  "gpu_used": true,
+  "dry_run": false,
+  "input": {
+    "video": null,
+    "frames_dir": "/home/codex450/cdx/dev-projects/gcc/data/vidmap-p0/bundles/route_mapillary_ogden_west_001_seq_hw8OzL61QA67/frames",
+    "gps_track": "/home/codex450/cdx/dev-projects/gcc/data/vidmap-p0/bundles/route_mapillary_ogden_west_001_seq_hw8OzL61QA67/gps.jsonl"
+  }
+}

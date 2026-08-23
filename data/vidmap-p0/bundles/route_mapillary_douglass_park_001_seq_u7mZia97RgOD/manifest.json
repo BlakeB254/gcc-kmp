@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0",
+  "id": "route_mapillary_douglass_park_001_seq_u7mZia97RgOD",
+  "name": "Douglass Park edge walk (Mapillary sequence u7mZia97RgOD)",
+  "source_mode": "route_video_frames",
+  "source_type": "Mapillary street-level sequence (public, outdoor)",
+  "source_sequence_id": "u7mZia97RgODjXjoFMTjPg",
+  "source_dir": "/home/codex450/media/mapillary/douglass_park_001/sequence_u7mZia97RgOD",
+  "frame_count": 30,
+  "anchor": {
+    "lat": 41.862444722222,
+    "lon": -87.713016388889,
+    "heading_deg": 344.47128805017,
+    "altitude_m": 187.60658253357
+  },
+  "qa": {
+    "outdoor_verified": true,
+    "privacy": "public Mapillary imagery; no residential indoor content; not quarantined"
+  },
+  "staged_for": "vidmap-p0-spike",
+  "staged_at": "2026-08-19"
+}

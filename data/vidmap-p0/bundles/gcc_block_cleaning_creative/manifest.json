@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "id": "gcc_block_cleaning_creative",
+  "name": "GCC block-cleaning clip (creative asset)",
+  "source_mode": "video",
+  "source_type": "creative/hyperframes gcc-commercial asset (AI-generated, outdoor block-cleaning scene)",
+  "source_file": "/home/codex450/creative/hyperframes/gcc-commercial/assets/gcc-03-worker-cleanup.mp4",
+  "video": {
+    "file": "video/gcc-03-worker-cleanup.mp4",
+    "duration_s": 6.04,
+    "width": 1376,
+    "height": 768,
+    "fps": 24
+  },
+  "gps": null,
+  "qa": {
+    "outdoor_verified": true,
+    "note": "Only block-cleaning video found on disk; creative/generated, NOT volunteer footage. Smoke-test input only.",
+    "privacy": "generated creative asset; no privacy concerns; not quarantined"
+  },
+  "staged_for": "vidmap-p0-spike",
+  "staged_at": "2026-08-19"
+}

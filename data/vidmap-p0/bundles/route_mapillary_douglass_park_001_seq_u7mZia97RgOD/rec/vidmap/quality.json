@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "status": "ok",
+  "reason": null,
+  "keyframe_count": 16,
+  "track_length": {
+    "count": 6106,
+    "min": 2,
+    "max": 6,
+    "mean": 2.323943661971831,
+    "median": 2.0
+  },
+  "loop_closure": false,
+  "go": true,
+  "nogo_reasons": [],
+  "gpu_used": true,
+  "dry_run": false,
+  "input": {
+    "video": null,
+    "frames_dir": "/home/codex450/cdx/dev-projects/gcc/data/vidmap-p0/bundles/route_mapillary_douglass_park_001_seq_u7mZia97RgOD/frames",
+    "gps_track": "/home/codex450/cdx/dev-projects/gcc/data/vidmap-p0/bundles/route_mapillary_douglass_park_001_seq_u7mZia97RgOD/gps.jsonl"
+  }
+}
