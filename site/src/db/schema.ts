@@ -1760,6 +1760,11 @@ export const scanCoverageEvents = pgTable('scan_coverage_events', {
   deviceTier: varchar('device_tier', { length: 16 }).notNull(), // 'basic' | 'scanner' | 'pro_scanner'
   quality: varchar('quality', { length: 8 }).default('grazed').notNull(), // 'seen' | 'grazed' | 'close'
   capturedAt: timestamp('captured_at', { mode: 'string', withTimezone: true }).notNull(),
+  // R2 object key for the raw capture blob this event corresponds to (see
+  // rawScanKey() in site/src/lib/r2.ts) — null until the device confirms the
+  // presigned upload succeeded. Nothing else derives this key server-side
+  // because the upload extension isn't otherwise recorded.
+  rawR2Key: varchar('raw_r2_key', { length: 500 }),
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
   cellCapturedIdx: index('scan_coverage_events_cell_captured_idx').on(table.locationCellId, table.capturedAt),
@@ -1978,6 +1983,101 @@ export type CommunityReportThanks = typeof communityReportThanks.$inferSelect
 export type NewCommunityReportThanks = typeof communityReportThanks.$inferInsert
 export type MaterialDonation = typeof materialDonations.$inferSelect
 export type NewMaterialDonation = typeof materialDonations.$inferInsert
+
+// In-kind donation acknowledgment records (received gifts, not intake
+// inquiries — materialDonations above is the intake form). Mirrors migration
+// 0013_add_in_kind_donations.sql exactly; consumed by the /in-kind
+// certificate/letter/internal-record pages via src/lib/in-kind-loader.ts.
+export const inKindDonorTypeEnum = pgEnum('enum_in_kind_donations_donor_type', [
+  'organization',
+  'business',
+  'individual',
+  'government',
+])
+
+export const inKindStatusEnum = pgEnum('enum_in_kind_donations_status', [
+  'received',
+  'acknowledged',
+  'archived',
+])
+
+export const inKindAckMethodEnum = pgEnum('enum_in_kind_donations_ack_method', [
+  'email',
+  'mail',
+  'in_person',
+])
+
+export const inKindValueSourceEnum = pgEnum('enum_in_kind_donations_value_source', [
+  'donor_provided',
+  'staff_estimate',
+  'appraisal',
+  'unknown',
+])
+
+export const inKindDonations = pgTable('in_kind_donations', {
+  id: serial('id').primaryKey(),
+  slug: varchar('slug', { length: 100 }).notNull().unique(),
+  isTemplate: boolean('is_template').default(false).notNull(),
+
+  donorName: varchar('donor_name', { length: 200 }).notNull(),
+  donorType: inKindDonorTypeEnum('donor_type').default('individual').notNull(),
+  donorContactName: varchar('donor_contact_name', { length: 100 }),
+  donorEmail: varchar('donor_email', { length: 255 }),
+  donorPhone: varchar('donor_phone', { length: 30 }),
+  donorAddressStreet: varchar('donor_address_street', { length: 200 }),
+  donorAddressCity: varchar('donor_address_city', { length: 100 }),
+  donorAddressState: varchar('donor_address_state', { length: 50 }),
+  donorAddressZip: varchar('donor_address_zip', { length: 20 }),
+
+  donationDate: varchar('donation_date', { length: 20 }).notNull(),
+  receivedDate: varchar('received_date', { length: 20 }),
+  dropOffLocation: varchar('drop_off_location', { length: 200 }),
+
+  estimatedValueCents: integer('estimated_value_cents'),
+  valueSource: inKindValueSourceEnum('value_source').default('unknown').notNull(),
+  valueNotes: text('value_notes'),
+
+  storageLocation: varchar('storage_location', { length: 200 }),
+  intendedUse: text('intended_use'),
+  programFund: varchar('program_fund', { length: 100 }),
+
+  status: inKindStatusEnum('status').default('received').notNull(),
+  acknowledgedAt: timestamp('acknowledged_at', { mode: 'string', withTimezone: true }),
+  acknowledgmentMethod: inKindAckMethodEnum('acknowledgment_method'),
+  signingOfficerName: varchar('signing_officer_name', { length: 100 }),
+  signingOfficerTitle: varchar('signing_officer_title', { length: 100 }),
+  thankYouMessage: text('thank_you_message'),
+
+  notes: text('notes'),
+  createdByWorkerId: integer('created_by_worker_id'),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  statusIdx: index('in_kind_donations_status_idx').on(table.status),
+  donationDateIdx: index('in_kind_donations_donation_date_idx').on(table.donationDate),
+  donorNameIdx: index('in_kind_donations_donor_name_idx').on(table.donorName),
+}))
+
+export const inKindDonationItems = pgTable('in_kind_donation_items', {
+  id: serial('id').primaryKey(),
+  donationId: integer('donation_id')
+    .notNull()
+    .references(() => inKindDonations.id, { onDelete: 'cascade' }),
+  description: varchar('description', { length: 300 }).notNull(),
+  quantity: integer('quantity').default(1).notNull(),
+  unitLabel: varchar('unit_label', { length: 50 }),
+  condition: varchar('condition', { length: 50 }),
+  estimatedUnitValueCents: integer('estimated_unit_value_cents'),
+  sortOrder: integer('sort_order').default(0).notNull(),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  donationIdIdx: index('in_kind_donation_items_donation_id_idx').on(table.donationId),
+}))
+
+export type InKindDonation = typeof inKindDonations.$inferSelect
+export type NewInKindDonation = typeof inKindDonations.$inferInsert
+export type InKindDonationItem = typeof inKindDonationItems.$inferSelect
+export type NewInKindDonationItem = typeof inKindDonationItems.$inferInsert
 export type SpotVerification = typeof spotVerifications.$inferSelect
 export type NewSpotVerification = typeof spotVerifications.$inferInsert
 export type PointsLedgerEntry = typeof pointsLedger.$inferSelect

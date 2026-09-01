@@ -9,7 +9,8 @@
  * vars below are set, `isR2Configured()` returns false and callers should
  * respond with a clear "not configured" error rather than crashing.
  */
-import { S3Client } from '@aws-sdk/client-s3'
+import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 
 function readR2Env() {
   return {
@@ -47,6 +48,17 @@ export function r2Client(): S3Client {
     credentials: { accessKeyId, secretAccessKey },
   })
   return cachedClient
+}
+
+// Short-lived read URL for admin views of raw capture blobs — long enough to
+// open/stream in a browser tab, short enough that a leaked link goes stale.
+const VIEW_URL_TTL_SECONDS = 300
+
+/** Presigned GET for viewing an R2 object (admin scan-viz). */
+export async function getR2ViewUrl(key: string): Promise<string> {
+  return getSignedUrl(r2Client(), new GetObjectCommand({ Bucket: r2BucketName(), Key: key }), {
+    expiresIn: VIEW_URL_TTL_SECONDS,
+  })
 }
 
 // Matches gridCell()'s exact output shape (site/src/lib/world-observations.ts):

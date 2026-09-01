@@ -1,6 +1,14 @@
 # PRD — GCC Environment Scans → VidMap-Powered World Reconstruction
 
-Status: DRAFT for Blake review · 2026-08-10 · Author: Claude (bg session)
+> **⚠ SUPERSEDED (2026-08-19) — do not build from this document.**
+> The P0 spikes ran and the verdict inverted this PRD's core proposal:
+> VidMap is **NO-GO on iOS footage** (29–31 m RMS, row-house aliasing) while
+> **ARKit sidecar poses are canonical** (GPS fit scale 0.973, 3.4 m median
+> residual). VidMap is reserved for non-ARKit footage (Ray-Ban, third-party)
+> only. Current truth:
+> `docs/plans/2026-08-19-scan-to-world-pipeline-and-ios-release-plan.md` §3.1.
+
+Status: SUPERSEDED (was: DRAFT for Blake review) · 2026-08-10 · Author: Claude (bg session)
 Scope: GCC iOS app + DGX recon services. This is the CIVIC lane (scans, block
 cleanings, before/after documentation) — deliberately separate from the video-game
 world flow (chicago-twin worldclaw pipeline) and the 3D environment recreation
