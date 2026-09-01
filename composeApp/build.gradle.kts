@@ -123,8 +123,12 @@ android {
         applicationId = "com.globalcommunitycleaners.worker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.0.1"
+        // Tracks the iOS release line: versionName matches
+        // CFBundleShortVersionString, versionCode matches CFBundleVersion
+        // at the time of each Android cut (Android had been parked at 2/1.0.1
+        // since before the KMP consolidation).
+        versionCode = 188
+        versionName = "1.1.0"
     }
     if (signingProps.containsKey("KEYSTORE_PATH")) {
         signingConfigs {

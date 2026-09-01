@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Mirrors GccGreenDark in ui/theme/Color.kt — keep in sync. -->
+    <color name="gcc_green_dark">#0F5228</color>
+    <color name="gcc_window_background">#FFFFFF</color>
+</resources>

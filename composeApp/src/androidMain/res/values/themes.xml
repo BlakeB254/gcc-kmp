@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Pre-Compose window chrome only: Compose owns everything inside the
+         window. This theme keeps the first frame and the system bars on
+         brand instead of the stock Material placeholder the manifest used
+         to reference directly. -->
+    <style name="Theme.GCC" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@color/gcc_green_dark</item>
+        <item name="android:navigationBarColor">@color/gcc_green_dark</item>
+        <item name="android:windowBackground">@color/gcc_window_background</item>
+    </style>
+</resources>

@@ -15,6 +15,8 @@ import com.gcc.app.platform.LocationTrackingController
 import com.gcc.app.platform.PermissionManager
 import com.gcc.app.platform.PushNotificationManager
 import com.gcc.app.platform.initCrashReportingContext
+import com.gcc.app.platform.initHapticFeedbackContext
+import com.gcc.app.platform.initScreenWakeActivity
 import com.gcc.app.platform.installCrashReporting
 import com.gcc.app.platform.flushPendingCrashReport
 import com.gcc.app.platform.initSecureStorageContext
@@ -47,6 +49,8 @@ class MainActivity : FragmentActivity() {
         LocationProvider.initContext(this)
         LocationTrackingController.initContext(this)
         ShareManager.initContext(this)
+        initHapticFeedbackContext(this)
+        initScreenWakeActivity(this)
         PlatformUrlOpener.initContext(this)
         PushNotificationManager.initContext(this)
         BiometricAuth.initActivity(this)
