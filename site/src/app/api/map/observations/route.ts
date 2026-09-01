@@ -35,8 +35,24 @@ export async function GET(request: NextRequest) {
       filters.push(gte(worldObservations.capturedAt, sinceDate))
     }
 
+    // Explicit projection: the response never includes the large depth_data /
+    // ar_anchor_data TEXT blobs, so don't pull them over the wire from Neon.
     const rows = await db
-      .select()
+      .select({
+        id: worldObservations.id,
+        lat: worldObservations.lat,
+        lng: worldObservations.lng,
+        itemType: worldObservations.itemType,
+        state: worldObservations.state,
+        domain: worldObservations.domain,
+        diagnosticStatus: worldObservations.diagnosticStatus,
+        attributes: worldObservations.attributes,
+        mediaUrl: worldObservations.mediaUrl,
+        sourceType: worldObservations.sourceType,
+        capturedAt: worldObservations.capturedAt,
+        scanHotspotId: worldObservations.scanHotspotId,
+        communityReportId: worldObservations.communityReportId,
+      })
       .from(worldObservations)
       .where(and(...filters))
       .limit(2000)

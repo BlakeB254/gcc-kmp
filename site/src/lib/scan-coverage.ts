@@ -1,6 +1,6 @@
 import { db } from '@/db'
 import { scanCoverageEvents, cellCoverageSummary, pointsLedger } from '@/db/schema'
-import { gridCell } from '@/lib/world-observations'
+import { gridCell, cellCenter } from '@/lib/world-observations'
 import { sql, eq, and, gte, lte, inArray } from 'drizzle-orm'
 import { POINTS_PER_METER, STALE_AFTER_MS } from '@/lib/points-config'
 
@@ -109,10 +109,17 @@ export async function recordCoverageEvent(input: RecordCoverageEventInput) {
     })
     .returning()
 
+  // Denormalized cell-center coords for SQL bbox filtering on map reads
+  // (schema comment on cellCoverageSummary.lat). Written on insert AND on
+  // conflict so legacy null rows self-repair on their next scan.
+  const center = cellCenter(cellId)
+
   await db
     .insert(cellCoverageSummary)
     .values({
       locationCellId: cellId,
+      lat: center.lat,
+      lng: center.lng,
       firstScannedAt: input.capturedAt,
       lastScannedAt: input.capturedAt,
       totalDistanceMeters: input.distanceMeters,
@@ -123,6 +130,8 @@ export async function recordCoverageEvent(input: RecordCoverageEventInput) {
     .onConflictDoUpdate({
       target: cellCoverageSummary.locationCellId,
       set: {
+        lat: sql`EXCLUDED.lat`,
+        lng: sql`EXCLUDED.lng`,
         // lastScannedAt is the staleness clock categorizeCoverageEvent reads
         // for the NEXT event on this cell — a 'seen' event (sight isn't
         // work) must not refresh it, or a stale rescan could land as

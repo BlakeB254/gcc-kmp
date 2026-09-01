@@ -2,10 +2,88 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { reconstructionAssets } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin-auth'
+import { and, asc, desc, eq, isNotNull, isNull, type SQL } from 'drizzle-orm'
 
 const LOCATION_CELL_ID_PATTERN = /^-?\d+:-?\d+$/
 const ASSET_TYPES = new Set(['pointcloud', 'splat', 'mesh'])
 const FORMATS = new Set(['ply', 'glb', 'gltf', 'laz'])
+
+const DEFAULT_LIMIT = 100
+const MAX_LIMIT = 500
+
+/**
+ * Read surface for reconstruction assets — the minimal slice of the
+ * world-model layer design (docs/superpowers/specs/2026-07-10-world-model-
+ * layer-design.md, still DESIGN ONLY: the full /api/world-model/* surface
+ * stays unbuilt pending review). Exists so cdx-world-twin's gcc_assets.py
+ * can gain its reserved URL mode instead of reaching into Neon directly;
+ * the field names below are exactly what that module consumes (`activated`
+ * derives from `activatedAt IS NOT NULL` on the reading side).
+ *
+ * Filters (all optional): `locationCellId`, `assetType`
+ * (pointcloud|splat|mesh), `activated` (true|false), `limit` (<= 500).
+ * Ordered by (locationCellId, assetType, version DESC), so the first row
+ * per (cell, type) pair is the current version — the same DISTINCT ON
+ * ordering the twin's direct-DB query uses.
+ */
+export async function GET(request: NextRequest) {
+  const auth = await requireAdmin(request)
+  if (auth instanceof NextResponse) return auth
+
+  try {
+    const { searchParams } = new URL(request.url)
+
+    const filters: SQL[] = []
+
+    const locationCellId = searchParams.get('locationCellId')
+    if (locationCellId != null) {
+      if (!LOCATION_CELL_ID_PATTERN.test(locationCellId)) {
+        return NextResponse.json({ data: null, success: false, message: 'Invalid locationCellId' }, { status: 400 })
+      }
+      filters.push(eq(reconstructionAssets.locationCellId, locationCellId))
+    }
+
+    const assetType = searchParams.get('assetType')
+    if (assetType != null) {
+      if (!ASSET_TYPES.has(assetType)) {
+        return NextResponse.json({ data: null, success: false, message: `assetType must be one of: ${[...ASSET_TYPES].join(', ')}` }, { status: 400 })
+      }
+      filters.push(eq(reconstructionAssets.assetType, assetType))
+    }
+
+    const activated = searchParams.get('activated')
+    if (activated != null) {
+      if (activated !== 'true' && activated !== 'false') {
+        return NextResponse.json({ data: null, success: false, message: 'activated must be true or false' }, { status: 400 })
+      }
+      filters.push(activated === 'true'
+        ? isNotNull(reconstructionAssets.activatedAt)
+        : isNull(reconstructionAssets.activatedAt))
+    }
+
+    const limitParam = searchParams.get('limit')
+    const limit = limitParam != null ? Number(limitParam) : DEFAULT_LIMIT
+    if (!Number.isInteger(limit) || limit < 1 || limit > MAX_LIMIT) {
+      return NextResponse.json({ data: null, success: false, message: `limit must be an integer between 1 and ${MAX_LIMIT}` }, { status: 400 })
+    }
+
+    const rows = await db
+      .select()
+      .from(reconstructionAssets)
+      .where(filters.length > 0 ? and(...filters) : undefined)
+      .orderBy(
+        asc(reconstructionAssets.locationCellId),
+        asc(reconstructionAssets.assetType),
+        desc(reconstructionAssets.version)
+      )
+      .limit(limit)
+
+    return NextResponse.json({ data: rows, success: true })
+  } catch (error) {
+    console.error('Admin list reconstruction assets error:', error)
+    return NextResponse.json({ data: null, success: false, message: 'Failed to list reconstruction assets' }, { status: 500 })
+  }
+}
 
 /**
  * Registers a reconstructed 3D asset (DGX-side conversion output) against

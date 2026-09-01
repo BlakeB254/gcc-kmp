@@ -96,9 +96,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
       depthData: hotspot.depthData ?? undefined,
       arAnchorData: hotspot.arAnchorData ?? undefined,
       capturedAt: hotspot.detectedAt,
-      // No blockId: routeScans/routes carry no block_id column (verified in schema.ts) —
-      // exclusion-zone checks return false for route-scan observations until block
-      // linkage is added to the schema (tracked as a known gap, not this task's scope).
+      // Block linkage (route_scans.block_id, resolved at scan creation) lets
+      // recordWorldObservation run the block's exclusion-zone check; null on
+      // legacy scans or routes without a block row, which skips the check.
+      blockId: scan.blockId ?? undefined,
     })
 
     return NextResponse.json({ data: toMobileScanHotspot(hotspot), success: true }, { status: 201 })

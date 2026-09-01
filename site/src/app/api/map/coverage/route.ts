@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { cellCoverageSummary, worldObservations } from '@/db/schema'
-import { and, between, eq, sql, type SQL } from 'drizzle-orm'
+import { and, between, eq, isNull, or, sql, type SQL } from 'drizzle-orm'
 import { cellCenter } from '@/lib/world-observations'
 
 export const dynamic = 'force-dynamic'
@@ -212,42 +212,56 @@ export async function GET(request: NextRequest) {
     const sinceMs = sinceParam ? new Date(sinceParam).getTime() : NaN
     const since = Number.isFinite(sinceMs) ? sinceMs : null
 
-    const rows = await db
-      .select()
-      .from(cellCoverageSummary)
-      .limit(5000)
-
+    // Three independent reads — run them concurrently rather than as serial
+    // Neon round-trips.
+    //
+    // Coverage rows: bbox-filter in SQL on the denormalized lat/lng columns
+    // (migration 0044). Rows written before the columns existed have null
+    // lat/lng and can't be filtered here, so they're fetched too and left to
+    // the JS cellCenter() bbox filter below — which stays in place as the
+    // fallback for exactly those rows (it re-checks populated rows too,
+    // harmlessly: both derive from the same cell id).
+    //
     // Observed-only litter cells (Pillar 8 Task 4) — bbox-scoped to match
     // this endpoint's own scoping (see the boost's doc comment above for
     // why this is a cheap Set-membership pass, not a per-cell join).
-    // worldObservations has real lat/lng columns (unlike cellCoverageSummary,
-    // which only has a derived cellCenter()), so this filters at the SQL
-    // level rather than fetch-all-then-filter-in-JS.
-    const observedOnlyRows = await db
-      .selectDistinct({ locationCellId: worldObservations.locationCellId })
-      .from(worldObservations)
-      .where(observedOnlyLitterInBbox(minLng, minLat, maxLng, maxLat))
-      .limit(5000)
-    const observedOnlyCells = new Set(observedOnlyRows.map((r) => r.locationCellId))
-
+    //
     // Per-cell litter rollup — one bbox-scoped GROUP BY, same cheap-Set
-    // reasoning as observedOnlyCells above (locationCellId is the shared
-    // gridCell() id on both tables). Feeds the client's problem-area blobs:
-    // hue by severity, so the client needs both a count and a mass.
-    // `attributes->>'estimatedWeightGrams'` is the real key (the schema's
-    // `estimatedWeightLbs` comment is stale); NULLIF guards rows whose
-    // attributes exist but carry no weight.
-    const litterRows = await db
-      .select({
-        locationCellId: worldObservations.locationCellId,
-        litterCount: sql<number>`count(*)::int`,
-        litterWeightGrams: sql<number>`coalesce(sum(nullif(${worldObservations.attributes} ->> 'estimatedWeightGrams', '')::numeric), 0)::float8`,
-        lastLitterAt: sql<string>`max(${worldObservations.capturedAt})`,
-      })
-      .from(worldObservations)
-      .where(currentDirtyLitterInBbox(minLng, minLat, maxLng, maxLat))
-      .groupBy(worldObservations.locationCellId)
-      .limit(5000)
+    // reasoning (locationCellId is the shared gridCell() id on both tables).
+    // Feeds the client's problem-area blobs: hue by severity, so the client
+    // needs both a count and a mass. `attributes->>'estimatedWeightGrams'` is
+    // the real key (the schema's `estimatedWeightLbs` comment is stale);
+    // NULLIF guards rows whose attributes exist but carry no weight.
+    const [rows, observedOnlyRows, litterRows] = await Promise.all([
+      db
+        .select()
+        .from(cellCoverageSummary)
+        .where(or(
+          isNull(cellCoverageSummary.lat),
+          and(
+            between(cellCoverageSummary.lat, minLat, maxLat),
+            between(cellCoverageSummary.lng, minLng, maxLng)
+          )
+        ))
+        .limit(5000),
+      db
+        .selectDistinct({ locationCellId: worldObservations.locationCellId })
+        .from(worldObservations)
+        .where(observedOnlyLitterInBbox(minLng, minLat, maxLng, maxLat))
+        .limit(5000),
+      db
+        .select({
+          locationCellId: worldObservations.locationCellId,
+          litterCount: sql<number>`count(*)::int`,
+          litterWeightGrams: sql<number>`coalesce(sum(nullif(${worldObservations.attributes} ->> 'estimatedWeightGrams', '')::numeric), 0)::float8`,
+          lastLitterAt: sql<string>`max(${worldObservations.capturedAt})`,
+        })
+        .from(worldObservations)
+        .where(currentDirtyLitterInBbox(minLng, minLat, maxLng, maxLat))
+        .groupBy(worldObservations.locationCellId)
+        .limit(5000),
+    ])
+    const observedOnlyCells = new Set(observedOnlyRows.map((r) => r.locationCellId))
     const litterStats = new Map<string, LitterCellStats>(
       litterRows.map((r) => [
         r.locationCellId,

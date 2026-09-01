@@ -1566,6 +1566,11 @@ export const routes = pgTable('routes', {
 export const routeScans = pgTable('route_scans', {
   id: serial('id').primaryKey(),
   routeId: integer('route_id').notNull(),
+  // Block linkage, resolved at scan creation via blocks.route_id (1:1 — each
+  // block owns one route). Nullable: legacy scans predate the column, and a
+  // route without a block row yields null. Enables exclusion-zone checks on
+  // route-scan observations (migration 0044).
+  blockId: integer('block_id').references(() => blocks.id),
   workerId: integer('worker_id').notNull(),
   deviceType: varchar('device_type', { length: 10 }).default('gps').notNull(),
   phase: varchar('phase', { length: 30 }).default('scouting').notNull(),
@@ -1742,7 +1747,13 @@ export const worldObservations = pgTable('world_observations', {
   isCurrent: boolean('is_current').default(true).notNull(),
   excludedPrivateProperty: boolean('excluded_private_property').default(false).notNull(),
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
-})
+}, (table) => ({
+  // Bbox reads always filter on is_current first, then lat/lng (8 map/API
+  // routes); cell-keyed reads (supersession, coverage boosts) hit
+  // location_cell_id. Applied to prod by migration 0044.
+  currentLatLngIdx: index('world_observations_current_lat_lng_idx').on(table.isCurrent, table.lat, table.lng),
+  cellIdx: index('world_observations_cell_idx').on(table.locationCellId),
+}))
 
 export type WorldObservationRow = typeof worldObservations.$inferSelect
 export type NewWorldObservationRow = typeof worldObservations.$inferInsert
@@ -1775,6 +1786,13 @@ export type NewScanCoverageEventRow = typeof scanCoverageEvents.$inferInsert
 
 export const cellCoverageSummary = pgTable('cell_coverage_summary', {
   locationCellId: varchar('location_cell_id', { length: 32 }).primaryKey(),
+  // Denormalized cell-center coordinates (cellCenter(locationCellId)) so map
+  // reads can bbox-filter in SQL instead of fetching every row and filtering
+  // in JS (migration 0044). Nullable: legacy rows predate the columns and are
+  // backfilled by 0044 / repaired on their next upsert; readers keep the JS
+  // cellCenter() filter as the fallback for any row still null.
+  lat: doublePrecision('lat'),
+  lng: doublePrecision('lng'),
   firstScannedAt: timestamp('first_scanned_at', { mode: 'string', withTimezone: true }).notNull(),
   lastScannedAt: timestamp('last_scanned_at', { mode: 'string', withTimezone: true }).notNull(),
   totalDistanceMeters: doublePrecision('total_distance_meters').default(0).notNull(),

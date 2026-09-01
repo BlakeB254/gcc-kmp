@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
-import { routeScans, routes, workers } from '@/db/schema'
+import { blocks, routeScans, routes, workers } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { requireMobileAuth } from '@/lib/mobile-auth'
 import { normalizeDeviceType, toMobileRouteScan } from '@/lib/mobile-route-scan-response'
@@ -59,11 +59,21 @@ export async function POST(request: NextRequest) {
       await ensureJobForRouteWorker(routeId, effectiveWorkerId, { performedByAdminId })
     }
 
+    // Resolve the owning block (1:1 via blocks.route_id) so downstream
+    // observation writes can run block exclusion-zone checks. Null when no
+    // block row references this route.
+    const [block] = await db
+      .select({ id: blocks.id })
+      .from(blocks)
+      .where(eq(blocks.routeId, routeId))
+      .limit(1)
+
     const now = new Date().toISOString()
     const [scan] = await db
       .insert(routeScans)
       .values({
         routeId,
+        blockId: block?.id ?? null,
         workerId: effectiveWorkerId,
         deviceType: normalizeDeviceType(body?.deviceType),
         phase: 'scouting',
