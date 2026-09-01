@@ -1086,7 +1086,9 @@ class RouteScanViewModel(
      */
     fun beginRoute() {
         val state = _uiState.value
-        if (state.phase != ScanPhase.SCOUTING) return
+        // SCOUTING and CLEANING both host the AR overlay (plan 2.1/2.2) —
+        // the 2-lap PRD's foundation principle: one AR stack, both laps.
+        if (state.phase != ScanPhase.SCOUTING && state.phase != ScanPhase.CLEANING) return
         if (state.scanId == null) return
         if (_isOutsideBoundary.value) return
         _uiState.value = state.copy(showArRoute = true)

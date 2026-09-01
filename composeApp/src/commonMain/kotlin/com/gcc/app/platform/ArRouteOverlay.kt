@@ -100,6 +100,15 @@ expect class ArRouteOverlay() {
      *  and before the first geo-reference pairing exists). */
     fun addWorldMarker(lat: Double, lng: Double, kind: WorldMarkerKind)
 
+    /** Lap-2 steering (plan Task 2.2, env-scan PRD §5 shared stack): plant
+     *  the ground chevron trail + terminal beacon at a problem-area
+     *  destination. Same pooled native renderer as the env scanner — the
+     *  block-lap AR must never fork. No-op off-iOS. */
+    fun setNavigationTarget(lat: Double, lng: Double)
+
+    /** Remove the chevron trail (and its beacon). */
+    fun clearNavigationTarget()
+
     // ── Background session capture (route-lap parity with the env scan) ──
     // Same reconstruction-grade recorder the environment scan runs (HEVC
     // video + per-frame pose sidecar + LiDAR depth keyframes, spooled as

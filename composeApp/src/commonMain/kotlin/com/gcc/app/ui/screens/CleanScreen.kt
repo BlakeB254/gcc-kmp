@@ -53,6 +53,9 @@ fun CleanScreen(
     onBack: () -> Unit,
     onConfirmCleaned: ((hotspotId: Int, afterPhotoUrl: String, score: Float) -> Unit)? = null,
     lap2Weight: Lap2WeightProgress = Lap2WeightProgress(),
+    /** Re-enter the AR guidance overlay (plan 2.2) — null hides the button
+     *  (non-AR devices). */
+    onOpenAr: (() -> Unit)? = null,
 ) {
     val apiClient = koinInject<GccApiClient>()
     val coroutineScope = rememberCoroutineScope()
@@ -158,6 +161,29 @@ fun CleanScreen(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text("\u2190", style = MaterialTheme.typography.titleMedium, color = GccGreenDark)
+                    }
+                }
+
+                // AR re-entry (top-end, mirrors the back button): the clean
+                // lap is AR-first; this returns to the chevron guidance
+                // after a deliberate exit to the list.
+                if (onOpenAr != null) {
+                    TextButton(
+                        onClick = onOpenAr,
+                        modifier = Modifier
+                            .statusBarsPadding()
+                            .padding(8.dp)
+                            .align(Alignment.TopEnd),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.9f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text("AR", style = MaterialTheme.typography.labelLarge, color = GccGreenDark)
+                        }
                     }
                 }
 

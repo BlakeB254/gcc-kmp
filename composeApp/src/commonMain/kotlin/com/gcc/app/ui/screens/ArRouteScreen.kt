@@ -70,6 +70,7 @@ import com.gcc.app.ui.theme.GccGreen
 import com.gcc.app.ui.theme.GccGreenDark
 import com.gcc.app.viewmodel.RouteScanViewModel
 import com.gcc.shared.model.Coordinates
+import com.gcc.shared.model.ScanPhase
 import kotlinx.coroutines.launch
 
 /**
@@ -92,6 +93,20 @@ fun ArRouteScreen(
 ) {
     val overlay = remember { ArRouteOverlay() }
     val ui by viewModel.uiState.collectAsState()
+
+    // Lap-2 steering (plan 2.2): the active problem area drives the shared
+    // chevron trail + beacon while cleaning; cleared on resolve/exit.
+    LaunchedEffect(ui.phase, ui.guidanceTarget) {
+        val target = ui.guidanceTarget?.center
+        if (ui.phase == ScanPhase.CLEANING && target != null) {
+            overlay.setNavigationTarget(target.lat, target.lng)
+        } else {
+            overlay.clearNavigationTarget()
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose { overlay.clearNavigationTarget() }
+    }
     val isOutsideBoundary by viewModel.isOutsideBoundary.collectAsState()
     val scannedCells by viewModel.scannedCells.collectAsState()
     val creditedCells by viewModel.creditedCells.collectAsState()

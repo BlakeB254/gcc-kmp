@@ -35,6 +35,8 @@ actual class ArRouteOverlay actual constructor() {
         // No AR raycasting off-iOS — GPS-tier crediting (updatePosition) covers these targets.
     }
     actual fun addWorldMarker(lat: Double, lng: Double, kind: WorldMarkerKind) {}
+    actual fun setNavigationTarget(lat: Double, lng: Double) {}
+    actual fun clearNavigationTarget() {}
     actual fun startCapture(sessionId: String): Boolean = false
     actual fun stopCapture(): Pair<List<CaptureChunkInfo>, String?> = emptyList<CaptureChunkInfo>() to null
     actual fun discardCurrentCaptureChunk() {}

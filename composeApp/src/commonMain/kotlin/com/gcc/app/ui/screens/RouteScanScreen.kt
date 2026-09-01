@@ -19,6 +19,7 @@ import com.gcc.app.ui.theme.GccSky
 import com.gcc.app.viewmodel.RouteScanViewModel
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.geo.routePathCoordinates
+import com.gcc.shared.model.DeviceType
 import com.gcc.shared.model.Route
 import com.gcc.shared.model.ScanPhase
 import com.gcc.shared.serialization.GccJson
@@ -71,6 +72,18 @@ fun RouteScanScreen(
         onDispose { viewModel.onCleared() }
     }
 
+    // AR-first laps (plan 2.1/2.2, PRD foundation principle): an AR-capable
+    // device opens each lap straight in the AR scanner once its scan session
+    // exists; the map stays one tap away via the overlay's exit.
+    LaunchedEffect(uiState.phase, uiState.scanId) {
+        if (uiState.deviceType == DeviceType.AR && uiState.scanId != null &&
+            (uiState.phase == ScanPhase.SCOUTING || uiState.phase == ScanPhase.CLEANING) &&
+            !uiState.showArRoute
+        ) {
+            viewModel.beginRoute()
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         when (uiState.phase) {
             ScanPhase.SCOUTING -> {
@@ -102,19 +115,34 @@ fun RouteScanScreen(
                 onBack = onBack,
             )
 
-            ScanPhase.CLEANING -> CleanScreen(
-                uiState = uiState,
-                lap2Weight = lap2WeightStats,
-                onCompleteScan = { viewModel.completeScan() },
-                onCleanHotspot = { hotspot ->
-                    viewModel.setError("Capture an after photo before marking hotspot #${hotspot.id} clean.")
-                },
-                onSkipHotspot = { viewModel.skipHotspot(it.id) },
-                onConfirmCleaned = { hotspotId, afterPhotoUrl, score ->
-                    viewModel.confirmHotspotCleaned(hotspotId, afterPhotoUrl, score)
-                },
-                onBack = onBack,
-            )
+            ScanPhase.CLEANING -> {
+                // Same AR-in-front pattern as SCOUTING (plan 2.2): the clean
+                // lap steers via chevrons/beacon; the hotspot list is the
+                // fallback surface behind the overlay's exit.
+                if (uiState.showArRoute) {
+                    ArRouteScreen(
+                        viewModel = viewModel,
+                        onExit = { viewModel.exitArRoute() },
+                    )
+                } else {
+                    CleanScreen(
+                        uiState = uiState,
+                        lap2Weight = lap2WeightStats,
+                        onCompleteScan = { viewModel.completeScan() },
+                        onCleanHotspot = { hotspot ->
+                            viewModel.setError("Capture an after photo before marking hotspot #${hotspot.id} clean.")
+                        },
+                        onSkipHotspot = { viewModel.skipHotspot(it.id) },
+                        onConfirmCleaned = { hotspotId, afterPhotoUrl, score ->
+                            viewModel.confirmHotspotCleaned(hotspotId, afterPhotoUrl, score)
+                        },
+                        onBack = onBack,
+                        onOpenAr = if (uiState.deviceType == DeviceType.AR) {
+                            { viewModel.beginRoute() }
+                        } else null,
+                    )
+                }
+            }
 
             ScanPhase.SUBMITTING -> ScanSubmittingScreen(
                 submitError = uiState.submitError,

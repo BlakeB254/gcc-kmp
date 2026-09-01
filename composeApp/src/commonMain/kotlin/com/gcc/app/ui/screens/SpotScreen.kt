@@ -73,6 +73,7 @@ import com.gcc.app.platform.wireQualityForSegment
 import com.gcc.app.platform.purgeAndRetractCoverage
 import com.gcc.app.platform.DiagnosticsLog
 import com.gcc.app.platform.EnvScanSessionDraft
+import com.gcc.app.platform.CaptureCoach
 import com.gcc.app.platform.EnvScanSessionRecorder
 import com.gcc.app.platform.ScanSessionTelemetry
 import com.gcc.app.platform.SessionEventLog
@@ -1027,6 +1028,19 @@ private fun CameraPhase(
     // Credit zones while capture is allowed: while INDOOR, or still UNCERTAIN
     // pending outdoor confirmation, accrue nothing — no tracker cells, no
     // ledger event. Reset the segment anchor so no phantom distance bridges
+    // Capture coaching v2 (plan Task 1.7): path-shape advisories — turn
+    // prompts on long straight stretches, close-the-loop once the walk is
+    // long — folded into the ONE-caption chain below. Transient with
+    // per-kind cooldowns (idle-nudge doctrine: never a standing order).
+    val captureCoach = remember { CaptureCoach() }
+    var coachAdvice by remember { mutableStateOf<CaptureCoach.Advice?>(null) }
+    val coachLastShownMs = remember { mutableMapOf<CaptureCoach.Kind, Long>() }
+    LaunchedEffect(coachAdvice) {
+        if (coachAdvice != null) {
+            delay(CaptureCoach.ADVICE_VISIBLE_MS)
+            coachAdvice = null
+        }
+    }
     // the gap once capture resumes. Camera frustum sweep when heading exists.
     LaunchedEffect(trackerReady) {
         if (!trackerReady) return@LaunchedEffect
@@ -1047,6 +1061,16 @@ private fun CameraPhase(
                 headingDegrees = heading,
                 accuracyMeters = locationProvider.horizontalAccuracyMeters.value,
             )
+            captureCoach.sample(loc.lat, loc.lng)
+            captureCoach.advise()?.let { advice ->
+                if (coachAdvice == null) {
+                    val nowMs = Clock.System.now().toEpochMilliseconds()
+                    if (nowMs - (coachLastShownMs[advice.kind] ?: 0L) >= CaptureCoach.ADVICE_COOLDOWN_MS) {
+                        coachLastShownMs[advice.kind] = nowMs
+                        coachAdvice = advice
+                    }
+                }
+            }
 
             // Ledger event (spot mode): distance since the previous fix.
             val segmentMeters = lastLat?.let { prevLat ->
@@ -1241,6 +1265,7 @@ private fun CameraPhase(
         // sibling chip below this one, and DetectionReticleOverlay drew its
         // own third "walk up to it"/"scan around it" caption per detection —
         // both folded in/removed so exactly one caption is ever on screen.
+        val coachNow = coachAdvice
         val scanStatus = when {
             arTracking == com.gcc.app.platform.TrackingState.LIMITED ->
                 "Hold steady — AR tracking is settling"
@@ -1254,6 +1279,9 @@ private fun CameraPhase(
             arOverlay != null && !groundDetected -> "Point the camera at the ground to map it"
             reconstructionReadiness?.isReady == false ->
                 reconstructionReadiness?.guidance ?: "Environment scan active — sweep the camera slowly"
+            // Capture coaching (Task 1.7): transient path-shape advisory —
+            // below blocking prerequisites, above frontier steering.
+            coachNow != null -> coachNow.message
             // "Highlighted area" must only be said when the minimap actually
             // highlights one: ScanMinimapOverlay hides the guidance ring for
             // targets hugging the user dot (the frontier pick is the ground

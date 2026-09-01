@@ -132,6 +132,7 @@ actual class ArRouteOverlay actual constructor() {
 
     // Latest GPS fix <-> AR camera position pairing (see class KDoc).
     private var hasGeoRef = false
+    private var navigationLatLng: Pair<Double, Double>? = null
     private var refLat = 0.0
     private var refLng = 0.0
     private var refX = 0f
@@ -374,6 +375,36 @@ actual class ArRouteOverlay actual constructor() {
         frameFeedback.fastSceneVotes = fast
     }
 
+    actual fun setNavigationTarget(lat: Double, lng: Double) {
+        navigationLatLng = lat to lng
+        dispatch_async(dispatch_get_main_queue()) { renderNavigation() }
+    }
+
+    actual fun clearNavigationTarget() {
+        navigationLatLng = null
+        dispatch_async(dispatch_get_main_queue()) { renderNavigation() }
+    }
+
+    /** Mirror of ArEnvScanOverlay.renderNavigation on the route overlay's
+     *  own geo reference: chevron trail always (bearing stays valid far
+     *  out), beacon ring once within terminal range. */
+    private fun renderNavigation() {
+        val target = navigationLatLng
+        if (!hasGeoRef || target == null) {
+            nativeSurface?.clearNavigationTarget()
+            if (target == null) nativeSurface?.clearGuidanceTarget()
+            return
+        }
+        val local = latLngToLocal(target.first, target.second)
+        nativeSurface?.setNavigationTarget(local.first, local.second)
+        val dx = local.first - refX
+        val dz = local.second - refZ
+        // Terminal beacon range — matches the env scanner's beacon envelope.
+        if (dx * dx + dz * dz <= 15.0 * 15.0) {
+            nativeSurface?.setGuidanceTarget(local.first, local.second)
+        }
+    }
+
     actual fun addWorldMarker(lat: Double, lng: Double, kind: WorldMarkerKind) {
         if (!hasGeoRef) return
         val local = latLngToLocal(lat, lng)
@@ -410,6 +441,7 @@ actual class ArRouteOverlay actual constructor() {
         refZ = position[2]
         lngScale = lngScaleFor(lat)
         hasGeoRef = true
+        dispatch_async(dispatch_get_main_queue()) { renderNavigation() }
         // Native mode has no ARSessionDelegate — mirror the surface's
         // tracking quality into the shared flow on the same cadence.
         nativeSurface?.let { surface ->
