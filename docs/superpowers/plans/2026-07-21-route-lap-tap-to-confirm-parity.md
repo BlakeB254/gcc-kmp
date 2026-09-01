@@ -1,5 +1,9 @@
 # Route-Lap Tap-to-Confirm Parity Implementation Plan
 
+**Status:** Landed (PR #210) — all tasks complete; `TapToConfirmEngine.kt`,
+`RouteTapConfirm.kt` (+test), the `RouteScanViewModel` handlers, the
+`ArRouteScreen` pill wiring, and the PRD close-out are all on `main`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Tapping trash in the block-lap AR camera raises the same reticle-free confirm pill the environment scan uses, and a confirmation files a photo-backed hotspot (lap-2 cleanup target) plus a user-confirmed world marker — closing PRD gap G2 ("Lap 1 litter tagged via the same reticle/tap flow as the env scan").
@@ -64,7 +68,7 @@ Out of scope (explicitly): LiDAR ground-candidate auto-detector parity on route 
   }
   ```
 
-- [ ] **Step 1: Create the engine file with the MOVED code**
+- [x] **Step 1: Create the engine file with the MOVED code**
 
 Move (do not copy) from `ArEnvScan.kt` into the new file, adjusting only visibility and the dependency seams:
 - `private class RayHit(...)` (`ArEnvScan.kt:1359`) → `internal class RayHit` (top level of the new file).
@@ -189,7 +193,7 @@ internal class TapToConfirmEngine(
 }
 ```
 
-- [ ] **Step 2: Delegate `ArEnvScanOverlay` to the engine**
+- [x] **Step 2: Delegate `ArEnvScanOverlay` to the engine**
 
 In `ArEnvScan.kt` (iosMain):
 
@@ -222,17 +226,17 @@ actual val tapCandidate: StateFlow<TapCandidateState> = tapEngine.tapCandidate
 - `analyzeTick`'s `processPendingFocusTap(frame)` call becomes `tapEngine.processPendingTap(frame)`; delete the old `processPendingFocusTap`, `classifyTappedRegion`, `raycastImage`, `classifyRegion`, `RayHit`, `pendingFocusTap`, and `TAP_CROP_FRACTION` from `ArEnvScan.kt`. NOTE: `classifyRegion` has one other caller (`analyzeTrash`, `ArEnvScan.kt:1577`, and the ground-candidate classify at `:1040` uses `native.classifyRegionLabels` — different path, untouched). For `analyzeTrash`, make the engine's `classifyRegion` `internal fun classifyRegion(...)` on the engine and call `tapEngine.classifyRegion(frame, box.imageX, box.imageY, fraction)` — one implementation, two callers, still no copy.
 - `confirmTapCandidate()`/`rejectTapCandidate()`/`dismissTapCandidate()` actuals become one-line delegations to `tapEngine.confirm()/reject()/dismiss()`.
 
-- [ ] **Step 3: Verify no dead references remain**
+- [x] **Step 3: Verify no dead references remain**
 
 Run: `grep -n "pendingFocusTap\|processPendingFocusTap\|classifyTappedRegion" composeApp/src/iosMain/kotlin/com/gcc/app/platform/ArEnvScan.kt`
 Expected: no matches.
 
-- [ ] **Step 4: Gates**
+- [x] **Step 4: Gates**
 
 Run: `./gradlew :composeApp:desktopTest :composeApp:compileKotlinIosArm64 --console=plain`
 Expected: BUILD SUCCESSFUL, desktop tests all pass (no common code changed — count unchanged).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add composeApp/src/iosMain/kotlin/com/gcc/app/platform/TapToConfirmEngine.kt composeApp/src/iosMain/kotlin/com/gcc/app/platform/ArEnvScan.kt
@@ -261,7 +265,7 @@ git commit -m "refactor(ar): extract TapToConfirmEngine from ArEnvScanOverlay (p
   suspend fun captureTapEvidencePhoto(): ByteArray?
   ```
 
-- [ ] **Step 1: Add the expect members**
+- [x] **Step 1: Add the expect members**
 
 Append to the expect class body (after `setCoverageHitListener`), with this doc:
 
@@ -293,7 +297,7 @@ Append to the expect class body (after `setCoverageHitListener`), with this doc:
     suspend fun captureTapEvidencePhoto(): ByteArray?
 ```
 
-- [ ] **Step 2: iosMain actual**
+- [x] **Step 2: iosMain actual**
 
 In `composeApp/src/iosMain/kotlin/com/gcc/app/platform/ArRouteOverlay.kt`, next to the `frameFeedback` field (~line 97):
 
@@ -333,7 +337,7 @@ In `composeApp/src/iosMain/kotlin/com/gcc/app/platform/ArRouteOverlay.kt`, next 
 
 (If `cvPixelBufferToMarkerPhotoJpeg` is file-private in `ArFrameFeedback.kt`, widen it to `internal` — do not duplicate it.)
 
-- [ ] **Step 3: android + desktop stub actuals**
+- [x] **Step 3: android + desktop stub actuals**
 
 In BOTH `composeApp/src/androidMain/kotlin/com/gcc/app/platform/ArRouteOverlay.kt` and `composeApp/src/desktopMain/kotlin/com/gcc/app/platform/ArRouteOverlay.kt`, mirroring the existing stub style:
 
@@ -346,12 +350,12 @@ In BOTH `composeApp/src/androidMain/kotlin/com/gcc/app/platform/ArRouteOverlay.k
     actual suspend fun captureTapEvidencePhoto(): ByteArray? = null
 ```
 
-- [ ] **Step 4: Gates**
+- [x] **Step 4: Gates**
 
 Run: `./gradlew :composeApp:desktopTest :composeApp:compileKotlinIosArm64 --console=plain`
 Expected: BUILD SUCCESSFUL, tests green.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add composeApp/src/commonMain/kotlin/com/gcc/app/platform/ArRouteOverlay.kt composeApp/src/iosMain/kotlin/com/gcc/app/platform/ArRouteOverlay.kt composeApp/src/androidMain/kotlin/com/gcc/app/platform/ArRouteOverlay.kt composeApp/src/desktopMain/kotlin/com/gcc/app/platform/ArRouteOverlay.kt
@@ -379,7 +383,7 @@ git commit -m "feat(route-ar): tap-to-confirm API on ArRouteOverlay via shared T
   fun routeTapFiling(candidate: TapCandidateState): RouteTapFiling?  // null if lat/lng missing
   ```
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```kotlin
 package com.gcc.app.platform
@@ -428,12 +432,12 @@ class RouteTapConfirmTest {
 }
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `./gradlew :composeApp:desktopTest --tests "com.gcc.app.platform.RouteTapConfirmTest" --console=plain`
 Expected: FAIL — unresolved reference `routeTapFiling`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```kotlin
 package com.gcc.app.platform
@@ -471,12 +475,12 @@ fun routeTapFiling(candidate: TapCandidateState): RouteTapFiling? {
 }
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 Run: `./gradlew :composeApp:desktopTest --tests "com.gcc.app.platform.RouteTapConfirmTest" --console=plain`
 Expected: PASS (4 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add composeApp/src/commonMain/kotlin/com/gcc/app/platform/RouteTapConfirm.kt composeApp/src/commonTest/kotlin/com/gcc/app/platform/RouteTapConfirmTest.kt
@@ -494,7 +498,7 @@ git commit -m "feat(route-ar): routeTapFiling — pure filing math for tap confi
 - Consumes: Task 3's `routeTapFiling`; existing `outdoorGate.captureAllowed` (`RouteScanViewModel.kt:388-390`), `apiClient.uploadSpotPhotos`, `addDetectedHotspot(...)` (`:833`, requires non-null `beforePhotoUrl`), `arMarkerQueue`, `launchDetached`, `ScanSessionTelemetry`, `PROVENANCE_USER_CONFIRMED`.
 - Produces (used by Task 5): `fun confirmRouteTapItem(candidate: TapCandidateState, photoBytes: ByteArray?)`, `fun rejectRouteTapItem(candidate: TapCandidateState)`.
 
-- [ ] **Step 1: Implement the confirm/reject handlers**
+- [x] **Step 1: Implement the confirm/reject handlers**
 
 ```kotlin
     /**
@@ -562,12 +566,12 @@ git commit -m "feat(route-ar): routeTapFiling — pure filing math for tap confi
 
 Imports to add at the top of `RouteScanViewModel.kt`: `com.gcc.app.platform.routeTapFiling`, `com.gcc.app.platform.PROVENANCE_USER_CONFIRMED`, `com.gcc.app.platform.UNKNOWN_LITTER_LABEL`, `com.gcc.app.platform.TapCandidateState` (check which already exist — `ScanSessionTelemetry` and `ArDetectedMarkerRequest` are already imported for `onMarkerPlaced`).
 
-- [ ] **Step 2: Gates**
+- [x] **Step 2: Gates**
 
 Run: `./gradlew :composeApp:desktopTest :composeApp:compileKotlinIosArm64 --console=plain`
 Expected: BUILD SUCCESSFUL, tests green.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add composeApp/src/commonMain/kotlin/com/gcc/app/viewmodel/RouteScanViewModel.kt
@@ -585,7 +589,7 @@ git commit -m "feat(route-ar): confirmRouteTapItem files photo-backed hotspot + 
 - Consumes: Task 2's overlay members, Task 4's VM handlers, existing `TapCandidatePill` (`ui/components/TapCandidatePill.kt` — has an optional `titleOverride`; not needed here), `viewModel.captureAllowed: StateFlow<Boolean>` (`RouteScanViewModel.kt:390`).
 - Produces: nothing downstream.
 
-- [ ] **Step 1: Capture taps on the AR surface**
+- [x] **Step 1: Capture taps on the AR surface**
 
 `ArRouteOverlayView` wraps a `UIKitView` — attach the gesture on a Compose layer ABOVE it (a transparent full-size Box with `pointerInput`), mirroring `CameraCapture.kt:148`'s normalized-coordinate pattern:
 
@@ -610,7 +614,7 @@ git commit -m "feat(route-ar): confirmRouteTapItem files photo-backed hotspot + 
 
 Imports: `androidx.compose.foundation.gestures.detectTapGestures`, `androidx.compose.ui.input.pointer.pointerInput`.
 
-- [ ] **Step 2: Collect the candidate + mount the pill**
+- [x] **Step 2: Collect the candidate + mount the pill**
 
 Near the other `collectAsState()` calls at the top of the composable:
 
@@ -652,12 +656,12 @@ Inside the root Box, after the existing HUD elements (so it draws above the gest
 
 Imports: `com.gcc.app.ui.components.TapCandidatePill`, `com.gcc.app.platform.TapPhase`, `androidx.compose.runtime.rememberCoroutineScope`, `kotlinx.coroutines.launch` (check which already exist).
 
-- [ ] **Step 3: Gates**
+- [x] **Step 3: Gates**
 
 Run: `./gradlew :composeApp:desktopTest :composeApp:compileKotlinIosArm64 --console=plain`
 Expected: BUILD SUCCESSFUL, tests green.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add composeApp/src/commonMain/kotlin/com/gcc/app/ui/screens/ArRouteScreen.kt
@@ -671,18 +675,18 @@ git commit -m "feat(route-ar): tap gesture + confirm pill on the block-lap AR su
 **Files:**
 - Modify: `docs/prd/block-assignment-2-lap-prd.md` (the lap-1 tagging requirement + open-items table)
 
-- [ ] **Step 1: Update the PRD**
+- [x] **Step 1: Update the PRD**
 
 In the lap-1 section (the "via the same reticle/tap flow as the env scan" requirement, ~lines 31-33): append `— implemented via the shared TapToConfirmEngine (2026-07, route-lap tap parity plan)`. In the open-items table, remove/strike the tap-parity row; leave the lap-2 AR beacon row (still blocked on CleanScreen having no AR surface) and ADD a row: "Route-lap LiDAR ground-candidate auto-detect parity (GroundCandidateTracker drive loop is still env-only)" and "Rejected route taps ride telemetry only (no manifest rejected list)".
 
-- [ ] **Step 2: Full gates**
+- [x] **Step 2: Full gates**
 
 Run: `./gradlew :composeApp:desktopTest :composeApp:compileKotlinIosArm64 --console=plain`
 Expected: green.
 Run: `rm -rf composeApp/build/xcode-frameworks && cd iosApp && xcodebuild -project iosApp.xcodeproj -scheme iosApp -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/gcc-ddx-tap build CODE_SIGNING_ALLOWED=NO 2>&1 | tail -3`
 Expected: `** BUILD SUCCEEDED **`. Then `rm -rf /tmp/gcc-ddx-tap` (disk).
 
-- [ ] **Step 3: Commit + draft PR**
+- [x] **Step 3: Commit + draft PR**
 
 ```bash
 git add docs/prd/block-assignment-2-lap-prd.md

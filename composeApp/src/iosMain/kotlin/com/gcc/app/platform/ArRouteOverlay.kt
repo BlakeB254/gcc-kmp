@@ -36,15 +36,15 @@ import kotlin.math.ceil
 import kotlin.math.hypot
 
 /**
- * iOS SceneKit-based AR overlay for the "Begin Route" experience.
+ * iOS AR overlay for the "Begin Route" experience.
  *
- * Uses `ARSCNView` (platform.ARKit) + SceneKit nodes rather than RealityKit:
- * RealityKit's modern Swift-only API surface does not reliably bridge through
- * Kotlin/Native's Objective-C interop, whereas SceneKit is fully
- * Objective-C-compatible and matches the cinterop pattern already established
- * by `ArScanner.kt` / `CameraManager.kt`.
+ * Renders through the native RealityKit surface ([ArNativeSurface], bound via
+ * [bindNative]): this class ships primitives (grid, fog, arrow, veil, walls,
+ * markers) and the Swift side draws them. An `ARSCNView` + SceneKit path
+ * ([bind]) remains as the fallback when no native surface is bound; all route
+ * logic is identical in both modes.
  *
- * Coordinate model (the math Task 17 deferred, now implemented):
+ * Coordinate model:
  * the ARSession runs with [ARWorldAlignment.ARWorldAlignmentGravityAndHeading]
  * (same alignment `ArScanner` already uses), so AR world axes are compass-true:
  * +X = east, -Z = true north, +Y = up. [updateGeoReference] pairs each GPS fix

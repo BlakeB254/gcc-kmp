@@ -73,7 +73,7 @@ jobs:
         run: npm run build
 
   kotlin:
-    name: Kotlin — shared + server + compose desktop
+    name: Kotlin — shared + compose desktop
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -105,13 +105,16 @@ jobs:
       - name: Compile + test shared (JVM target)
         run: ./gradlew :shared:jvmJar :shared:jvmTest --no-daemon --stacktrace
 
-      # :server was removed from settings.gradle.kts (e549c10, "stop building
-      # undeployed :server in CI") but this step survived a later merge and
-      # broke every run with "project 'server' not found". Job name kept
-      # unchanged in case branch protection pins it.
+      # There is no :server project — its source was deleted and
+      # include(":server") is gone from settings.gradle.kts, so nothing here
+      # builds it. This repo has no branch protection, so the job name above
+      # is free to track reality.
 
       - name: Compile composeApp (desktop target)
         run: ./gradlew :composeApp:compileKotlinDesktop --no-daemon --stacktrace
+
+      - name: Test composeApp (desktop target)
+        run: ./gradlew :composeApp:desktopTest --no-daemon --stacktrace
 
   # Optional Android build, manual trigger only. Slow because it has to
   # install the Android SDK. Use this to verify pure-Kotlin Android compile

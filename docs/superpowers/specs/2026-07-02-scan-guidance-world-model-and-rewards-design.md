@@ -1,6 +1,6 @@
 # Environment Scan Guidance, World Model & Reward Economy — Design
 
-**Date:** 2026-07-02 · **Author:** Blake (with Claude) · **Status:** Design — pending approval
+**Date:** 2026-07-02 · **Author:** Blake (with Claude) · **Status:** Shipped
 
 **Relationship to canon:** builds directly on `docs/superpowers/specs/2026-07-01-unified-scan-ecosystem-and-immersive-route-design.md`
 (shipped to `main` via PR #6, 2026-07-01, now confirmed present in this checkout).

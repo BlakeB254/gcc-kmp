@@ -3,25 +3,23 @@
 A community-cleanup marketplace. One repo, multiple targets:
 
 - `site/` — Next.js 16 (App Router) web + admin + Stripe checkout + Drizzle ORM
-- `server/` — Ktor (Netty) JVM backend, port 7310, JWT auth, Exposed over Postgres
-- `shared/` — Kotlin Multiplatform DTOs + API client used by mobile and server
+- `shared/` — Kotlin Multiplatform DTOs + API client used by the mobile app
 - `composeApp/` — Compose Multiplatform UI (Android, iOS, Desktop)
 - `iosApp/` — Xcode wrapper; only builds on the MacBook via fastlane / `cdx-mobile`
 
-## Which backend actually serves the mobile app (read before touching APIs)
+## The backend is the Next.js API routes
 
-**The mobile app talks to the Next.js API routes, not the Ktor server.** Both
-mobile platforms hardcode `https://api.globalcommunitycleaners.org`
-(`PlatformConfig.kt` in `androidMain`/`iosMain`), and `site/src/middleware.ts`
-shows that subdomain is served by Next.js (passes `/api/*` through, 301s
-everything else to `www`). Every client call in `GccApiClient.kt` has a
-matching route under `site/src/app/api/`. The Ktor `server/` implements only a
-subset, diverges on several paths (`/api/auth/refresh`, `/api/wallet`,
-gamification badges, scan coverage, most admin routes), and its login flow
-2FA-challenges every non-demo account without delivering the code — so it is
-**not currently a viable mobile backend**. Until Ktor is brought to parity or
-formally retired, treat `site/src/app/api/` as the canonical mobile API
-surface: new mobile endpoints go there, and Ktor parity is optional.
+**`site/src/app/api/` is the one and only backend.** Both mobile platforms
+hardcode `https://api.globalcommunitycleaners.org` (`PlatformConfig.kt` in
+`androidMain`/`iosMain`), and `site/src/middleware.ts` shows that subdomain is
+served by Next.js (passes `/api/*` through, 301s everything else to `www`).
+Every client call in `GccApiClient.kt` has a matching route under
+`site/src/app/api/` — new mobile endpoints go there.
+
+There is no `server/` module: the former Ktor backend's source is deleted and
+`include(":server")` is gone from `settings.gradle.kts`. A `server/` directory
+on disk is untracked, gitignored build output — safe to remove, never a place
+to edit.
 
 ## Schema ownership policy (read this before changing data models)
 
@@ -33,31 +31,13 @@ mirror.
 - `npx drizzle-kit generate` produces SQL migrations under
   `site/src/db/migrations/`. Those migrations are what actually run against
   Neon Postgres.
-- `server/src/main/kotlin/com/gcc/server/db/tables/Tables.kt` is a **hand-
-  maintained Kotlin mirror** that Exposed uses to compile SQL queries. It
-  does *not* create the schema. The Ktor server's `DatabaseFactory` opens
-  a connection; it does not migrate.
 - `shared/src/commonMain/kotlin/com/gcc/shared/model/*.kt` data classes are
-  the API DTO mirror. They must align with the columns the Ktor server
-  exposes.
+  the API DTO mirror. They must align with the shapes the `site/` API routes
+  send to and accept from clients.
 
-**Rule:** any change to `schema.ts` must, in the same PR, update
-`Tables.kt` (every column the server reads or writes) and any shared
-`@Serializable` model that exposes the changed shape to clients.
-
-There is no automated guard for this yet (planned: a Gradle task that
-introspects `information_schema` and fails if a table is missing from
-`Tables.kt`). Until then, this is a discipline thing. The route-queue
-subsystem (merged from `wip/route-queue-and-scans-20260523`) is a good
-example of doing it right — three new tables in migrations 0017/0018
-added with matching Exposed table objects and a shared `RouteQueue.kt`
-DTO in the same commit.
-
-`Tables.kt` has been split per-domain for navigability:
-`IdentityTables.kt`, `RouteTables.kt`, `FinanceTables.kt`,
-`EngagementTables.kt`, `GamificationTables.kt`, `CommunityTables.kt`,
-`FeedTables.kt`, `AdminTables.kt`, `CrashReportTables.kt`,
-`ServerOnlyTables.kt`, with the remainder still in `Tables.kt`.
+**Rule:** any change to `schema.ts` that alters a shape a client sees must,
+in the same PR, update the matching shared `@Serializable` model. There is no
+automated guard for this — it is a discipline thing.
 
 ### How migrations actually get to production
 
@@ -73,13 +53,15 @@ Symptoms of this divergence:
 - The `drizzle.__drizzle_migrations` tracking table was empty until
   2026-05-23 when 0017/0018/0019 were applied via direct `psql` and
   manually inserted. It still doesn't reflect 0000–0016.
-- (Resolved 2026-05-23) The migration filenames previously had
-  collisions at 0008/0009/0010 from parallel `drizzle-kit generate`
-  runs. The journal-canonical files (`0008_noisy_adam_destine.sql`,
-  `0009_breezy_old_lace.sql`) kept their numbers; the orphan-named
-  duplicates were renumbered forward to 0020-0023. Note this leaves
-  no .sql at 0010 (both 0010 files moved forward); the orphan-applied
-  state in prod is unchanged.
+- Duplicate migration numbers exist right now — three pairs:
+  0013 (`0013_add_admin_grant_points_action.sql` /
+  `0013_add_in_kind_donations.sql`), 0032 (`0032_add_building_footprints.sql`
+  / `0032_drop_checkpoints.sql`), 0033 (`0033_add_cron_leases.sql` /
+  `0033_add_scan_session_index.sql`). Parallel `drizzle-kit generate` runs
+  keep minting the same next number. There is also no .sql at 0010 (an
+  earlier collision cleanup moved both 0010 files forward). The three
+  surfaces disagree: 46 `.sql` files vs 31 `meta/_journal.json` entries vs
+  14 `meta/` snapshots.
 - `meta/_journal.json` references `0007_regular_shotgun` but the .sql
   file is `0007_add_community_reports.sql` (tag/file mismatch).
 - The snapshot chain is coherent only through 0015. Beyond that the
@@ -111,12 +93,10 @@ Symptoms of this divergence:
 
 ## Other conventions
 
-- **JWT_SECRET is required at startup.** Both Ktor and Next.js fail to boot
-  if it's unset. No "dev fallback" — set it in `.env` (root, for the Ktor
-  server) and `site/.env.local` (for Next.js). They must agree because
-  tokens issued by one verify on the other.
-- **Database URL** points at the same Neon database from both backends.
-  Don't introduce a separate DB — see schema-ownership policy.
+- **JWT_SECRET is required at startup.** Next.js fails to boot if it's
+  unset. No "dev fallback" — set it in `site/.env.local`.
+- **Database URL** points at the Neon database (`site/.env.local`). Don't
+  introduce a separate DB — see schema-ownership policy.
 - **Stripe checkout endpoints** use deterministic idempotency keys
   (`lib/stripe-idempotency.ts`). Don't call `stripe.checkout.sessions.create`
   without a key.
@@ -131,18 +111,14 @@ Symptoms of this divergence:
   no locking of its own. **The lease TTL must exceed the route's
   `maxDuration`.** See `docs/governance/cron-and-scheduling.md`.
 - **CI runs** the Next.js site (typecheck + build) and Kotlin (`:shared`
-  JVM + tests, `:composeApp` desktop compile) on every PR and main push.
-  Android `assembleDebug` runs only on `workflow_dispatch`. iOS builds
-  happen on the MacBook via `cdx-mobile`, not in GitHub Actions.
-- **`:server` is not part of the Gradle build right now** —
-  `include(":server")` was removed from `settings.gradle.kts` (commit
-  e549c10, "stop building undeployed :server in CI"). `./gradlew
-  :server:*` tasks won't resolve until it's re-included.
+  JVM + tests, `:composeApp` desktop compile + `desktopTest`) on every PR
+  and main push. Android `assembleDebug` runs only on `workflow_dispatch`.
+  iOS builds happen on the MacBook via `cdx-mobile`, not in GitHub Actions.
 
 ## Working across the two machines (DGX + MacBook)
 
-The DGX (this machine, Linux) handles Next.js, Ktor JVM, and shared/
-Kotlin code that compiles on Linux. The MacBook (`ssh macbook`) handles
+The DGX (this machine, Linux) handles Next.js and the shared/ Kotlin
+code that compiles on Linux. The MacBook (`ssh macbook`) handles
 iOS builds and the Android side. They share GitHub as the source of
 truth.
 
@@ -160,8 +136,7 @@ changes, snapshot the MacBook work to a `wip/...` branch before pulling.
 # DGX
 cd site && npm run dev                                # Next.js on :7350
 cd site && npx tsc --noEmit                            # typecheck
-# Ktor server: re-add include(":server") to settings.gradle.kts first;
-# then ./gradlew :server:run (:7310) / :server:test
+./gradlew :composeApp:desktopTest                      # scan/coverage math suite
 
 # MacBook (via SSH)
 cdx-mobile build ios --sync                            # full iOS build

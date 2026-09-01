@@ -11,6 +11,7 @@ without needing real R2 data -- which doesn't exist yet (see README).
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import hashlib
 import json
 import os
@@ -480,14 +481,26 @@ def _session_fusion_input_from_manifest(manifest_obj: r2_store.ManifestObject) -
                 f"skipping permanently unreadable video {kinds['mov']}"
             )
             continue
-        video_bytes = r2_store.download_video_bytes(kinds["mov"]) if "mov" in kinds else None
-        sidecar_bytes = r2_store.download_bytes(kinds["jsonl"])
-        depth_bytes = r2_store.download_bytes(kinds["depth"])
-        confidence_bytes = (
-            r2_store.download_bytes(kinds["confidence"])
-            if "confidence" in kinds
-            else None
-        )
+        # The four R2 objects are independent — fetch them concurrently. The
+        # .result() calls keep the serial error semantics: a failed required
+        # download raises here in the same order the serial code did.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+            video_future = (
+                pool.submit(r2_store.download_video_bytes, kinds["mov"])
+                if "mov" in kinds
+                else None
+            )
+            sidecar_future = pool.submit(r2_store.download_bytes, kinds["jsonl"])
+            depth_future = pool.submit(r2_store.download_bytes, kinds["depth"])
+            confidence_future = (
+                pool.submit(r2_store.download_bytes, kinds["confidence"])
+                if "confidence" in kinds
+                else None
+            )
+            video_bytes = video_future.result() if video_future else None
+            sidecar_bytes = sidecar_future.result()
+            depth_bytes = depth_future.result()
+            confidence_bytes = confidence_future.result() if confidence_future else None
 
         _header, sidecar_frames = chunk_io.parse_sidecar(sidecar_bytes)
         if anchor_xyz is None and sidecar_frames:

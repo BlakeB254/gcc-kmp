@@ -1,6 +1,6 @@
 # Unified Scan Ecosystem & Immersive Route Experience — Design
 
-**Date:** 2026-07-01 · **Author:** Blake (with Claude) · **Status:** Design — pending approval
+**Date:** 2026-07-01 · **Author:** Blake (with Claude) · **Status:** Shipped (PR #6)
 
 **Relationship to canon:** Serves `docs/feature-spec-2026-05.md` §A (canon) and extends
 `docs/PRD_route-queue-and-scans.md` (currently only on the unmerged

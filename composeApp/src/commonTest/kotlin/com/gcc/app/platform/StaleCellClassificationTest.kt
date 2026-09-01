@@ -3,7 +3,7 @@ package com.gcc.app.platform
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-class RouteFogClassificationTest {
+class StaleCellClassificationTest {
 
     @Test
     fun cellAbsentFromPriorsIsNotStale() {

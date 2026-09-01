@@ -1,6 +1,6 @@
 # Environment Scan — Minimap Overhaul & Honest Coverage Reach
 
-**Date:** 2026-07-09 · **Status:** Investigation complete, design NOT approved
+**Date:** 2026-07-09 · **Status:** Shipped (PRs #200, #208, #213)
 **Scope:** Spec 2 of the scan/map series (see Spec 1's Decomposition)
 
 ## Why
