@@ -1,8 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { timingSafeEqual } from 'crypto'
 import { db } from '@/db'
 import { reconstructionAssets } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin-auth'
 import { and, asc, desc, eq, isNotNull, isNull, type SQL } from 'drizzle-orm'
+
+/**
+ * Service-to-service read access: cdx-world-twin consumes this GET from its
+ * own host with a long-lived shared token (WORLD_MODEL_SERVICE_TOKEN env) —
+ * admin JWTs expire and carry a person's identity, which is wrong for a
+ * service caller. Token absent from the environment = path disabled.
+ */
+function serviceTokenAuthorized(request: Request): boolean {
+  const expected = process.env.WORLD_MODEL_SERVICE_TOKEN
+  if (!expected) return false
+  const authHeader = request.headers.get('Authorization')
+  if (!authHeader?.startsWith('Bearer ')) return false
+  const presented = Buffer.from(authHeader.slice(7))
+  const wanted = Buffer.from(expected)
+  return presented.length === wanted.length && timingSafeEqual(presented, wanted)
+}
 
 const LOCATION_CELL_ID_PATTERN = /^-?\d+:-?\d+$/
 const ASSET_TYPES = new Set(['pointcloud', 'splat', 'mesh'])
@@ -27,13 +44,26 @@ const MAX_LIMIT = 500
  * ordering the twin's direct-DB query uses.
  */
 export async function GET(request: NextRequest) {
-  const auth = await requireAdmin(request)
-  if (auth instanceof NextResponse) return auth
+  if (!serviceTokenAuthorized(request)) {
+    const auth = await requireAdmin(request)
+    if (auth instanceof NextResponse) return auth
+  }
 
   try {
     const { searchParams } = new URL(request.url)
 
     const filters: SQL[] = []
+
+    // Single-asset lookup (the twin's /api/world-model/asset/{id} redirect
+    // resolves ids through this).
+    const idParam = searchParams.get('id')
+    if (idParam != null) {
+      const id = Number(idParam)
+      if (!Number.isInteger(id) || id < 1) {
+        return NextResponse.json({ data: null, success: false, message: 'id must be a positive integer' }, { status: 400 })
+      }
+      filters.push(eq(reconstructionAssets.id, id))
+    }
 
     const locationCellId = searchParams.get('locationCellId')
     if (locationCellId != null) {
