@@ -297,6 +297,7 @@ actual class ArEnvScanOverlay actual constructor() {
     // cone and text prompt (global constraint 8) — no camera-attached node
     // anymore, just the lat/lng handed to the native surface.
     private var guidanceLatLng: Pair<Double, Double>? = null
+    private var navigationLatLng: Pair<Double, Double>? = null
 
     // Trash lock-on state.
     private var nearStreak = 0
@@ -636,6 +637,7 @@ actual class ArEnvScanOverlay actual constructor() {
         dispatch_async(dispatch_get_main_queue()) {
             pushGridPhase()
             renderGuidance()
+            renderNavigation()
         }
         return geoRefEvent
     }
@@ -694,6 +696,16 @@ actual class ArEnvScanOverlay actual constructor() {
 
     actual fun setGuidanceBeaconSuppressed(suppressed: Boolean) {
         dispatch_async(dispatch_get_main_queue()) { nativeSurface?.setBeaconSuppressed(suppressed) }
+    }
+
+    actual fun setNavigationTarget(lat: Double, lng: Double) {
+        navigationLatLng = lat to lng
+        dispatch_async(dispatch_get_main_queue()) { renderNavigation() }
+    }
+
+    actual fun clearNavigationTarget() {
+        navigationLatLng = null
+        dispatch_async(dispatch_get_main_queue()) { renderNavigation() }
     }
 
     actual fun confirmCandidate(overrideItemType: String?): TrashCandidate? {
@@ -2129,6 +2141,10 @@ actual class ArEnvScanOverlay actual constructor() {
      * wrong patch is worse than no beacon.
      */
     private fun renderGuidance() {
+        // Navigate mode owns the beacon while active (renderNavigation plants
+        // it at the destination once in range) — the dormant frontier path
+        // must not clear or repoint it underneath a navigation.
+        if (navigationLatLng != null) return
         val target = guidanceLatLng
         if (!hasGeoRef || target == null) {
             nativeSurface?.clearGuidanceTarget()
@@ -2142,6 +2158,36 @@ actual class ArEnvScanOverlay actual constructor() {
             return
         }
         nativeSurface?.setGuidanceTarget(local.first, local.second)
+    }
+
+    /**
+     * Navigate mode (PRD §5): unlike the frontier beacon, the chevron trail
+     * is USEFUL when the target is far — the trail renders the first ≤15 m
+     * of the bearing from the walker, and bearing error from `latLngToLocal`
+     * far from the reference point is small even when absolute position
+     * error is not. So the target converts with NO range clamp; the beacon
+     * ring additionally plants once the target is within beacon range
+     * (terminal cue, reusing the pooled renderer reserved for exactly this
+     * deliberate-destination case).
+     */
+    private fun renderNavigation() {
+        val target = navigationLatLng
+        if (!hasGeoRef || target == null) {
+            nativeSurface?.clearNavigationTarget()
+            if (target == null) {
+                // Hand the beacon back: replant any frontier target, or clear.
+                if (guidanceLatLng != null) renderGuidance()
+                else nativeSurface?.clearGuidanceTarget()
+            }
+            return
+        }
+        val local = latLngToLocal(target.first, target.second, refLat, refLng, refX, refZ, lngScale)
+        nativeSurface?.setNavigationTarget(local.first, local.second)
+        val dx = local.first - refX
+        val dz = local.second - refZ
+        if (dx * dx + dz * dz <= BEACON_MAX_RANGE_METERS * BEACON_MAX_RANGE_METERS) {
+            nativeSurface?.setGuidanceTarget(local.first, local.second)
+        }
     }
 
     // ── Markers / capture / helpers ──────────────────────────────────

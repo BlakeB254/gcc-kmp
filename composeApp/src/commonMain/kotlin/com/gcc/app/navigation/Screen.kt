@@ -48,7 +48,15 @@ sealed class Screen {
     data class Legal(val type: String) : Screen()
 
     @Serializable
-    data object Spot : Screen()
+    data class Spot(
+        /** Navigate mode (env-scan PRD §5): when set, the scanner opens
+         *  steering toward this destination with the ground chevron trail —
+         *  a block assignment, a hotspot to verify, or a free-explore
+         *  landmark. Null = plain scan. */
+        val navigateLat: Double? = null,
+        val navigateLng: Double? = null,
+        val navigateLabel: String? = null,
+    ) : Screen()
 
     @Serializable
     data class VolunteerCleanup(val reportId: Int) : Screen()

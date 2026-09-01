@@ -225,6 +225,19 @@ expect class ArEnvScanOverlay() {
      *  confirmation for attention. */
     fun setGuidanceBeaconSuppressed(suppressed: Boolean)
 
+    /** Navigate mode (env-scan PRD §5): steer the walker to a user-SELECTED
+     *  destination with a ground chevron trail in the camera (world-anchored
+     *  discs along the bearing, ≤15 m lookahead — NOT the deleted
+     *  camera-anchored bar) plus the beacon ring once in range. Distinct
+     *  from the frontier beacon, which stays dormant for auto-picked
+     *  frontiers (TestFlight 159 call): navigate targets are deliberate and
+     *  far, the case the beacon renderer was reserved for. No-op off-iOS. */
+    fun setNavigationTarget(lat: Double, lng: Double)
+
+    /** Leave navigate mode: remove the chevron trail (and the beacon if it
+     *  was planted for the navigate target). */
+    fun clearNavigationTarget()
+
     /**
      * Geographic origin of the CoverageTracker cell lattice. The AR ground
      * grid phases its lines to this point (converted through the live geo

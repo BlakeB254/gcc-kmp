@@ -131,6 +131,18 @@ interface ArNativeSurface {
      *  flow owns the screen. Restore only re-shows if a target is live. */
     fun setBeaconSuppressed(suppressed: Boolean)
 
+    /**
+     * Navigate mode (env-scan PRD §5): set the AR-local destination the
+     * pooled ground CHEVRON TRAIL steers toward. The surface re-lays the
+     * trail from the live camera (spacing/lookahead are its concern);
+     * repeat calls MOVE the same pooled entities. World-anchored,
+     * depth-occluded — never camera-attached.
+     */
+    fun setNavigationTarget(x: Double, z: Double)
+
+    /** Remove the chevron trail (pooled entities hidden, not destroyed). */
+    fun clearNavigationTarget()
+
     /** Camera-attached red warning veil (worker outside the boundary). */
     fun setBoundaryVeilVisible(visible: Boolean)
 

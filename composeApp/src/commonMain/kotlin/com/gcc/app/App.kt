@@ -147,6 +147,7 @@ fun App(component: RootComponent) {
                     onAdminClick = { component.switchToTab(Screen.AdminPanel) },
                     onProfileClick = { component.switchToTab(Screen.Profile) },
                     onNavigateToSpot = component::navigateToSpot,
+                    onGuideTo = component::navigateToSpotGuided,
                 )
                 is Screen.Settings -> SettingsScreen(
                     onBack = component::navigateBack,
@@ -165,6 +166,10 @@ fun App(component: RootComponent) {
                     onBack = component::navigateBack,
                     onVolunteerCleanup = component::navigateToVolunteerCleanup,
                     onNavigateToActiveJob = component::navigateToActiveJob,
+                    navigateTarget = screen.navigateLat?.let { lat ->
+                        screen.navigateLng?.let { lng -> lat to lng }
+                    },
+                    navigateLabel = screen.navigateLabel,
                 )
                 is Screen.VolunteerCleanup -> VolunteerCleanupScreen(
                     reportId = screen.reportId,

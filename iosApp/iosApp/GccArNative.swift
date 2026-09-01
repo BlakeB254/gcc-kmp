@@ -130,6 +130,43 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     private static let driftSlewThreshold: Float = 0.015
     private static let driftUpdateClamp: Float = 0.5
 
+    // MARK: Navigate mode (env-scan PRD §5)
+    //
+    // Pooled ground chevron trail steering the walker to a user-selected
+    // destination: world-anchored flat arrowheads re-laid from the live
+    // camera along the bearing to `navTarget` (first NAV_LOOKAHEAD meters
+    // only), throttled to NAV_RELAYOUT_INTERVAL. Distinct from the deleted
+    // camera-anchored guidance bar — these sit ON the ground, depth-occluded
+    // like the grid, and never move with the camera between re-layouts.
+    private var navTarget: SIMD2<Float>?
+    private var navAnchor: AnchorEntity?
+    private var navChevrons: [ModelEntity] = []
+    private var lastNavLayout: CFTimeInterval = 0
+    private static let navChevronSpacing: Float = 2.0
+    private static let navLookahead: Float = 15.0
+    private static let navFirstChevron: Float = 1.6
+    private static let navArrivedRadius: Float = 2.5
+    private static let navRelayoutInterval: CFTimeInterval = 0.25
+    private static let navPoolSize = 8
+
+    /// Flat arrowhead (">" from above) pointing +Z; oriented per-chevron by a
+    /// yaw rotation. Both windings included so it renders from any side.
+    private static func makeChevronMesh() -> MeshResource? {
+        var descriptor = MeshDescriptor(name: "nav-chevron")
+        let p: [SIMD3<Float>] = [
+            SIMD3(0, 0, 0.20),      // tip
+            SIMD3(-0.14, 0, -0.08), // back left
+            SIMD3(0, 0, 0.00),      // notch
+            SIMD3(0.14, 0, -0.08),  // back right
+        ]
+        descriptor.positions = MeshBuffer(p)
+        descriptor.primitives = .triangles([
+            0, 1, 2, 0, 2, 3, // one winding
+            2, 1, 0, 3, 2, 0, // reversed — double-sided without a material flag
+        ])
+        return try? MeshResource.generate(from: [descriptor])
+    }
+
     // Route-mode extras: camera-attached guidance arrow + warning veil.
     private let cameraAnchor = AnchorEntity(.camera)
     private var veilEntity: ModelEntity?
@@ -268,6 +305,10 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         floorGrid?.anchor.removeFromParent()
         floorGrid = nil
         resetGridStabilityState()
+        navTarget = nil
+        navAnchor?.removeFromParent()
+        navAnchor = nil
+        navChevrons.removeAll()
         selectionAnchor?.removeFromParent()
         selectionAnchor = nil
         selectionRing = nil
@@ -696,6 +737,88 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         }
     }
 
+
+    func setNavigationTarget(x: Double, z: Double) {
+        DispatchQueue.main.async { [self] in
+            navTarget = SIMD2(Float(x), Float(z))
+            lastNavLayout = 0 // force an immediate re-layout on the next frame
+        }
+    }
+
+    func clearNavigationTarget() {
+        DispatchQueue.main.async { [self] in
+            navTarget = nil
+            for chevron in navChevrons { chevron.isEnabled = false }
+        }
+    }
+
+    /// Re-lay the chevron trail from the current camera toward `navTarget`.
+    /// Called from the frame delegate, throttled — pooled entities move, they
+    /// are never recreated per layout.
+    private func layoutNavigationTrail(frame: ARFrame) {
+        guard let target = navTarget else { return }
+        let now = CACurrentMediaTime()
+        guard now - lastNavLayout >= Self.navRelayoutInterval else { return }
+        lastNavLayout = now
+
+        let cam = frame.camera.transform.columns.3
+        let camXZ = SIMD2(cam.x, cam.z)
+        let toTarget = target - camXZ
+        let distance = simd_length(toTarget)
+        // Terminal approach: the beacon ring owns the destination cue —
+        // a chevron under the walker's feet is the TestFlight-159 mistake.
+        guard distance > Self.navArrivedRadius else {
+            for chevron in navChevrons { chevron.isEnabled = false }
+            return
+        }
+        let dir = toTarget / distance
+
+        if navAnchor == nil {
+            let anchor = AnchorEntity(world: .zero)
+            arView.scene.addAnchor(anchor)
+            navAnchor = anchor
+            let mesh = Self.makeChevronMesh()
+            let tint = UIColor(red: 0.20, green: 0.90, blue: 0.50, alpha: 0.95)
+            for _ in 0..<Self.navPoolSize {
+                let model: ModelEntity
+                if let mesh {
+                    model = ModelEntity(mesh: mesh, materials: [gridMaterial(nil, tint: tint, uvScale: 1)])
+                } else {
+                    // Mesh generation failed (never expected): degrade to a
+                    // small flat box so navigation still shows SOMETHING.
+                    model = ModelEntity(
+                        mesh: MeshResource.generateBox(width: 0.22, height: 0.005, depth: 0.28),
+                        materials: [gridMaterial(nil, tint: tint, uvScale: 1)]
+                    )
+                }
+                model.isEnabled = false
+                anchor.addChild(model)
+                navChevrons.append(model)
+            }
+        }
+
+        let groundY = (floorWorldY.map { $0 + gridAppliedCorrection.y } ?? cameraFallbackGroundY()) + 0.02
+        // dir is (worldX, worldZ); a yaw of atan2(x, z) about +Y maps the
+        // +Z-pointing chevron mesh onto the bearing.
+        let heading = simd_quatf(angle: atan2(dir.x, dir.y), axis: SIMD3(0, 1, 0))
+        let span = min(distance - 1.0, Self.navLookahead)
+        var along = Self.navFirstChevron
+        var used = 0
+        while along < span && used < navChevrons.count {
+            let chevron = navChevrons[used]
+            let position = SIMD3(
+                camXZ.x + dir.x * along,
+                groundY,
+                camXZ.y + dir.y * along
+            )
+            chevron.position = position
+            chevron.orientation = heading
+            chevron.isEnabled = true
+            used += 1
+            along += Self.navChevronSpacing
+        }
+        for index in used..<navChevrons.count { navChevrons[index].isEnabled = false }
+    }
 
     func setGuidanceTarget(x: Double, z: Double) {
         DispatchQueue.main.async { [self] in
@@ -1357,6 +1480,7 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         lastFrame = frame
         frameLock.unlock()
         recorder?.append(frame: frame)
+        layoutNavigationTrail(frame: frame)
     }
 
     func session(_ session: ARSession, didAdd anchors: [ARAnchor]) {

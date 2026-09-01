@@ -105,6 +105,9 @@ fun MapFullScreen(
     onAdminClick: () -> Unit = {},
     onProfileClick: () -> Unit = {},
     onNavigateToSpot: () -> Unit = {},
+    /** Navigate mode (env-scan PRD §5): open the scanner guiding to a chosen
+     *  destination — (lat, lng, human label). */
+    onGuideTo: (Double, Double, String?) -> Unit = { _, _, _ -> },
 ) {
     val viewModel = koinInject<DashboardViewModel>()
     val uiState by viewModel.uiState.collectAsState()
@@ -1006,6 +1009,14 @@ fun MapFullScreen(
                                 DiagnosticsLog.error("photo-privacy", "flag-media failed for observation ${observation.id}", e)
                             }
                         }
+                    },
+                    onGuideHere = {
+                        selectedObservation = null
+                        onGuideTo(
+                            observation.lat,
+                            observation.lng,
+                            observation.itemType?.let { TrashItemCatalog.infoFor(it).displayName },
+                        )
                     },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -2225,6 +2236,9 @@ private fun ObservationInfoCard(
      *  a photo showing a person/animal/home interior — or no visible trash.
      *  Null hides the affordance (previews without an authed client). */
     onReportPhoto: (() -> Unit)? = null,
+    /** Navigate mode (env-scan PRD §5): open the AR scanner steering to this
+     *  observation with the ground chevron trail. Null hides the button. */
+    onGuideHere: (() -> Unit)? = null,
 ) {
     val itemLabel = observation.itemType?.let { TrashItemCatalog.infoFor(it).displayName }
         ?: "Litter"
@@ -2354,6 +2368,16 @@ private fun ObservationInfoCard(
                 },
             )
             ObservationDetailRow("Reported", formatIsoTimestamp(observation.capturedAt))
+
+            if (onGuideHere != null) {
+                Spacer(modifier = Modifier.height(10.dp))
+                GccButton(
+                    text = "Guide me there",
+                    onClick = onGuideHere,
+                    variant = GccButtonVariant.PRIMARY,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
         }
     }
 

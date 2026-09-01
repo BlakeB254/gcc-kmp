@@ -135,6 +135,13 @@ fun SpotScreen(
     onBack: () -> Unit = {},
     onVolunteerCleanup: (reportId: Int) -> Unit = {},
     onNavigateToActiveJob: (jobId: Int, routeId: Int) -> Unit = { _, _ -> },
+    /** Navigate mode (env-scan PRD §5): destination the scanner steers toward
+     *  with the AR ground chevron trail + minimap ring. The session is a full
+     *  scan session — guidance passively harvests coverage on the way. */
+    navigateTarget: Pair<Double, Double>? = null,
+    /** Human name of the navigate destination — reserved for the Navigate HUD
+     *  chip (follow-up); the trail itself needs no text. */
+    navigateLabel: String? = null,
 ) {
     val viewModel = koinInject<SpotViewModel>()
     val locationProvider = koinInject<LocationProvider>()
@@ -226,6 +233,7 @@ fun SpotScreen(
                     onAbortScan = { draft, captureHealthJson -> viewModel.abortScan(draft, captureHealthJson) },
                     onObjectCaptured = { outcome -> viewModel.attachObjectCapture(outcome) },
                     onBack = onBack,
+                    navigateTarget = navigateTarget,
                     spotLocation = currentLocation,
                     onScanCapture = { scanPhoto -> viewModel.addScanPhoto(scanPhoto) },
                     observedItems = uiState.observedItems,
@@ -401,6 +409,9 @@ private fun CameraPhase(
     onAbortScan: (EnvScanSessionDraft, String?) -> Unit = { _, _ -> },
     onBack: () -> Unit,
     onObjectCaptured: (com.gcc.app.platform.ObjectCaptureOutcome) -> Unit = {},
+    /** Navigate mode (env-scan PRD §5): destination for the AR chevron trail
+     *  + minimap ring override; null = plain scan. */
+    navigateTarget: Pair<Double, Double>? = null,
     spotLocation: Coordinates? = null,
     onScanCapture: (ScanCapturedPhoto) -> Unit = {},
     observedItems: List<ObservedSpotItem> = emptyList(),
@@ -479,6 +490,16 @@ private fun CameraPhase(
                 trackingTickCounts.normal++
             }
         }
+    }
+
+    // Navigate mode (PRD §5): hand the destination to the AR layer — the
+    // chevron trail + terminal beacon render natively; cleared on leave so a
+    // later plain scan in the pooled overlay doesn't inherit the trail.
+    DisposableEffect(arOverlay, navigateTarget) {
+        if (arOverlay != null && navigateTarget != null) {
+            arOverlay.setNavigationTarget(navigateTarget.first, navigateTarget.second)
+        }
+        onDispose { arOverlay?.clearNavigationTarget() }
     }
 
     // "Go outside" gate — fused from GPS accuracy, mapped-building containment,
@@ -1112,8 +1133,10 @@ private fun CameraPhase(
         // with no clear purpose (Blake's call). Guidance stays on the
         // minimap (guidanceTarget/guidancePhase below); the native beacon
         // renderer stays dormant for a future deliberate design.
-        guidanceTarget = pick?.target
-        guidancePhase = pick?.phase ?: GuidancePhase.COVER
+        // Navigate mode overrides the frontier: the minimap ring points at the
+        // user's chosen destination for the whole session (PRD §5).
+        guidanceTarget = navigateTarget ?: pick?.target
+        guidancePhase = if (navigateTarget != null) GuidancePhase.COVER else pick?.phase ?: GuidancePhase.COVER
     }
     // Idle nudge: no new cell credited for a while → a BRIEF advisory via the
     // status chip, then back to the default caption. Restarting on

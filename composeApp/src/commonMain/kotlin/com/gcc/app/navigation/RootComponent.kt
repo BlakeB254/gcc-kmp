@@ -147,7 +147,13 @@ class RootComponent(
     }
 
     fun navigateToSpot() {
-        navigation.push(Screen.Spot)
+        navigation.push(Screen.Spot())
+    }
+
+    /** Navigate mode (env-scan PRD §5): open the scanner steering toward a
+     *  selected destination via the ground chevron trail. */
+    fun navigateToSpotGuided(lat: Double, lng: Double, label: String?) {
+        navigation.push(Screen.Spot(navigateLat = lat, navigateLng = lng, navigateLabel = label))
     }
 
     fun navigateToVolunteerCleanup(reportId: Int) {

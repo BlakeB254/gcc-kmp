@@ -54,6 +54,8 @@ actual class ArEnvScanOverlay actual constructor() {
     actual fun clearGuidanceTarget() {}
     actual fun dissolveGuidanceBeacon() {}
     actual fun setGuidanceBeaconSuppressed(suppressed: Boolean) {}
+    actual fun setNavigationTarget(lat: Double, lng: Double) {}
+    actual fun clearNavigationTarget() {}
     actual fun confirmCandidate(overrideItemType: String?): TrashCandidate? = null
     actual fun dismissCandidate() {}
     actual fun focusAt(x: Float, y: Float) {}
