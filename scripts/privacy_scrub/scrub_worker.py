@@ -26,6 +26,7 @@ from pathlib import Path
 import av
 import numpy as np
 import psycopg
+from botocore.exceptions import ClientError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "reconstruction"))
 import r2_store  # noqa: E402
@@ -124,6 +125,7 @@ def main() -> None:
     # 10-minute loop with no way out. Isolate per chunk instead.
     unreadable: list[str] = []
     errored: list[str] = []
+    pending: list[str] = []
     for raw_key, session_id, cell in todo:
         print(f"[{session_id}] {raw_key}")
         try:
@@ -157,6 +159,20 @@ def main() -> None:
                 "application/json",
             )
             continue
+        except ClientError as exc:
+            # NoSuchKey = the chunk row is indexed (the manifest names it)
+            # but the phone hasn't uploaded the blob yet — the capture-chunk
+            # policy holds video for Wi-Fi/charging/opt-in, so this is a
+            # NORMAL waiting state, not a failure (2026-09-01 field walk:
+            # the sweep red-flagged every fresh session for exactly this).
+            # Skip quietly; the next sweep retries once the upload lands.
+            if exc.response.get("Error", {}).get("Code") in ("NoSuchKey", "404"):
+                print("  .. pending upload (blob not in R2 yet), will retry next sweep")
+                pending.append(raw_key)
+                continue
+            print(f"  !! FAILED ({type(exc).__name__}), skipping: {exc}")
+            errored.append(raw_key)
+            continue
         except Exception as exc:  # noqa: BLE001 — transient/unknown, keep sweeping
             print(f"  !! FAILED ({type(exc).__name__}), skipping: {exc}")
             errored.append(raw_key)
@@ -189,6 +205,10 @@ def main() -> None:
         r2_store.upload_bytes(report_key, json.dumps(rep, indent=2).encode(), "application/json")
         print(f"[{session_id}] report -> {report_key}")
 
+    if pending:
+        print(f"\n{len(pending)} chunk(s) pending upload (normal — device holds video for Wi-Fi/charging):")
+        for k in pending:
+            print(f"  {k}")
     if unreadable:
         print(f"\n{len(unreadable)} unreadable chunk(s) skipped (permanent):")
         for k in unreadable:
