@@ -2,6 +2,7 @@ import Combine
 import CoreImage
 import Foundation
 import ARKit
+import os
 import RealityKit
 import UIKit
 import Vision
@@ -96,6 +97,38 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     private var floorWorldY: Float?
     private var groundLive = false
     private var groundGridVisible = true
+
+    // MARK: Grid stability (2026-09 polish; plan Task 1.1)
+    //
+    // The union AABB, floorWorldY and the lattice phase origin all live in
+    // the RAW AR-world frame of the session's first seconds. ARKit keeps
+    // refining its world map while the user walks, so physical-world content
+    // (plane anchors) migrates in world coordinates — a world-anchored grid
+    // that ignores those refinements visibly slides against the pavement.
+    // `gridDriftCorrection` is the accumulated migration of ONE reference
+    // floor plane since it was first folded; it is applied ONLY at anchor
+    // placement (raw geometry + correction), so every lattice/AABB/texture
+    // computation stays in the raw frame and the whole grid follows the
+    // ground it was detected on. "Stability beats accuracy": the correction
+    // is slewed (animated, ≥1.5 cm steps) and clamped (≤0.5 m per update —
+    // a relocalization jump re-baselines instead of yanking the grid).
+    private var gridDriftCorrection = SIMD3<Float>.zero
+    /// Correction the anchor is currently placed with (lags gridDriftCorrection
+    /// until the pending delta exceeds the slew threshold).
+    private var gridAppliedCorrection = SIMD3<Float>.zero
+    private var driftRefPlaneId: UUID?
+    private var driftRefLastCenter: SIMD3<Float>?
+    /// Raw-frame target from the last applyPlaneGeometry, so drift updates can
+    /// re-place the anchor without re-deriving the union.
+    private var gridRawCenter: SIMD3<Float>?
+    /// One-shot scan-start reveal (plan Task 1.2): the first grid of a session
+    /// sweeps outward (ease-out scale) instead of popping in.
+    private var gridRevealPlayed = false
+    private static let gridLog = Logger(
+        subsystem: "com.globalcommunitycleaners.worker", category: "ar-grid"
+    )
+    private static let driftSlewThreshold: Float = 0.015
+    private static let driftUpdateClamp: Float = 0.5
 
     // Route-mode extras: camera-attached guidance arrow + warning veil.
     private let cameraAnchor = AnchorEntity(.camera)
@@ -234,6 +267,7 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
 
         floorGrid?.anchor.removeFromParent()
         floorGrid = nil
+        resetGridStabilityState()
         selectionAnchor?.removeFromParent()
         selectionAnchor = nil
         selectionRing = nil
@@ -633,6 +667,7 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
                 coachingOverlay?.setActive(false, animated: false)
                 floorGrid?.anchor.removeFromParent()
                 floorGrid = nil
+                resetGridStabilityState()
                 // frameLock: floor AABB fields are read off-main (see kdoc).
                 frameLock.lock()
                 floorMinX = nil
@@ -1387,10 +1422,20 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         // even when the grid itself is hidden (route/spot), otherwise those
         // entities sit at the camera-offset estimate forever.
         if isFloor {
-            let y = plane.transform.columns.3.y + plane.center.y
+            // Raw-frame Y: subtract the drift correction so a reference plane
+            // migrating downward under ARKit refinement doesn't drag the
+            // monotonic minimum with it (the correction re-applies at anchor
+            // placement).
+            let y = plane.transform.columns.3.y + plane.center.y - gridDriftCorrection.y
             // frameLock: drainGroundCandidates() reads floorWorldY off-main.
             frameLock.lock()
-            if floorWorldY == nil || y < floorWorldY! { floorWorldY = y }
+            let dropped = floorWorldY.map { y < $0 } ?? true
+            if dropped {
+                if let old = floorWorldY {
+                    Self.gridLog.info("floorWorldY drop \(old, format: .fixed(precision: 3)) -> \(y, format: .fixed(precision: 3))")
+                }
+                floorWorldY = y
+            }
             frameLock.unlock()
         }
         guard groundGridVisible, isFloor else { return }
@@ -1410,8 +1455,37 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
             m.columns.0.y * c.x + m.columns.1.y * c.y + m.columns.2.y * c.z + m.columns.3.y,
             m.columns.0.z * c.x + m.columns.1.z * c.y + m.columns.2.z * c.z + m.columns.3.z
         )
-        let planeMinX = centerWorld.x - worldW / 2, planeMaxX = centerWorld.x + worldW / 2
-        let planeMinZ = centerWorld.z - worldD / 2, planeMaxZ = centerWorld.z + worldD / 2
+        // Drift tracking (Task 1.1): follow ONE reference floor plane's world
+        // migration. Its per-update delta accumulates into the correction the
+        // anchor is placed with; the plane's own raw-frame position stays
+        // constant by construction, so tracking never grows the union.
+        if driftRefPlaneId == nil {
+            driftRefPlaneId = plane.identifier
+            driftRefLastCenter = centerWorld
+            Self.gridLog.info("drift ref adopted \(plane.identifier, privacy: .public)")
+        } else if plane.identifier == driftRefPlaneId, let last = driftRefLastCenter {
+            let delta = centerWorld - last
+            let magnitude = simd_length(delta)
+            if magnitude > 0 {
+                if magnitude <= Self.driftUpdateClamp {
+                    gridDriftCorrection += delta
+                    if magnitude > 0.005 {
+                        Self.gridLog.info("drift +\(magnitude, format: .fixed(precision: 3))m total \(simd_length(self.gridDriftCorrection), format: .fixed(precision: 3))m")
+                    }
+                } else {
+                    // Relocalization-scale jump: re-baseline without applying —
+                    // yanking the grid half a meter is worse than the error.
+                    Self.gridLog.warning("drift jump \(magnitude, format: .fixed(precision: 2))m ignored (re-baselined)")
+                }
+                driftRefLastCenter = centerWorld
+            }
+        }
+
+        // Everything folded into the union lives in the RAW frame: subtract
+        // the correction that will be re-applied at anchor placement.
+        let rawCenter = centerWorld - gridDriftCorrection
+        let planeMinX = rawCenter.x - worldW / 2, planeMaxX = rawCenter.x + worldW / 2
+        let planeMinZ = rawCenter.z - worldD / 2, planeMaxZ = rawCenter.z + worldD / 2
 
         // Fold this plane's AABB into the ONE grid's monotonic union — the
         // union only ever grows, matching "stability beats accuracy for the
@@ -1430,7 +1504,12 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
 
         let entry: PlaneGridEntity
         if let existing = floorGrid {
-            guard grew else { return }
+            guard grew else {
+                // No union growth, but drift may have accumulated past the
+                // slew threshold — keep the grid glued to the ground anyway.
+                slewGridForDriftIfNeeded(existing)
+                return
+            }
             entry = existing
         } else {
             // AnchorEntity(world:) has identity orientation = world axes.
@@ -1446,6 +1525,52 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         }
         applyPlaneGeometry(entry)
         refreshGroundState()
+        playGridRevealIfNeeded(entry)
+    }
+
+    /// Scan-start reveal (Task 1.2): the session's first grid sweeps outward
+    /// from its center with an ease-out scale instead of popping in — the
+    /// RadianceFields-style "world unveils" beat, done with the iOS-17-safe
+    /// transform animation path (a shader-mask wipe would mean replacing the
+    /// PhysicallyBasedMaterial, which the grey-cover history says not to do
+    /// blind). Y scale stays 1 so the plane never lifts.
+    private func playGridRevealIfNeeded(_ entry: PlaneGridEntity) {
+        guard !gridRevealPlayed else { return }
+        gridRevealPlayed = true
+        var start = entry.model.transform
+        start.scale = SIMD3(0.02, 1, 0.02)
+        var end = start
+        end.scale = .one
+        entry.model.transform = start
+        entry.model.move(to: end, relativeTo: entry.anchor, duration: 1.1, timingFunction: .easeOut)
+        Self.gridLog.info("grid reveal played")
+    }
+
+    /// Grid drift/reveal state is per-grid-lifetime: reset on every teardown
+    /// so a fresh scan re-adopts a reference plane, starts corrections from
+    /// zero, and replays the scan-start reveal.
+    private func resetGridStabilityState() {
+        gridDriftCorrection = .zero
+        gridAppliedCorrection = .zero
+        driftRefPlaneId = nil
+        driftRefLastCenter = nil
+        gridRawCenter = nil
+        gridRevealPlayed = false
+    }
+
+    /// Re-place the grid anchor when accumulated drift correction has moved
+    /// past the applied correction by more than the slew threshold. Animated:
+    /// corrections arrive as many mm-scale steps and the grid must never
+    /// visibly jump — it eases onto the refined ground instead.
+    private func slewGridForDriftIfNeeded(_ entry: PlaneGridEntity) {
+        guard let raw = gridRawCenter else { return }
+        let pending = gridDriftCorrection - gridAppliedCorrection
+        guard simd_length(pending) > Self.driftSlewThreshold else { return }
+        gridAppliedCorrection = gridDriftCorrection
+        var target = entry.anchor.transform
+        target.translation = raw + gridAppliedCorrection
+        entry.anchor.move(to: target, relativeTo: nil, duration: 0.35, timingFunction: .easeInOut)
+        Self.gridLog.info("grid slew applied \(simd_length(pending), format: .fixed(precision: 3))m")
     }
 
     /// (Re)build the ONE grid's render geometry from the monotonic union
@@ -1469,11 +1594,30 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         }
         let size = SIMD2(maxX - minX, maxZ - minZ)
         let y = floorWorldY ?? cameraFallbackGroundY()
+        // Raw-frame center: lattice snapping, texture phase and the stored
+        // union all live in the session's original world frame. The drift
+        // correction is applied only here, at placement — geometry raw,
+        // placement corrected (Task 1.1).
         let snappedCenter = SIMD3((minX + maxX) / 2, y, (minZ + maxZ) / 2)
-        entry.anchor.position = snappedCenter
+        let firstPlacement = gridRawCenter == nil
+        gridRawCenter = snappedCenter
+        gridAppliedCorrection = gridDriftCorrection
+        let placed = snappedCenter + gridAppliedCorrection
+        if firstPlacement {
+            entry.anchor.position = placed
+        } else if simd_length(entry.anchor.position - placed) > 0.01 {
+            // Union growth and floorWorldY drops used to teleport the anchor;
+            // ease it instead so the lattice never visibly snaps underfoot.
+            var target = entry.anchor.transform
+            target.translation = placed
+            entry.anchor.move(to: target, relativeTo: nil, duration: 0.35, timingFunction: .easeInOut)
+        } else {
+            entry.anchor.position = placed
+        }
         if entry.lastAppliedSize != size {
             entry.model.model?.mesh = MeshResource.generatePlane(width: size.x, depth: size.y)
             entry.lastAppliedSize = size
+            Self.gridLog.info("grid union \(size.x, format: .fixed(precision: 1))x\(size.y, format: .fixed(precision: 1))m")
         }
         entry.model.model?.materials = [planeMaterial(size: size, centerWorld: snappedCenter)]
     }

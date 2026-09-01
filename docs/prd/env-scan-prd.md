@@ -123,7 +123,32 @@ cut over and delete the old path. Efficiency and testability beat preserving
 accumulated context. Any rebuild must satisfy this PRD exactly; anything the
 PRD doesn't require is a candidate for omission.
 
-## 5. Open items (wanted, not yet built)
+## 5. Navigate mode (added 2026-09-01, Blake direction — build next)
+
+Reference look: the RadianceFields VPS video (x.com/RadianceFields/status/
+2093008579825414510) — ground-projected arrows guiding a walker to a target.
+
+- **Any map target is walkable-to in AR.** Selecting a target — a block
+  assignment, a registered litter hotspot to verify/clean, or any tapped
+  map landmark (free explore) — offers "Guide me there": the AR camera
+  shows **chevron discs on the ground** along the bearing to the target
+  (raycast-dropped every ~2 m, ≤15 m lookahead, recomputed per GPS fix),
+  ending in the existing pooled beacon ring at the target.
+- **Navigation IS a scan session.** Navigate mode runs the full scanner
+  (coverage credit, outdoor gate, capture per policy, minimap) so guidance
+  passively harvests scan data; the session manifest carries
+  `context: "navigate"`.
+- **Not the deprecated guidance bar.** The §6 ban on the camera-anchored
+  green bar/arrow stands: navigate chevrons are world-anchored on detected
+  ground, depth-occluded, same render stack as the grid — never glued to
+  the camera.
+- Scan-start reveal + grid stability (2026-09 polish): the grid **sweeps
+  outward** on first ground detection (ease-out, ~1.1 s) rather than
+  popping in, and the grid slews with ARKit's ground refinements (drift
+  correction at anchor placement) so lines never swim against the
+  pavement. Both per this PRD's stability-beats-accuracy doctrine.
+
+## 6. Open items (wanted, not yet built)
 
 - Per-object litter detector (replaces whole-frame classification as the
   auto-reticle source; enables P3 reticles at range).
