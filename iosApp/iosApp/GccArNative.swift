@@ -199,11 +199,20 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     private static let reticlePoolSize = 3
     private static let reticleGroundOffset: Float = 0.02
     private static let reticleRingDiameter: Float = 0.28
-    private static let reticleFillBarWidth: Float = 0.22
-    private static let reticleFillBarDepth: Float = 0.045
-    private static let reticleFillBarHalfWidth: Float = reticleFillBarWidth / 2
-    private static let reticleFillBarZOffset: Float = reticleRingDiameter / 2 + 0.09
     private static let reticleRingTint = UIColor.white.withAlphaComponent(0.9)
+    // P3 reticle states (plan Task 1.4). The arc is the radial progress
+    // sweep replacing the old linear fill bar's VISUAL (the transform-based
+    // bar math stays gone; progress renders as 13 pre-baked arc textures
+    // swapped per bucket — no material-opacity animation, iOS-17-safe).
+    private static let reticleArcDiameter: Float = 0.34
+    private static let reticleArcBuckets = 12
+    /// "Move closer" hint: a SCANNING reticle farther than the identify
+    /// envelope reads dim with a slow breath — the item is seen but too far
+    /// to classify (env-scan PRD P3). Hysteresis so GPS/pose jitter at the
+    /// boundary doesn't strobe the style; matches the 4 m tap/auto envelope.
+    private static let reticleFarEnterMeters: Float = 4.5
+    private static let reticleFarExitMeters: Float = 4.0
+    private static let reticleFarTint = UIColor.white.withAlphaComponent(0.35)
     // Matches the existing "confirmed = green" litter color language (the
     // grid line tint / confirmed marker color elsewhere in this file).
     private static let reticleCompleteTint = UIColor(red: 0.20, green: 0.85, blue: 0.45, alpha: 0.95)
@@ -917,23 +926,46 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
                 reticle.ring.transform = Transform(scale: SIMD3(repeating: 1))
                 reticle.ring.model?.materials = [reticle.ringDefaultMaterial]
                 reticle.state = 0
+                reticle.far = false
+                reticle.fillBucket = -1
+                reticle.burstRing.stopAllAnimations()
+                reticle.burstRing.isEnabled = false
                 reticle.ring.isEnabled = true
                 reticle.fillBar.isEnabled = true
                 animateIn(reticle.ring)
             }
+            // "Move closer" hint (Task 1.4): a SCANNING reticle beyond the
+            // identify envelope reads dim with a slow breath. Derived here
+            // from the LIVE camera distance (no protocol change — Kotlin
+            // keeps sending 0/1), with enter/exit hysteresis so pose jitter
+            // at the boundary doesn't strobe the style.
+            let camDistance = simd_length(
+                arView.cameraTransform.translation - reticle.anchor.position
+            )
+            if reticle.far {
+                if camDistance < Self.reticleFarExitMeters { reticle.far = false }
+            } else if camDistance > Self.reticleFarEnterMeters {
+                reticle.far = true
+            }
+            let effectiveState: Int64 = (state == 0 && reticle.far) ? 3 : state
             // State styling: 1 = AWAITING_INTENT — the ring is the visual
             // anchor of the "is this litter?" prompt, so it must read as a
             // QUESTION (amber, gentle breathing pulse), not an in-progress
-            // scan. Transitions are edge-triggered so the pulse animation
-            // isn't restarted every 750ms tick.
-            if state != reticle.state {
-                reticle.state = state
+            // scan. 3 = FAR-HINT (Swift-derived above) — dim ring, slow
+            // breath: "seen, move closer to identify". Transitions are
+            // edge-triggered so pulses aren't restarted every 750ms tick.
+            if effectiveState != reticle.state {
+                reticle.state = effectiveState
                 reticle.ring.stopAllAnimations()
                 reticle.ring.transform = Transform(scale: SIMD3(repeating: 1))
-                if state == 1 {
+                switch effectiveState {
+                case 1:
                     reticle.ring.model?.materials = [reticle.ringIntentMaterial]
                     addPulse(to: reticle.ring, scale: 1.08, duration: 0.8)
-                } else {
+                case 3:
+                    reticle.ring.model?.materials = [reticle.ringFarMaterial]
+                    addPulse(to: reticle.ring, scale: 1.04, duration: 1.5)
+                default:
                     reticle.ring.model?.materials = [reticle.ringDefaultMaterial]
                 }
             }
@@ -961,6 +993,15 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
             reticle.ring.stopAllAnimations()
             reticle.ring.transform = Transform(scale: SIMD3(repeating: 1))
             pulseOnce(reticle.ring, scale: 1.15, duration: 0.3)
+            // Completion burst (Task 1.4): the thin stroke ring scales out
+            // over the reticle — transform-only; re-hidden in the settle
+            // closure below (same generation guard).
+            reticle.burstRing.stopAllAnimations()
+            reticle.burstRing.transform = Transform(scale: SIMD3(repeating: 0.9))
+            reticle.burstRing.isEnabled = true
+            var burstEnd = reticle.burstRing.transform
+            burstEnd.scale = SIMD3(repeating: 2.1)
+            reticle.burstRing.move(to: burstEnd, relativeTo: reticle.ring, duration: 0.45, timingFunction: .easeOut)
             // Stale-callback guard: capture the PooledReticle OBJECT (never
             // an index into `reticlePool` — `teardown()` empties the array,
             // so a deferred closure firing after the user exits the scan
@@ -990,6 +1031,8 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
                 guard reticle.generation == generationAtSchedule else { return }
                 reticle.ring.stopAllAnimations()
                 reticle.ring.transform = Transform(scale: SIMD3(repeating: 1))
+                reticle.burstRing.stopAllAnimations()
+                reticle.burstRing.isEnabled = false
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
                 guard let self, reticle.generation == generationAtSchedule else { return }
@@ -1023,15 +1066,25 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
         let anchor: AnchorEntity
         let ring: ModelEntity
         let fillBar: ModelEntity
+        /// One-shot completion burst — a thin ring that scales out over the
+        /// reticle when the scan completes (Task 1.4). Disabled at rest.
+        let burstRing: ModelEntity
         let ringDefaultMaterial: PhysicallyBasedMaterial
         let ringCompleteMaterial: PhysicallyBasedMaterial
         /// Amber "is this litter?" styling — see `setScanReticle`'s state 1.
         let ringIntentMaterial: PhysicallyBasedMaterial
+        /// Dim "seen but too far to identify" styling (Task 1.4).
+        let ringFarMaterial: PhysicallyBasedMaterial
         var candidateId: Int64?
         var phase: Phase = .active
-        /// Last applied state code (0 scanning / 1 awaiting-intent) —
-        /// state styling is edge-triggered on changes only.
+        /// Last applied EFFECTIVE state (0 scanning / 1 awaiting-intent /
+        /// 3 far-hint, Swift-derived) — state styling is edge-triggered.
         var state: Int64 = 0
+        /// Camera-distance hysteresis latch for the far-hint style.
+        var far = false
+        /// Last applied arc bucket — the progress texture swaps only on
+        /// bucket changes, not every 750 ms tick.
+        var fillBucket = -1
         /// Bumped every time this slot's occupant changes — bind (new id),
         /// release (clear/dissolve), or forced eviction. Deferred callbacks
         /// (the completeScanReticle hold + pulse-settle, the dissolve's
@@ -1045,16 +1098,20 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
             anchor: AnchorEntity,
             ring: ModelEntity,
             fillBar: ModelEntity,
+            burstRing: ModelEntity,
             ringDefaultMaterial: PhysicallyBasedMaterial,
             ringCompleteMaterial: PhysicallyBasedMaterial,
-            ringIntentMaterial: PhysicallyBasedMaterial
+            ringIntentMaterial: PhysicallyBasedMaterial,
+            ringFarMaterial: PhysicallyBasedMaterial
         ) {
             self.anchor = anchor
             self.ring = ring
             self.fillBar = fillBar
+            self.burstRing = burstRing
             self.ringDefaultMaterial = ringDefaultMaterial
             self.ringCompleteMaterial = ringCompleteMaterial
             self.ringIntentMaterial = ringIntentMaterial
+            self.ringFarMaterial = ringFarMaterial
         }
     }
 
@@ -1092,20 +1149,56 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
             intentMaterial.metallic = 0.0
             intentMaterial.blending = .transparent(opacity: .init(floatLiteral: 1.0))
 
+            var farMaterial = PhysicallyBasedMaterial()
+            farMaterial.baseColor = .init(tint: Self.reticleFarTint)
+            farMaterial.roughness = 1.0
+            farMaterial.metallic = 0.0
+            farMaterial.blending = .transparent(opacity: .init(floatLiteral: 1.0))
+
+            // Radial progress arc (Task 1.4): a tinted plane over the ring
+            // whose opacity mask is the pre-baked arc for the current
+            // progress bucket — replaces the old off-ring linear bar so the
+            // sweep reads as part of the reticle itself.
             var fillMaterial = PhysicallyBasedMaterial()
-            fillMaterial.baseColor = .init(tint: Self.reticleFillTint)
+            fillMaterial.baseColor = .init(tint: Self.reticleFillTint.withAlphaComponent(1))
+            fillMaterial.emissiveColor = .init(color: Self.reticleFillTint.withAlphaComponent(1))
+            fillMaterial.emissiveIntensity = 1.5
             fillMaterial.roughness = 1.0
             fillMaterial.metallic = 0.0
-            fillMaterial.blending = .transparent(opacity: .init(floatLiteral: 1.0))
+            if let mask = Self.reticleArcMasks[0] {
+                fillMaterial.blending = .transparent(opacity: .init(scale: 0.95, texture: .init(mask)))
+            } else {
+                fillMaterial.blending = .transparent(opacity: .init(floatLiteral: 0.0))
+            }
             let fillBar = ModelEntity(
-                mesh: .generatePlane(width: Self.reticleFillBarWidth, depth: Self.reticleFillBarDepth),
+                mesh: .generatePlane(width: Self.reticleArcDiameter, depth: Self.reticleArcDiameter),
                 materials: [fillMaterial]
             )
-            // Sits just outside the ring's footprint (offset along Z) and a
-            // hair above it (0.002m) so the two coplanar ground quads never
-            // z-fight.
-            fillBar.position = SIMD3(0, 0.002, Self.reticleFillBarZOffset)
+            // Centered on the ring, a hair above (0.002m) so the coplanar
+            // ground quads never z-fight.
+            fillBar.position = SIMD3(0, 0.002, 0)
             ring.addChild(fillBar)
+
+            // Completion burst (Task 1.4): thin stroke ring, disabled at
+            // rest; completeScanReticle enables it and scales it out.
+            var burstMaterial = PhysicallyBasedMaterial()
+            burstMaterial.baseColor = .init(tint: Self.reticleCompleteTint.withAlphaComponent(1))
+            burstMaterial.emissiveColor = .init(color: Self.reticleCompleteTint.withAlphaComponent(1))
+            burstMaterial.emissiveIntensity = 2.0
+            burstMaterial.roughness = 1.0
+            burstMaterial.metallic = 0.0
+            if let mask = Self.reticleBurstMask {
+                burstMaterial.blending = .transparent(opacity: .init(scale: 0.9, texture: .init(mask)))
+            } else {
+                burstMaterial.blending = .transparent(opacity: .init(floatLiteral: 0.0))
+            }
+            let burstRing = ModelEntity(
+                mesh: .generatePlane(width: Self.reticleRingDiameter, depth: Self.reticleRingDiameter),
+                materials: [burstMaterial]
+            )
+            burstRing.position = SIMD3(0, 0.004, 0)
+            burstRing.isEnabled = false
+            ring.addChild(burstRing)
 
             let anchor = AnchorEntity(world: SIMD3<Float>(0, 0, 0))
             anchor.addChild(ring)
@@ -1115,9 +1208,11 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
                 anchor: anchor,
                 ring: ring,
                 fillBar: fillBar,
+                burstRing: burstRing,
                 ringDefaultMaterial: ringMaterial,
                 ringCompleteMaterial: completeMaterial,
-                ringIntentMaterial: intentMaterial
+                ringIntentMaterial: intentMaterial,
+                ringFarMaterial: farMaterial
             ))
         }
     }
@@ -1204,14 +1299,20 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     /// only ever touches `transform`), scaled by `progress` on X, and
     /// shifted left by the shrunk half-width so growth reads left-to-right
     /// instead of from the center.
+    /// Radial progress (Task 1.4): swap the fill plane's opacity mask to the
+    /// pre-baked arc for the current bucket. Edge-triggered on bucket change
+    /// — the Kotlin tick streams every 750ms but the material only rebuilds
+    /// when the sweep visibly advances.
     private func applyReticleFill(_ reticle: PooledReticle, progress: Float) {
         let clamped = min(max(progress, 0), 1)
-        var t = reticle.fillBar.transform
-        // Never fully zero — a literal 0 scale would leave the bar mesh
-        // permanently degenerate-invisible instead of just "empty-looking".
-        t.scale.x = max(clamped, 0.02)
-        t.translation.x = -(1 - clamped) * Self.reticleFillBarHalfWidth
-        reticle.fillBar.transform = t
+        let bucket = Int((clamped * Float(Self.reticleArcBuckets)).rounded())
+        guard bucket != reticle.fillBucket else { return }
+        reticle.fillBucket = bucket
+        guard let mask = Self.reticleArcMasks[bucket],
+              var material = reticle.fillBar.model?.materials.first as? PhysicallyBasedMaterial
+        else { return }
+        material.blending = .transparent(opacity: .init(scale: 0.95, texture: .init(mask)))
+        reticle.fillBar.model?.materials = [material]
     }
 
     /// Mirrors `dissolveGuidanceBeacon`'s shrink-out, but the reticle is
@@ -1850,6 +1951,56 @@ final class RealityKitArSurface: NSObject, ArNativeSurface, ARSessionDelegate {
     /// interval. Diagonals add an X per cell for the denser "vector scan"
     /// look. Mirrors the Kotlin SceneKit texture (ArEnvScan.kt's
     /// makeGridTexture) exactly — keep them visually identical.
+    /// Opacity masks for the reticle's radial progress sweep (Task 1.4):
+    /// bucket k = a stroked arc from 12 o'clock sweeping clockwise k/N of
+    /// the circle, white on transparent, consumed as a `.raw` opacity
+    /// texture under a tinted base color (the grid-material pattern).
+    /// Pre-baked once — progress renders as a texture swap per bucket, so
+    /// there is no per-frame drawing and no material-opacity animation.
+    private static let reticleArcMasks: [TextureResource?] = (0...reticleArcBuckets).map {
+        makeArcMask(fraction: CGFloat($0) / CGFloat(reticleArcBuckets))
+    }
+
+    private static func makeArcMask(fraction: CGFloat) -> TextureResource? {
+        let side: CGFloat = 129
+        let stroke: CGFloat = 10
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: side, height: side))
+        let image = renderer.image { ctx in
+            guard fraction > 0.001 else { return }
+            let c = ctx.cgContext
+            c.setStrokeColor(UIColor.white.cgColor)
+            c.setLineWidth(stroke)
+            c.setLineCap(.round)
+            let start = -CGFloat.pi / 2
+            let path = UIBezierPath(
+                arcCenter: CGPoint(x: side / 2, y: side / 2),
+                radius: (side - stroke) / 2,
+                startAngle: start,
+                endAngle: start + min(fraction, 1) * 2 * .pi,
+                clockwise: true
+            )
+            c.addPath(path.cgPath)
+            c.strokePath()
+        }
+        guard let cg = image.cgImage else { return nil }
+        return try? TextureResource.generate(from: cg, options: .init(semantic: .raw))
+    }
+
+    /// Thin full-circle stroke — the completion burst ring's shape.
+    private static let reticleBurstMask: TextureResource? = {
+        let side: CGFloat = 129
+        let stroke: CGFloat = 5
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: side, height: side))
+        let image = renderer.image { ctx in
+            let c = ctx.cgContext
+            c.setStrokeColor(UIColor.white.cgColor)
+            c.setLineWidth(stroke)
+            c.strokeEllipse(in: CGRect(x: stroke / 2, y: stroke / 2, width: side - stroke, height: side - stroke))
+        }
+        guard let cg = image.cgImage else { return nil }
+        return try? TextureResource.generate(from: cg, options: .init(semantic: .raw))
+    }()
+
     private static func makeGridTexture(line: UIColor, lineWidth: CGFloat, diagonals: Bool = false) -> TextureResource? {
         let side: CGFloat = 129
         let third = side / 3
