@@ -1,6 +1,7 @@
 package com.gcc.app.di
 
 import com.gcc.app.viewmodel.AdminJobListViewModel
+import com.gcc.app.viewmodel.AffectedBlocksViewModel
 import com.gcc.app.viewmodel.DocumentUploadViewModel
 import org.koin.dsl.koinApplication
 import kotlin.test.Test
@@ -44,5 +45,21 @@ class AppModuleResolutionTest {
     fun adminJobListViewModelResolvesFromOfflineAppModule() {
         val koin = koinApplication { modules(offlineAppModule) }.koin
         assertNotNull(koin.get<AdminJobListViewModel>())
+    }
+
+    /** MapFullScreen injects this on arrival, and the dashboard-map tap
+     *  navigates there — so in demo/offline builds (forced on every
+     *  debuggable APK) an unregistered definition crashed the app on the
+     *  tap, reading as "the dot and route disappear" (Bug 3, build 188). */
+    @Test
+    fun affectedBlocksViewModelResolvesFromAppModule() {
+        val koin = koinApplication { modules(appModule) }.koin
+        assertNotNull(koin.get<AffectedBlocksViewModel>())
+    }
+
+    @Test
+    fun affectedBlocksViewModelResolvesFromOfflineAppModule() {
+        val koin = koinApplication { modules(offlineAppModule) }.koin
+        assertNotNull(koin.get<AffectedBlocksViewModel>())
     }
 }

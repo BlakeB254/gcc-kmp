@@ -81,6 +81,16 @@ fun ActiveJobScreen(
         }
     }
 
+    // Decline succeeded server-side: pop back HERE, on the composition's
+    // main thread. The ViewModel raises a flag rather than calling onBack
+    // from its background coroutine, where popping the Decompose stack crashes.
+    LaunchedEffect(uiState.declined) {
+        if (uiState.declined) {
+            viewModel.acknowledgeDeclined()
+            onBack()
+        }
+    }
+
     LaunchedEffect(uiState.jobStarted, uiState.jobCompleted, uiState.route?.id) {
         val routeIdToOpen = uiState.route?.id
         if (!scanAutoOpened && uiState.jobStarted && !uiState.jobCompleted && routeIdToOpen != null) {
@@ -209,7 +219,7 @@ fun ActiveJobScreen(
                                 Spacer(modifier = Modifier.height(8.dp))
                                 GccButton(
                                     text = if (uiState.isDeclining) "Declining..." else "Decline Assignment",
-                                    onClick = { viewModel.declineJob(onBack) },
+                                    onClick = { viewModel.declineJob() },
                                     variant = GccButtonVariant.OUTLINED,
                                     enabled = !uiState.isDeclining,
                                     isLoading = uiState.isDeclining,

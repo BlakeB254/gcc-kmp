@@ -6,6 +6,7 @@ import com.gcc.shared.serialization.LenientInstantSerializer
 import kotlinx.serialization.UseSerializers
 
 import kotlinx.datetime.Instant
+import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.Serializable
 
 // ─── Admin Response Models ──────────────────────────────────────────
@@ -73,8 +74,17 @@ data class UpdateRouteStatusRequest(val status: RouteStatus)
  */
 @Serializable
 data class AdminRoutePublishRequest(
+    // Omit these from the wire when unset. GccJson has encodeDefaults=true, so
+    // without @EncodeDefault(NEVER) an unset field serializes as an explicit
+    // `null`. The publish endpoint treats a present-but-null claimStatus as a
+    // supplied value and rejects it (400), so a plain "publish this route" call
+    // — which carries no claimStatus — would always fail. NEVER keeps the JSON
+    // to only the fields the admin actually set.
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
     val claimStatus: ClaimStatus? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
     val publishAt: Instant? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
     val unpublishAt: Instant? = null,
 )
 

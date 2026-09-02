@@ -31,7 +31,23 @@ data class ActiveJobUiState(
     val jobStarted: Boolean = false,
     val jobCompleted: Boolean = false,
     val isAdminMode: Boolean = false,
+    /** One-shot signal that a decline succeeded and the screen should pop.
+     * Consumed via [ActiveJobViewModel.acknowledgeDeclined] from a main-thread
+     * LaunchedEffect — navigation must never be driven from the background
+     * decline coroutine (Decompose navigation is main-thread-only). */
+    val declined: Boolean = false,
 )
+
+/** Pure state transition for a successful decline — the screen keys its
+ *  main-thread back-navigation off [ActiveJobUiState.declined]. */
+internal fun ActiveJobUiState.declineSucceeded(): ActiveJobUiState =
+    copy(
+        job = null,
+        isDeclining = false,
+        jobStarted = false,
+        jobCompleted = false,
+        declined = true,
+    )
 
 /**
  * Assignment lifecycle for an accepted job: load, GPS-gated start, decline,
@@ -55,7 +71,7 @@ class ActiveJobViewModel(
 
     fun loadJob(jobId: Int, routeId: Int) {
         scope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null, declined = false)
             try {
                 val route = apiClient.getRoute(routeId)
 
@@ -127,25 +143,32 @@ class ActiveJobViewModel(
         }
     }
 
-    fun declineJob(onDeclined: () -> Unit = {}) {
+    fun declineJob() {
         val job = _uiState.value.job ?: return
         scope.launch {
             _uiState.value = _uiState.value.copy(isDeclining = true, error = null)
             try {
                 apiClient.declineJob(job.id)
-                _uiState.value = _uiState.value.copy(
-                    job = null,
-                    isDeclining = false,
-                    jobStarted = false,
-                    jobCompleted = false,
-                )
-                onDeclined()
+                // Signal the screen to pop via its main-thread LaunchedEffect
+                // instead of invoking the navigation callback here: this
+                // coroutine runs on Dispatchers.Default, and popping the
+                // Decompose stack off the main thread crashes the app.
+                _uiState.value = _uiState.value.declineSucceeded()
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isDeclining = false,
                     error = e.message ?: "Failed to decline assignment",
                 )
             }
+        }
+    }
+
+    /** Clears the one-shot [ActiveJobUiState.declined] signal after the screen
+     *  has handled the back-navigation, so re-entering the (singleton) screen
+     *  does not immediately pop again. */
+    fun acknowledgeDeclined() {
+        if (_uiState.value.declined) {
+            _uiState.value = _uiState.value.copy(declined = false)
         }
     }
 

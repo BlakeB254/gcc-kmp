@@ -33,6 +33,8 @@ import com.gcc.app.viewmodel.PointsDashboardViewModel
 import com.gcc.app.viewmodel.RouteScanViewModel
 import com.gcc.app.viewmodel.SpotVerificationViewModel
 import com.gcc.app.viewmodel.SponsorWallViewModel
+import com.gcc.app.viewmodel.AffectedBlocksViewModel
+import com.gcc.shared.api.AffectedAreasRepository
 import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.cache.CaptureChunkStore
 import com.gcc.shared.cache.RouteCacheStore
@@ -85,6 +87,15 @@ val offlineAppModule = module {
     singleOf(::ImpactViewModel)
     singleOf(::SponsorWallViewModel)
     singleOf(::ArticlesViewModel)
+    // MapFullScreen injects AffectedBlocksViewModel (koinInject, throws if
+    // unbound). Debuggable builds force THIS module, so omitting it crashed
+    // the app on every dashboard-map tap → MapFullScreen (Bug 3, build 188).
+    // The offline GccApiClient (createOfflineApiClient above) satisfies the
+    // repo's dependency; polling just returns offline/empty affected blocks.
+    single { AffectedAreasRepository(get()) }
+    // Explicit single{} (not singleOf): the VM's defaulted PollingGate param
+    // must use its default, not be resolved from Koin. See AppModule.
+    single { AffectedBlocksViewModel(get()) }
     factory { RouteScanViewModel(get(), get(), get(), get(), get(), get()) }
     // See appModule: `factory`, not `single` — CameraManager owns a live
     // AVCaptureSession and must not be shared across screens.

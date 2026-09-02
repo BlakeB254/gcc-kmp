@@ -29,7 +29,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const body = await request.json().catch(() => ({}))
 
     let claimStatus = 'open' as 'closed' | 'open' | 'scheduled'
-    if (body?.claimStatus !== undefined) {
+    // Treat an absent OR explicitly-null claimStatus as "not supplied" and keep
+    // the default. A mobile "publish this route" call carries no claim status,
+    // and the client serializes that as `"claimStatus": null`; rejecting null
+    // here (via `!== undefined`) turned every plain publish into a 400.
+    if (body?.claimStatus != null) {
       const parsed = parseAdminClaimStatus(body.claimStatus)
       if (parsed === null) {
         return NextResponse.json({ error: 'claimStatus must be closed, open, or scheduled' }, { status: 400 })

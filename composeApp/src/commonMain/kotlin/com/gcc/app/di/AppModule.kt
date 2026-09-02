@@ -117,7 +117,11 @@ val appModule = module {
     singleOf(::ImpactViewModel)
     singleOf(::SponsorWallViewModel)
     single { AffectedAreasRepository(get()) }
-    singleOf(::AffectedBlocksViewModel)
+    // Explicit single{}, NOT singleOf: AffectedBlocksViewModel's second param
+    // (PollingGate) has a default, and singleOf tries to resolve it from Koin
+    // (NoDefinitionFoundException) instead of using the default — which crashed
+    // MapFullScreen on resolve in BOTH modules (Bug 3, build 188).
+    single { AffectedBlocksViewModel(get()) }
     singleOf(::ArticlesViewModel)
     factory { RouteScanViewModel(get(), get(), get(), get(), get(), get()) }
     // `factory`, not `single`: CameraManager owns a live AVCaptureSession on
