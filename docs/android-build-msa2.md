@@ -46,3 +46,34 @@ to whichever host runs adb:
 ```bash
 adb install -r ~/Android/apk/gcc-msa2-build/composeApp-debug.apk
 ```
+
+## Headless emulator QA on ms-a2 (no physical device)
+
+ms-a2 can run the app headless for Android QA — `/dev/kvm` is world-writable
+(`crw-rw-rw-`), so KVM acceleration needs no group membership or sudo.
+
+One-time:
+
+```bash
+# on ms-a2 (codexian@10.0.0.147)
+sdkmanager "emulator" "system-images;android-36;google_apis;x86_64"
+avdmanager create avd -n gcc-test -k "system-images;android-36;google_apis;x86_64" -d pixel_7
+```
+
+Boot + drive headless:
+
+```bash
+~/Android/Sdk/emulator/emulator -avd gcc-test \
+  -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader_indirect &
+adb wait-for-device
+until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; do sleep 2; done
+adb install -r ~/gcc-android/composeApp/build/outputs/apk/debug/composeApp-debug.apk
+adb shell input tap <x> <y>          # drive the UI
+adb exec-out screencap -p > shot.png # capture
+adb logcat -d > run-logcat.txt       # pull the log (crash stacks land here)
+```
+
+⚠ Debug builds force DEMO/OFFLINE mode (`MainActivity.kt` FLAG_DEBUGGABLE →
+`offlineAppModule`), so emulator QA exercises the offline module — the same
+path that surfaced the MapFullScreen Koin crash. Online-only DI gaps only
+show under a release-signed build or the real backend.
