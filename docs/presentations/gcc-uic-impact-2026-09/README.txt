@@ -1,5 +1,5 @@
 Global Community Cleaners — North Lawndale movement briefs
-September 2026  ·  for Steans Family Foundation partners & friends
+September 2026  ·  North Lawndale movement brief
 
 Files
   GCC-North-Lawndale-1-pager.pdf   One page, jam-packed. How to support + data + UIC 20 blocks.

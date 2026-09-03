@@ -81,6 +81,16 @@
   .feat .f { border: 1px solid #e2e8f0; border-radius: 4px; padding: 5px 6px; }
   .feat .f b { display: block; font-size: 7.4px; color: #14532d; margin-bottom: 2px; }
   .feat .f span { font-size: 6.5px; line-height: 1.28; color: #334155; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 5px; }
+  .pair .cell { border: 1px solid #e2e8f0; border-radius: 5px; overflow: hidden; }
+  .pair .cell img { width: 100%; height: 1.42in; object-fit: cover; display: block; background: #0b1220; }
+  .pair .cell .txt { padding: 5px 6px 6px; font-size: 6.7px; line-height: 1.28; color: #334155; }
+  .pair .cell .txt b { color: #14532d; }
+  .brandgrid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 4px; }
+  .brandgrid figure { margin: 0; border: 1px solid #e2e8f0; border-radius: 4px; overflow: hidden; }
+  .brandgrid img { width: 100%; height: 1.18in; object-fit: cover; display: block; }
+  .brandgrid figcaption { font-size: 5.8px; line-height: 1.15; color: #334155; padding: 3px 4px 4px; }
+  .brandgrid figcaption b { color: #14532d; }
 </style>
 </head>
 <body>
@@ -204,38 +214,41 @@
     <div class="f"><b>5. Heatmap + spots + bounties</b><span>Anyone can pin a mess. Neighbors verify. A $10+ bounty turns a dump into a paid job. Points, badges, leaderboards reward scans of never-seen or stale blocks.</span></div>
     <div class="f"><b>6. Digital twin (accountability)</b><span>158 sessions · 919+ R2 artifacts. Depth + pose + GPS fuse per-block 3D. Metric-accurate vs GPS. A sponsor’s $100 buys a cleanup; the twin is how nobody has to take our word for it.</span></div>
   </div>
-  <p class="tiny" style="margin-top:5px"><b>Pipeline:</b> iPhone (KMP + ARKit + on-device ID) → Cloudflare R2 (video/depth/photos) → Ktor scan control plane on NVIDIA DGX → Neon Postgres + Next.js (jobs, payouts, sponsors) → Stripe. <b>Android:</b> UIC is sponsoring a device so the majority of this neighborhood is not locked out of iOS. Graphene Gangway’s job is to keep that stack in community hands — education and empowerment, not a vendor flying in.</p>
-  <div class="ba ba4" style="margin-top:5px">
-    <figure><img src="assets/photos/money-breakdown.webp" alt="Where the $100 goes" style="object-fit:contain;background:#fff"><figcaption>$100 in = $100 out. 0% overhead on the wage.</figcaption></figure>
-    <figure><img src="assets/photos/spot-reporting.webp" alt="Resident photographing a dump"><figcaption>Spot report: photo + pin. User feature of the scan stack.</figcaption></figure>
-    <figure><img src="assets/photos/upsell-equipment.jpg" alt="Branded GCC cart and brooms"><figcaption>Add-on: branded carts/brooms fund ops, not wages.</figcaption></figure>
-    <figure><img src="assets/photos/after-bags-held.jpg" alt="Resident standing with a filled bag"><figcaption>After: one resident, one bag, one paycheck.</figcaption></figure>
-  </div>
+  <p class="tiny" style="margin-top:4px"><b>Pipeline:</b> iPhone (KMP + ARKit + on-device ID) → Cloudflare R2 → Ktor on DGX → Neon/Next → Stripe. <b>Android:</b> UIC-sponsored device so this neighborhood is not locked to iOS. Graphene Gangway keeps the stack in community hands.</p>
 
-  <h2 class="bar">Issue #1 data: long-term solutions, not a cleanup forever-loop</h2>
-  <div class="row" style="grid-template-columns:1fr 1fr">
-    <div class="card">
-      <h3>Pattern 1 · Wind-driven fenceline accumulation</h3>
-      <div class="body tiny">Fencelines on vacant fields and lots catch disproportionate trash — not because residents dump there, because <b>wind funnels light debris</b> and nothing breaks the pattern. <b>Fix:</b> windbreak plantings or screen fabric on the worst lines + a cleanup cadence keyed to wind events. Recoverable infrastructure, not infinite bags.</div>
+  <h2 class="bar">Issue #1 data, on the map — pay for the bag, then stop the next pile</h2>
+  <div class="pair">
+    <div class="cell">
+      <img src="assets/photos/app-heatmap-phone.webp" alt="North Lawndale cleanliness heatmap on the GCC phone" style="object-fit:contain;background:#0b1220">
+      <div class="txt"><b>Pattern 1 · Heat along vacant-lot edges.</b> The red bloom is not “people don’t care.” It is <b>wind-driven fenceline accumulation</b> — light debris funnels into chain-link and sits. Zoomed-out heat names the cluster; the photo is what a $100 block actually faces. <b>Data fix:</b> windbreak plantings or screen fabric on the worst lines + a cleanup cadence after wind events — not infinite bags.</div>
     </div>
-    <div class="card">
-      <h3>Pattern 2 · Walkway corridors with no cans</h3>
-      <div class="body tiny">Major pedestrian corridors have <b>no public trash cans for blocks at a time</b>. Hotspot density is measurably higher than zones with receptacles. <b>Fix:</b> targeted bins at high-foot-traffic corners — city ask, property-owner partnership, or a sponsored-bin program. We can name the corridors. We have the photos.</div>
+    <div class="cell">
+      <img src="assets/photos/before-fenceline.jpg" alt="Wind-driven trash along a fenceline">
+      <div class="txt"><b>Same pattern, street scale.</b> This is the field evidence behind the heat. A forever-loop of $100 blocks here is the wrong spend. A $40 screen + a post-wind route is the right one. We can name the fences. We have the GPS.</div>
     </div>
   </div>
-  <p class="tiny" style="margin-top:4px">That is the differentiator for a Steans-shaped funder: we pay people <i>and</i> we produce the evidence layer that tells the City, UIC Great Cities, and block clubs where a $40 can would outperform another $100 forever.</p>
+  <div class="pair">
+    <div class="cell">
+      <img src="assets/photos/corridor-map.png" alt="Roosevelt Road corridor with cleaned blocks in green" style="object-fit:contain;background:#f8fafc">
+      <div class="txt"><b>Pattern 2 · Corridors without cans.</b> Roosevelt is the named corridor (green = UIC-funded cleaned blocks). Hotspot density is higher on pedestrian stretches with <b>no public trash can for blocks at a time</b>. <b>Data fix:</b> bins at high-foot-traffic corners — city ask, property owner, or a sponsored-bin add-on. A $40 can beats another $100 forever.</div>
+    </div>
+    <div class="cell">
+      <img src="assets/photos/before-vacant-dump.jpg" alt="Illegal dumping on vacant land along a walkway">
+      <div class="txt"><b>Same pattern, vacant-lot dump on a walkway.</b> Construction debris lands where there is no receptacle and no steward. The map tells us <i>which</i> corners; the photo tells us <i>what</i> a bin + a paid resident would stop. We clean <i>and</i> we hand the City / UIC Great Cities / block clubs a punch list.</div>
+    </div>
+  </div>
 
   <h2 class="bar">Why the academic record says invest in the people on the block</h2>
   <div class="row" style="grid-template-columns:1fr 1fr 1fr">
     <div class="card"><h3>Branas RCT · Penn</h3><div class="body tiny">Cluster-randomized lots in Philadelphia (PNAS, JAMA Network Open): greened vs trash-removal-only vs control. <b>29.1% drop in gun assaults</b>. <b>41.5% fewer depression reports</b>. <b>68.7%</b> for low-income residents. Municipal tax ROI <b>$7.43</b> per public dollar on greening.</div></div>
     <div class="card"><h3>Sampson · Chicago</h3><div class="body tiny">Collective efficacy — whether neighbors feel any agency over their block — predicts ~<b>40% lower crime</b> even when income, race, and visible disorder match. A paid neighbor with a verified before/after is efficacy with a receipt.</div></div>
-    <div class="card"><h3>This neighborhood</h3><div class="body tiny"><b>20.7-year</b> life-expectancy gap (Loop 87.3 vs West Garfield Park 66.6). Black Chicagoans died <b>10.6 years</b> earlier (CDPH 2023). North Lawndale ~<b>3×</b> city violent-crime rate (UIC Great Cities Institute, 2022). Steans has been here since <b>1996</b> on jobs, schools, safety. We are the block-wage layer of that same fight.</div></div>
+    <div class="card"><h3>This neighborhood</h3><div class="body tiny"><b>20.7-year</b> life-expectancy gap (Loop 87.3 vs West Garfield Park 66.6). Black Chicagoans died <b>10.6 years</b> earlier (CDPH 2023). North Lawndale ~<b>3×</b> city violent-crime rate (UIC Great Cities Institute, 2022). We are the block-wage layer of that same fight.</div></div>
   </div>
 
   <h2 class="bar">Relationships the $100 starts — and the neighbor who equipped the first crews</h2>
   <div class="row" style="grid-template-columns:1.05fr .95fr">
     <div class="need">
-      <b>Fields of Dreams Chicago — first in-kind gift, May 13, 2026, ~$500.</b> Founder James Fields left 3 boxes of gloves, 3 shovels, 4 stainless dustpan-and-broom sets, 2 push brooms, and a 30-pack of pickup sticks at the <b>UIC Neighborhood Center</b>. They run Saturday Neighborhood Nurturers at <b>North Lawndale College Prep</b> — a school Steans helped found — serving Black and Latinx youth 11–15. While GCC pays this generation to steward blocks, Fields of Dreams is raising the next one. <b>Still not covered by in-kind:</b> rakes, contractor bags, high-vis vests, wheelbarrows, pressure washer, replacement gloves — plus every dollar that is not a physical tool (Stripe, insurance, phones, Android, reconstruction compute, people).
+      <b>Fields of Dreams Chicago — first in-kind gift, May 13, 2026, ~$500.</b> Founder James Fields left 3 boxes of gloves, 3 shovels, 4 stainless dustpan-and-broom sets, 2 push brooms, and a 30-pack of pickup sticks at the <b>UIC Neighborhood Center</b>. They run Saturday Neighborhood Nurturers at <b>North Lawndale College Prep</b>, serving Black and Latinx youth 11–15. While GCC pays this generation to steward blocks, Fields of Dreams is raising the next one. <b>Still not covered by in-kind:</b> rakes, contractor bags, high-vis vests, wheelbarrows, pressure washer, replacement gloves — plus every dollar that is not a physical tool (Stripe, insurance, phones, Android, reconstruction compute, people).
     </div>
     <div class="tiny">
       <b>What a paycheck buys besides a clean curb.</b> The 20 UIC residents are not a one-off crew. They are the first people we can call for events, deeper cleans, youth/elder pairing, and Graphene Gangway tech sessions. Fast income in a neighborhood where living-wage work is scarce is how you earn the right to talk about “opportunities.” Shaquille’s bet: if the founder still has to stack part-time jobs, the kids watching do not believe community work is a career. Operating support that pays him to go full-time is a signal, not a perk.
@@ -271,7 +284,7 @@
   </div>
 
   <h2 class="bar">Track A — Community labor. 100% of this money is a resident paycheck. Tax-deductible.</h2>
-  <p class="tiny">This is the gift UIC made. It is also the gift a Steans partner can make at any size. <b>No platform fee. $100 donated = $100 earned.</b> Add-ons are a separate cart — they never skim the wage.</p>
+  <p class="tiny">This is the gift UIC made, and the gift any neighbor, church, clinic, or business can make at any size. <b>No platform fee. $100 donated = $100 earned.</b> Add-ons are a separate cart — they never skim the wage.</p>
   <table style="margin-top:4px">
     <thead><tr><th>Tier</th><th>Gift</th><th>Blocks / people paid</th><th>What you get back (recognition + proof)</th></tr></thead>
     <tbody>
@@ -284,37 +297,45 @@
   </table>
   <p class="tiny" style="margin-top:3px"><b>Recurring:</b> weekly / biweekly / monthly keeps the pipeline paid. <b>Team cleans:</b> 2 workers $200, 3 workers $300 (each still gets $100). <b>Time:</b> standard ≤4h; +2h = +$50 to worker; full day 8h = +$100 to worker. <b>Volume discounts apply to add-ons only</b> (10–49 blocks 5%, 50–99 10%, 100+ 15%). Worker pay never discounts.</p>
 
-  <h2 class="bar">Track B — Branding, services, events, media. This is how GCC itself stays open and expands.</h2>
-  <p class="tiny">These are the SKUs on <b>globalcommunitycleaners.org/sponsor/calculator</b> (Build Custom Package) and the For Sponsors tab of How It Works. They fund Android, insurance, Stripe, remaining supplies, reconstruction, and — if we get there — a founder salary so Shaquille can stop stacking part-time jobs.</p>
-
-  <div class="pack">
-    <img src="assets/photos/upsell-worker-branding.jpg" alt="GCC branded vest">
-    <div class="txt">
-      <h4>1. Blocks + Branding (worker, equipment, street, digital)</h4>
-      <p><b>Worker:</b> vests $15 · shirts $12 · hats $8 · full kit $30/block. <b>Equipment:</b> brooms $10 · rakes $10 · branded bags $5 · carts $25 · full kit $40. <b>Street:</b> “cleaned by [Sponsor]” yard signs $25 · banners $50 · A-frames $35 · sidewalk stencil $75 · chalk art $100. <b>Digital:</b> social tag $10 · logo on photos $15 · 15-sec thank-you clip $50 · IG story $25. Your logo on the people, the tools, and the block — while 100% of the wage still hits the resident.</p>
-    </div>
+  <h2 class="bar">Track B — Same cleanup, four orgs. Live calculator mockups from /sponsor/calculator</h2>
+  <p class="tiny">Add-ons never skim the $100 wage. They put a partner’s name on the vest, the cart, the yard sign, the tent, and the before/after post — and that cart is what funds Android, insurance, Stripe, leftover supplies, and (if we get there) a founder salary so Shaquille can stop stacking part-time jobs. These four are the co-brand examples on the site: pharmacy, grocer, café, youth program.</p>
+  <div class="brandgrid" style="margin-top:5px">
+    <figure>
+      <img src="assets/photos/brand-vest-delkar.jpg" alt="GCC vest co-branded with Del Kar Pharmacy">
+      <figcaption><b>Del-Kar Pharmacy</b> — worker vest. “Healthy Blocks by Del Kar.” Vests $15 / kit $30.</figcaption>
+    </figure>
+    <figure>
+      <img src="assets/photos/brand-vest-barneys.jpg" alt="GCC vest co-branded with Barney's New Life Health Foods">
+      <figcaption><b>Barney’s New Life</b> — worker vest. “New Life in the Streets.” Same SKU, different org.</figcaption>
+    </figure>
+    <figure>
+      <img src="assets/photos/brand-sign-monday.jpg" alt="Monday Morning Street Cleaners yard sign with GCC">
+      <figcaption><b>Monday Coffee</b> — street sign. $25/block. Name on the grass, not on the wage.</figcaption>
+    </figure>
+    <figure>
+      <img src="assets/photos/brand-event-cubs.jpg" alt="Cubs Clean the Block event tent powered by GCC">
+      <figcaption><b>Youth program tent</b> — event crew $300–$1,500. Co-branded block party.</figcaption>
+    </figure>
   </div>
-  <div class="pack">
-    <img src="assets/photos/upsell-services.jpg" alt="Cleaned by GCC partnership plaque">
-    <div class="txt">
-      <h4>2. Services (enhanced, seasonal, green, business engagement)</h4>
-      <p><b>Enhanced:</b> deep clean +$50 · pressure wash +$150 · graffiti +$200 · illegal dumping +$300. <b>Seasonal:</b> snow $75 · leaves $50 · spring $100. <b>Green:</b> landscaping $100 · tree wells $75 · vacant lot $200/mo · garden plot $150. <b>Business engagement</b> (worker consent): flyers $50 · samples $75 · QR cards $30 · card drop $40 — with a small worker bonus on each. This is how a sponsor co-brands a campaign instead of a one-off bag.</p>
-    </div>
+  <div class="brandgrid" style="margin-top:4px">
+    <figure>
+      <img src="assets/photos/brand-cart-delkar.jpg" alt="GCC cart wrapped for Del Kar Pharmacy">
+      <figcaption><b>Del-Kar cart</b> — equipment wrap $25–$40. Tools stay in the neighborhood.</figcaption>
+    </figure>
+    <figure>
+      <img src="assets/photos/brand-media-barneys.jpg" alt="Barney's New Life campaign film still with GCC crew">
+      <figcaption><b>Barney’s media</b> — photo $500–$7,500 / film $1k–$35k. Ops money, not wage money.</figcaption>
+    </figure>
+    <figure>
+      <img src="assets/photos/brand-ig-monday.jpg" alt="Instagram before and after tagged to Monday Coffee">
+      <figcaption><b>Monday Coffee IG</b> — digital $10–$50. Before/after tagged to the partner.</figcaption>
+    </figure>
+    <figure>
+      <img src="assets/photos/brand-sign-cubs.jpg" alt="Youth program street sign with GCC">
+      <figcaption><b>Youth program sign</b> — same street-ad SKU, different org. Side-by-side is the point.</figcaption>
+    </figure>
   </div>
-  <div class="pack">
-    <img src="assets/photos/upsell-street-sign.jpg" alt="Cleaned by GCC yard sign">
-    <div class="txt">
-      <h4>Street advertising + equipment (from the For Sponsors page)</h4>
-      <p>Yard signs, banners, A-frames, stencils, chalk art — plus branded brooms, rakes, bags, and carts. These are the photos on <b>/how-it-works?tab=sponsors</b> and the calculator’s Branding step. They are how a church, clinic, or Steans partner puts a name on a cleaned block without touching the $100 wage.</p>
-    </div>
-  </div>
-  <div class="pack">
-    <img src="assets/photos/upsell-events.jpg" alt="GCC Community Day tent">
-    <div class="txt">
-      <h4>3. Events + 4. Media (the campaign layer)</h4>
-      <p><b>Crews:</b> pop-up 2hr / 3 workers $300 · standard 4hr / 5 $500 · extended 8hr $900 · large 10 workers + supervisor $1,500. <b>Types:</b> block party $750 · festival $2,000/day · grand opening $500 · corporate volunteer day $1,000 · photo-op $750 · holiday (MLK, 4th) $1,200. <b>Photo:</b> basic $500 · standard $1,500 · premium/drone $3,500 · campaign series $7,500. <b>Video:</b> social clip $1,000 · thank-you $2,500 · 2–3 min impact $5,000 · 30-sec commercial $15,000 · 5–10 min brand film $35,000.</p>
-    </div>
-  </div>
+  <p class="tiny" style="margin-top:4px"><b>Also on the calculator:</b> Services — deep +$50 · pressure +$150 · graffiti +$200 · dumping +$300 · snow $75 · leaves $50 · landscaping $100 · vacant lot $200/mo. Events — pop-up $300 · standard $500 · large $1,500 · block party $750 · festival $2,000/day · holiday $1,200. Volume discounts 5/10/15% off add-ons only.</p>
 
   <div class="row" style="grid-template-columns:.9fr 1.1fr;margin-top:6px">
     <div>
