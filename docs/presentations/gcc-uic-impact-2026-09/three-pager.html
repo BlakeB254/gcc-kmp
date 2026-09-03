@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>GCC — North Lawndale Movement Brief (3 pages)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Montserrat:wght@700;800&display=swap" rel="stylesheet">
+<style>
+  @page { size: letter; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #fff; }
+  body { font-family: Inter, system-ui, sans-serif; color: #0f172a; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .page { width: 8.5in; height: 11in; padding: 0.26in 0.32in 0.2in; overflow: hidden; position: relative; page-break-after: always; }
+  .page:last-child { page-break-after: auto; }
+  h1, h2, h3 { font-family: Montserrat, Inter, sans-serif; }
+  .hdr { display: flex; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 3px solid #16a34a; padding-bottom: 5px; }
+  .hdr-left { display: flex; align-items: center; gap: 8px; }
+  .hdr img.logo { height: 34px; width: auto; }
+  .hdr .mark { font-size: 7.5px; letter-spacing: .16em; text-transform: uppercase; color: #15803d; font-weight: 800; }
+  .hdr .submark { font-size: 8.5px; color: #334155; font-weight: 600; margin-top: 1px; }
+  .uic-box { background: #0b1220; border-radius: 4px; padding: 4px 7px; }
+  .uic-box img { height: 26px; width: auto; display: block; }
+  .pg { font-size: 7px; font-weight: 800; color: #15803d; letter-spacing: .14em; text-transform: uppercase; }
+  h1 { font-size: 18.5px; line-height: 1.08; letter-spacing: -0.03em; margin-top: 6px; }
+  h1 em { color: #16a34a; font-style: normal; }
+  h2.bar { background: #14532d; color: #fff; font-size: 8.2px; letter-spacing: .12em; text-transform: uppercase; padding: 3px 7px; margin: 6px 0 5px; }
+  .lede { font-size: 8.2px; line-height: 1.34; color: #334155; margin-top: 4px; }
+  .lede b { color: #0f172a; }
+  .stats { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; margin-top: 6px; }
+  .stat { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px; padding: 4px 4px 5px; text-align: center; }
+  .stat .n { font-family: Montserrat, sans-serif; font-size: 12.5px; font-weight: 800; color: #14532d; line-height: 1; }
+  .stat .l { font-size: 6px; text-transform: uppercase; letter-spacing: .04em; color: #166534; font-weight: 700; margin-top: 2px; line-height: 1.15; }
+  .row { display: grid; gap: 6px; margin-top: 6px; }
+  .card { border: 1px solid #e2e8f0; border-radius: 5px; overflow: hidden; }
+  .card h3 { font-size: 8px; letter-spacing: .1em; text-transform: uppercase; background: #14532d; color: #fff; padding: 3px 6px; }
+  .card .body { padding: 5px 6px 6px; }
+  .tiny { font-size: 7px; line-height: 1.32; color: #334155; }
+  .tiny b { color: #0f172a; }
+  table { width: 100%; border-collapse: collapse; font-size: 6.6px; }
+  th { text-align: left; background: #14532d; color: #fff; padding: 3px 4px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; font-size: 6.1px; }
+  td { padding: 2.5px 4px; border-bottom: 1px solid #e2e8f0; vertical-align: top; line-height: 1.22; }
+  tr:nth-child(even) td { background: #f8fafc; }
+  .ba { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
+  .ba4 { grid-template-columns: repeat(4, 1fr); }
+  .ba figure { margin: 0; }
+  .ba img { width: 100%; height: 1.12in; object-fit: cover; display: block; }
+  .ba figcaption { font-size: 5.8px; color: #64748b; padding: 2px 1px 0; line-height: 1.15; }
+  .tag { display: inline-block; font-size: 6px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; padding: 1px 4px; border-radius: 2px; }
+  .tag-red { background: #fef2f2; color: #b91c1c; }
+  .tag-green { background: #dcfce7; color: #166534; }
+  .quote { background: #fefce8; border-left: 3px solid #ca8a04; padding: 5px 7px; font-size: 7.8px; line-height: 1.3; font-style: italic; color: #1c1917; }
+  .quote .who { font-style: normal; font-size: 6.4px; color: #78716c; font-weight: 600; display: block; margin-top: 2px; }
+  .leaders { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .leader { border: 1px solid #bbf7d0; background: #f8fafc; border-radius: 4px; padding: 5px 7px; }
+  .leader .role { font-size: 6.1px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: #15803d; }
+  .leader .nm { font-family: Montserrat, sans-serif; font-size: 9.5px; font-weight: 800; color: #14532d; }
+  .leader p { font-size: 6.8px; line-height: 1.28; color: #334155; margin-top: 2px; }
+  .leader p b { color: #0f172a; }
+  .maps { display: grid; grid-template-columns: .7fr 1fr; gap: 5px; }
+  .maps img { width: 100%; height: 2.05in; object-fit: cover; object-position: center top; display: block; background: #0b1220; }
+  .maps .cap { font-size: 6.3px; color: #64748b; padding: 3px 5px 4px; line-height: 1.22; }
+  .pack { display: grid; grid-template-columns: .42fr 1fr; gap: 6px; margin-top: 5px; border: 1px solid #e2e8f0; border-radius: 5px; overflow: hidden; }
+  .pack img { width: 100%; height: 1.12in; object-fit: cover; display: block; }
+  .pack .txt { padding: 5px 7px 6px; }
+  .pack h4 { font-size: 8.5px; color: #14532d; }
+  .pack p { font-size: 6.6px; line-height: 1.28; color: #334155; margin-top: 2px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
+  .chip { font-size: 6.1px; background: #ecfdf5; border: 1px solid #bbf7d0; color: #14532d; padding: 1.5px 5px; border-radius: 99px; font-weight: 600; }
+  .need { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 4px; padding: 5px 7px; font-size: 6.8px; line-height: 1.3; }
+  .need b { color: #9a3412; }
+  .qrrow { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+  .qr { text-align: center; }
+  .qr img { width: .56in; height: .56in; display: block; margin: 0 auto; }
+  .qr span { display: block; font-size: 5.7px; font-weight: 700; color: #14532d; margin-top: 2px; line-height: 1.15; }
+  .foot { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 5px; padding-top: 4px; border-top: 2px solid #16a34a; font-size: 6.1px; color: #475569; line-height: 1.25; }
+  .foot img { height: 22px; width: auto; }
+  ul.compact { margin: 2px 0 0 12px; }
+  ul.compact li { margin-bottom: 1.5px; }
+  .cols { display: grid; gap: 6px; }
+  .feat { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; }
+  .feat .f { border: 1px solid #e2e8f0; border-radius: 4px; padding: 5px 6px; }
+  .feat .f b { display: block; font-size: 7.4px; color: #14532d; margin-bottom: 2px; }
+  .feat .f span { font-size: 6.5px; line-height: 1.28; color: #334155; }
+</style>
+</head>
+<body>
+
+<!-- ===================== PAGE 1 · THE MOVEMENT ===================== -->
+<div class="page">
+  <div class="hdr">
+    <div class="hdr-left">
+      <img class="logo" src="assets/photos/gcc-logo.png" alt="Global Community Cleaners">
+      <div>
+        <div class="mark">North Lawndale movement brief · 3 pages</div>
+        <div class="submark">Page 1 of 3 · Proof, people, and the King through-line · Sept 2026</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div class="pg">01 / 03</div>
+      <div class="uic-box"><img src="assets/photos/uic-logo.webp" alt="UIC Community Collaboration"></div>
+    </div>
+  </div>
+
+  <h1>Sixty years. Two blocks of distance.<br><em>Same neighborhood. Paid work. Verified streets.</em></h1>
+  <p class="lede">
+    On <b>January 26, 1966</b>, Dr. Martin Luther King Jr. carried his bags up to <b>1550 S. Hamlin Ave</b> and opened the Chicago Freedom Movement’s “action phase” — housing and economic opportunity on these same West Side blocks. The Summit Agreement that followed fed the <b>1968 Fair Housing Act</b>. Today Global Community Cleaners NFP sits at <b>1844 S. Harding Ave, 2nd Floor</b> — a <b>six-block walk</b>. We are not a volunteer litter day. We are a <b>resident-powered cleanup economy</b>: sponsors fund a block at <b>$100</b>, a neighbor claims it, GPS + photos + timestamps prove it, Stripe pays <b>100% of that $100</b> to the person who did the work. <b>GCC turns trash to data.</b> The stack that makes that true was built in-neighborhood.
+  </p>
+
+  <div class="stats">
+    <div class="stat"><div class="n">20/100</div><div class="l">Pilot blocks done</div></div>
+    <div class="stat"><div class="n">$2,000</div><div class="l">Wages on the street</div></div>
+    <div class="stat"><div class="n">100%</div><div class="l">Of $100 to worker</div></div>
+    <div class="stat"><div class="n">122</div><div class="l">Workers enrolled</div></div>
+    <div class="stat"><div class="n">15</div><div class="l">Sponsors live</div></div>
+    <div class="stat"><div class="n">110+</div><div class="l">Hotspots mapped</div></div>
+    <div class="stat"><div class="n">158</div><div class="l">Scan sessions</div></div>
+    <div class="stat"><div class="n">~1–2 t</div><div class="l">Litter estimate*</div></div>
+  </div>
+
+  <h2 class="bar">Who is running this — a North Lawndale founder and a North Lawndale CTO</h2>
+  <div class="leaders">
+    <div class="leader">
+      <div class="role">Founder · Global Community Cleaners</div>
+      <div class="nm">Shaquille Tate</div>
+      <p>Lifelong North Lawndale resident — born at Mt. Sinai, raised on the blocks from <b>15th Street to Ridgeway</b>. His dream is simple and local: <b>solve the trash problem in this community and create opportunities for the residents at the same time</b>. Elders and youth, $100 a block, on the street they already know. He still works part-time jobs to keep GCC standing. Unrestricted operating support — never taken from worker pay — is how a North Lawndale founder gets to do this full-time, and how the neighborhood sees that pursuing the community’s betterment can actually be a career here.</p>
+    </div>
+    <div class="leader">
+      <div class="role">CTO · Graphene Gangway</div>
+      <div class="nm">Blake Bullard</div>
+      <p>On a mission to <b>use technology to solve community-based issues through community education and empowerment</b> with <b>Graphene Gangway</b> (graphenegangway.com) — a North Lawndale digital shop whose tagline is “community-powered technology innovation.” <b>GCC turns trash to data</b> (photos, GPS, LiDAR, heatmaps, a digital twin). <b>Graphene Gangway turns the urban community’s hustle toward tech</b> and <b>incentivizes solving real community problems with it</b> — the app, the payouts, the scan pipeline, the public map. Same zip code. Two layers of the same bet.</p>
+    </div>
+  </div>
+
+  <div class="row" style="grid-template-columns:1.12fr .88fr;margin-top:6px">
+    <div class="card">
+      <h3>Zoom out: the heatmap · Zoom in: 20 UIC-funded green segments</h3>
+      <div class="maps">
+        <div>
+          <img src="assets/photos/app-heatmap-phone.webp" alt="GCC app heatmap of North Lawndale">
+          <p class="cap">Neighborhood heat from 110+ resident spots (photo + GPS + time). Dense red = repeat dumping, not “people don’t care.” Close-zoom renders severity, not just pin count.</p>
+        </div>
+        <div>
+          <img src="assets/photos/corridor-map.png" alt="Roosevelt corridor cleaned blocks" style="object-fit:contain;background:#f8fafc">
+          <p class="cap">Roosevelt Rd corridor in the live app. Every green bar is a funded, cleaned, verified block. UIC’s $2,000 converted 20 residents into 20 paychecks. 80 of the 100-block pilot remain. ~1,600 side streets after that.</p>
+        </div>
+      </div>
+    </div>
+    <div>
+      <p class="quote">“What if somebody could get all these kids to clean up their block? And if they were to clean up their block, to get paid to clean up their block.” <span class="who">— Shaquille Tate, 2026 radio · the sentence GCC is built on</span></p>
+      <p class="quote" style="margin-top:5px">“I’m employing elders and I’m employing youth and I’m paying them a hundred dollars to clean up their blocks… This is more than just picking up trash.” <span class="who">Participants approved sharing these photos; names stay private unless they ask otherwise. The pride is in the haul, the vest, the tools, the curb.</span></p>
+      <p class="tiny" style="margin-top:5px"><b>UIC Office of Community Collaboration</b> is Gold on the honor wall ($2,000+). Their gift funded the first 20 blocks at $100 each — and they are <b>sponsoring an Android device</b> so we leave iOS-only and ship on the phones North Lawndale actually carries. Live counters also show <b>122 workers enrolled, 15 sponsors, $2,018 raised</b>.</p>
+    </div>
+  </div>
+
+  <div class="row" style="grid-template-columns:1fr 1fr;margin-top:6px">
+    <div>
+      <span class="tag tag-red">Before · worst of the messes we mapped</span>
+      <div class="ba" style="margin-top:3px">
+        <figure><img src="assets/photos/before-vacant-dump.jpg" alt="Vacant lot dump"><figcaption>Construction debris, vacant land</figcaption></figure>
+        <figure><img src="assets/photos/before-debris-boards.jpg" alt="Dumped boards"><figcaption>Illegal dump, particle board</figcaption></figure>
+        <figure><img src="assets/photos/before-fenceline.jpg" alt="Fenceline trash"><figcaption>Wind-driven fenceline (Pattern 1)</figcaption></figure>
+      </div>
+    </div>
+    <div>
+      <span class="tag tag-green">After · residents, bags, tools, same morning</span>
+      <div class="ba" style="margin-top:3px">
+        <figure><img src="assets/photos/after-bags-curb.jpg" alt="Bags at curb"><figcaption>~8–10 bags, one block, one cart</figcaption></figure>
+        <figure><img src="assets/photos/after-rake-vest.jpg" alt="Resident with tools"><figcaption>Rake, broom, vest, pride</figcaption></figure>
+        <figure><img src="assets/photos/after-bags-row.jpg" alt="Grabber and bags"><figcaption>Safety vest + grabber + haul</figcaption></figure>
+      </div>
+    </div>
+  </div>
+  <p class="tiny" style="margin-top:4px">*Trash estimate from the verification photos, not a scale: heavier lots 8–12 contractor bags, lighter sidewalks 1–4. Corridor visual count <b>≈ 100–180 bags ≈ 1–2 tons</b> at 15–25 lb/bag. Typical job 2–3 hours, 4-hour cap, payout 15–30 minutes after approval (Stripe, 24–48h to bank).</p>
+
+  <div class="foot">
+    <div style="display:flex;align-items:center;gap:8px">
+      <img src="assets/photos/gcc-logo.png" alt="GCC">
+      <div>Global Community Cleaners NFP · 1844 S. Harding Ave, 2nd Fl · Chicago, IL 60623 · EIN 39-3553882 · 501(c)(3)<br>Shaquille Tate, Founder · Blake Bullard, CTO (Graphene Gangway) · hello@globalcommunitycleaners.org</div>
+    </div>
+    <div style="text-align:right">Dr. King’s apartment is six blocks away.<br>20 down. 80 to go.</div>
+  </div>
+</div>
+
+<!-- ===================== PAGE 2 · THE STACK + THE FIX ===================== -->
+<div class="page">
+  <div class="hdr">
+    <div class="hdr-left">
+      <img class="logo" src="assets/photos/gcc-logo.png" alt="Global Community Cleaners">
+      <div>
+        <div class="mark">The app, the data, the long game</div>
+        <div class="submark">Page 2 of 3 · Trash → data · hustle → tech · infrastructure, not a forever-loop</div>
+      </div>
+    </div>
+    <div class="pg">02 / 03</div>
+  </div>
+
+  <h2 class="bar">What the technology actually feels like in a resident’s hand</h2>
+  <p class="tiny">Every integration exists because a human on a North Lawndale block has to finish a job and get paid. We do not pitch “AI.” We pitch a paycheck that can be audited.</p>
+  <div class="feat" style="margin-top:5px">
+    <div class="f"><b>1. Claim a funded block</b><span>Live map of sponsored routes. $100 shows on the card (e.g. 1500 S Pulaski). Resident taps, owns the block. Kotlin Multiplatform app, iOS live, Android next.</span></div>
+    <div class="f"><b>2. Two-lap guided route</b><span>Walk both sides of the street. Coverage map shows what’s done. Bags and gear in hand. This is the job, not a scavenger hunt.</span></div>
+    <div class="f"><b>3. Scan-verify (AR + LiDAR)</b><span>Before/after is not a selfie. ARKit poses + LiDAR depth + 1Hz GPS. On-device litter classifier (CoreML; TACO + our own crops) names bottles, bags, bulk dump in real time.</span></div>
+    <div class="f"><b>4. Get paid on proof</b><span>Photos + GPS + timestamps trip Stripe. 100% of the $100. Typical 15–30 min after approval, 24–48h to bank. July field bugs: we photographed by hand and paid anyway. v1.0.9 fixed the flow.</span></div>
+    <div class="f"><b>5. Heatmap + spots + bounties</b><span>Anyone can pin a mess. Neighbors verify. A $10+ bounty turns a dump into a paid job. Points, badges, leaderboards reward scans of never-seen or stale blocks.</span></div>
+    <div class="f"><b>6. Digital twin (accountability)</b><span>158 sessions · 919+ R2 artifacts. Depth + pose + GPS fuse per-block 3D. Metric-accurate vs GPS. A sponsor’s $100 buys a cleanup; the twin is how nobody has to take our word for it.</span></div>
+  </div>
+  <p class="tiny" style="margin-top:5px"><b>Pipeline:</b> iPhone (KMP + ARKit + on-device ID) → Cloudflare R2 (video/depth/photos) → Ktor scan control plane on NVIDIA DGX → Neon Postgres + Next.js (jobs, payouts, sponsors) → Stripe. <b>Android:</b> UIC is sponsoring a device so the majority of this neighborhood is not locked out of iOS. Graphene Gangway’s job is to keep that stack in community hands — education and empowerment, not a vendor flying in.</p>
+  <div class="ba ba4" style="margin-top:5px">
+    <figure><img src="assets/photos/money-breakdown.webp" alt="Where the $100 goes" style="object-fit:contain;background:#fff"><figcaption>$100 in = $100 out. 0% overhead on the wage.</figcaption></figure>
+    <figure><img src="assets/photos/spot-reporting.webp" alt="Resident photographing a dump"><figcaption>Spot report: photo + pin. User feature of the scan stack.</figcaption></figure>
+    <figure><img src="assets/photos/upsell-equipment.jpg" alt="Branded GCC cart and brooms"><figcaption>Add-on: branded carts/brooms fund ops, not wages.</figcaption></figure>
+    <figure><img src="assets/photos/after-bags-held.jpg" alt="Resident standing with a filled bag"><figcaption>After: one resident, one bag, one paycheck.</figcaption></figure>
+  </div>
+
+  <h2 class="bar">Issue #1 data: long-term solutions, not a cleanup forever-loop</h2>
+  <div class="row" style="grid-template-columns:1fr 1fr">
+    <div class="card">
+      <h3>Pattern 1 · Wind-driven fenceline accumulation</h3>
+      <div class="body tiny">Fencelines on vacant fields and lots catch disproportionate trash — not because residents dump there, because <b>wind funnels light debris</b> and nothing breaks the pattern. <b>Fix:</b> windbreak plantings or screen fabric on the worst lines + a cleanup cadence keyed to wind events. Recoverable infrastructure, not infinite bags.</div>
+    </div>
+    <div class="card">
+      <h3>Pattern 2 · Walkway corridors with no cans</h3>
+      <div class="body tiny">Major pedestrian corridors have <b>no public trash cans for blocks at a time</b>. Hotspot density is measurably higher than zones with receptacles. <b>Fix:</b> targeted bins at high-foot-traffic corners — city ask, property-owner partnership, or a sponsored-bin program. We can name the corridors. We have the photos.</div>
+    </div>
+  </div>
+  <p class="tiny" style="margin-top:4px">That is the differentiator for a Steans-shaped funder: we pay people <i>and</i> we produce the evidence layer that tells the City, UIC Great Cities, and block clubs where a $40 can would outperform another $100 forever.</p>
+
+  <h2 class="bar">Why the academic record says invest in the people on the block</h2>
+  <div class="row" style="grid-template-columns:1fr 1fr 1fr">
+    <div class="card"><h3>Branas RCT · Penn</h3><div class="body tiny">Cluster-randomized lots in Philadelphia (PNAS, JAMA Network Open): greened vs trash-removal-only vs control. <b>29.1% drop in gun assaults</b>. <b>41.5% fewer depression reports</b>. <b>68.7%</b> for low-income residents. Municipal tax ROI <b>$7.43</b> per public dollar on greening.</div></div>
+    <div class="card"><h3>Sampson · Chicago</h3><div class="body tiny">Collective efficacy — whether neighbors feel any agency over their block — predicts ~<b>40% lower crime</b> even when income, race, and visible disorder match. A paid neighbor with a verified before/after is efficacy with a receipt.</div></div>
+    <div class="card"><h3>This neighborhood</h3><div class="body tiny"><b>20.7-year</b> life-expectancy gap (Loop 87.3 vs West Garfield Park 66.6). Black Chicagoans died <b>10.6 years</b> earlier (CDPH 2023). North Lawndale ~<b>3×</b> city violent-crime rate (UIC Great Cities Institute, 2022). Steans has been here since <b>1996</b> on jobs, schools, safety. We are the block-wage layer of that same fight.</div></div>
+  </div>
+
+  <h2 class="bar">Relationships the $100 starts — and the neighbor who equipped the first crews</h2>
+  <div class="row" style="grid-template-columns:1.05fr .95fr">
+    <div class="need">
+      <b>Fields of Dreams Chicago — first in-kind gift, May 13, 2026, ~$500.</b> Founder James Fields left 3 boxes of gloves, 3 shovels, 4 stainless dustpan-and-broom sets, 2 push brooms, and a 30-pack of pickup sticks at the <b>UIC Neighborhood Center</b>. They run Saturday Neighborhood Nurturers at <b>North Lawndale College Prep</b> — a school Steans helped found — serving Black and Latinx youth 11–15. While GCC pays this generation to steward blocks, Fields of Dreams is raising the next one. <b>Still not covered by in-kind:</b> rakes, contractor bags, high-vis vests, wheelbarrows, pressure washer, replacement gloves — plus every dollar that is not a physical tool (Stripe, insurance, phones, Android, reconstruction compute, people).
+    </div>
+    <div class="tiny">
+      <b>What a paycheck buys besides a clean curb.</b> The 20 UIC residents are not a one-off crew. They are the first people we can call for events, deeper cleans, youth/elder pairing, and Graphene Gangway tech sessions. Fast income in a neighborhood where living-wage work is scarce is how you earn the right to talk about “opportunities.” Shaquille’s bet: if the founder still has to stack part-time jobs, the kids watching do not believe community work is a career. Operating support that pays him to go full-time is a signal, not a perk.
+      <div class="chips">
+        <span class="chip">Worker relationship → other gigs</span>
+        <span class="chip">Spot reporters → future workers</span>
+        <span class="chip">Youth + elders on purpose</span>
+        <span class="chip">Founder full-time = neighborhood signal</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div style="display:flex;align-items:center;gap:8px">
+      <img src="assets/photos/gcc-logo.png" alt="GCC">
+      <div>GCC turns trash to data. Graphene Gangway turns hustle toward tech.<br>1844 S. Harding · EIN 39-3553882 · iOS live · Android in development (UIC-sponsored device)</div>
+    </div>
+    <div style="text-align:right">graphenegangway.com<br>globalcommunitycleaners.org</div>
+  </div>
+</div>
+
+<!-- ===================== PAGE 3 · HOW TO SUPPORT ===================== -->
+<div class="page">
+  <div class="hdr">
+    <div class="hdr-left">
+      <img class="logo" src="assets/photos/gcc-logo.png" alt="Global Community Cleaners">
+      <div>
+        <div class="mark">How you can support · every dollar has a lane</div>
+        <div class="submark">Page 3 of 3 · Labor vs operations · recognition · custom packages from the live site</div>
+      </div>
+    </div>
+    <div class="pg">03 / 03</div>
+  </div>
+
+  <h2 class="bar">Track A — Community labor. 100% of this money is a resident paycheck. Tax-deductible.</h2>
+  <p class="tiny">This is the gift UIC made. It is also the gift a Steans partner can make at any size. <b>No platform fee. $100 donated = $100 earned.</b> Add-ons are a separate cart — they never skim the wage.</p>
+  <table style="margin-top:4px">
+    <thead><tr><th>Tier</th><th>Gift</th><th>Blocks / people paid</th><th>What you get back (recognition + proof)</th></tr></thead>
+    <tbody>
+      <tr><td><b>Any amount / General fund</b></td><td>$1 · $5 · $25 · $50</td><td>Pools toward the next $100 block</td><td>Email receipt · 501(c)(3) tax letter · listed with supporters. $1 from 100 people cleans a block.</td></tr>
+      <tr><td><b>Bronze</b></td><td>$100–$400</td><td>1–4 blocks · 1–4 paychecks</td><td>Name on sponsor wall · digital certificate · tax receipt · before/after photos, GPS, timestamp, map pin, worker first name — in your inbox</td></tr>
+      <tr><td><b>Silver</b></td><td>$500–$1,900</td><td>5–19 blocks</td><td>All Bronze + monthly newsletter feature + social recognition across GCC channels</td></tr>
+      <tr><td><b>Gold</b> (UIC sits here)</td><td>$2,000–$4,900</td><td>20–49 blocks</td><td>All Silver + homepage honor wall · branded photo set of cleaned blocks · annual impact report</td></tr>
+      <tr><td><b>Platinum</b></td><td>$5,000+</td><td>50+ blocks</td><td>All Gold + permanent plaque in community center · VIP invitation to annual celebration</td></tr>
+    </tbody>
+  </table>
+  <p class="tiny" style="margin-top:3px"><b>Recurring:</b> weekly / biweekly / monthly keeps the pipeline paid. <b>Team cleans:</b> 2 workers $200, 3 workers $300 (each still gets $100). <b>Time:</b> standard ≤4h; +2h = +$50 to worker; full day 8h = +$100 to worker. <b>Volume discounts apply to add-ons only</b> (10–49 blocks 5%, 50–99 10%, 100+ 15%). Worker pay never discounts.</p>
+
+  <h2 class="bar">Track B — Branding, services, events, media. This is how GCC itself stays open and expands.</h2>
+  <p class="tiny">These are the SKUs on <b>globalcommunitycleaners.org/sponsor/calculator</b> (Build Custom Package) and the For Sponsors tab of How It Works. They fund Android, insurance, Stripe, remaining supplies, reconstruction, and — if we get there — a founder salary so Shaquille can stop stacking part-time jobs.</p>
+
+  <div class="pack">
+    <img src="assets/photos/upsell-worker-branding.jpg" alt="GCC branded vest">
+    <div class="txt">
+      <h4>1. Blocks + Branding (worker, equipment, street, digital)</h4>
+      <p><b>Worker:</b> vests $15 · shirts $12 · hats $8 · full kit $30/block. <b>Equipment:</b> brooms $10 · rakes $10 · branded bags $5 · carts $25 · full kit $40. <b>Street:</b> “cleaned by [Sponsor]” yard signs $25 · banners $50 · A-frames $35 · sidewalk stencil $75 · chalk art $100. <b>Digital:</b> social tag $10 · logo on photos $15 · 15-sec thank-you clip $50 · IG story $25. Your logo on the people, the tools, and the block — while 100% of the wage still hits the resident.</p>
+    </div>
+  </div>
+  <div class="pack">
+    <img src="assets/photos/upsell-services.jpg" alt="Cleaned by GCC partnership plaque">
+    <div class="txt">
+      <h4>2. Services (enhanced, seasonal, green, business engagement)</h4>
+      <p><b>Enhanced:</b> deep clean +$50 · pressure wash +$150 · graffiti +$200 · illegal dumping +$300. <b>Seasonal:</b> snow $75 · leaves $50 · spring $100. <b>Green:</b> landscaping $100 · tree wells $75 · vacant lot $200/mo · garden plot $150. <b>Business engagement</b> (worker consent): flyers $50 · samples $75 · QR cards $30 · card drop $40 — with a small worker bonus on each. This is how a sponsor co-brands a campaign instead of a one-off bag.</p>
+    </div>
+  </div>
+  <div class="pack">
+    <img src="assets/photos/upsell-street-sign.jpg" alt="Cleaned by GCC yard sign">
+    <div class="txt">
+      <h4>Street advertising + equipment (from the For Sponsors page)</h4>
+      <p>Yard signs, banners, A-frames, stencils, chalk art — plus branded brooms, rakes, bags, and carts. These are the photos on <b>/how-it-works?tab=sponsors</b> and the calculator’s Branding step. They are how a church, clinic, or Steans partner puts a name on a cleaned block without touching the $100 wage.</p>
+    </div>
+  </div>
+  <div class="pack">
+    <img src="assets/photos/upsell-events.jpg" alt="GCC Community Day tent">
+    <div class="txt">
+      <h4>3. Events + 4. Media (the campaign layer)</h4>
+      <p><b>Crews:</b> pop-up 2hr / 3 workers $300 · standard 4hr / 5 $500 · extended 8hr $900 · large 10 workers + supervisor $1,500. <b>Types:</b> block party $750 · festival $2,000/day · grand opening $500 · corporate volunteer day $1,000 · photo-op $750 · holiday (MLK, 4th) $1,200. <b>Photo:</b> basic $500 · standard $1,500 · premium/drone $3,500 · campaign series $7,500. <b>Video:</b> social clip $1,000 · thank-you $2,500 · 2–3 min impact $5,000 · 30-sec commercial $15,000 · 5–10 min brand film $35,000.</p>
+    </div>
+  </div>
+
+  <div class="row" style="grid-template-columns:.9fr 1.1fr;margin-top:6px">
+    <div>
+      <h2 class="bar" style="margin-top:0">Enterprise (from the live site)</h2>
+      <table>
+        <thead><tr><th>Tier</th><th>Commit</th><th>Scope</th></tr></thead>
+        <tbody>
+          <tr><td>Community Champion</td><td>$25k–$49k</td><td>250–500 blocks · branded campaign · quarterly reports</td></tr>
+          <tr><td>Impact Partner</td><td>$50k–$99k</td><td>Photo+video · named corner · press</td></tr>
+          <tr><td>Documentary Sponsor</td><td>$100k–$249k</td><td>30-sec spot · PR · homepage logo</td></tr>
+          <tr><td>Movement Partner</td><td>$250k–$499k</td><td>Named initiative · 5–10 min film</td></tr>
+          <tr><td>Legacy / Founding</td><td>$500k–$1M+</td><td>City-wide / movement-defining · first rights on new markets</td></tr>
+        </tbody>
+      </table>
+      <p class="tiny" style="margin-top:4px"><b>Track C — In-kind</b> to donate@globalcommunitycleaners.org. <b>Track D — Unrestricted ops / founder capacity</b> so Shaquille Tate can go full-time. That is the North Lawndale success story we want kids to see.</p>
+    </div>
+    <div>
+      <h2 class="bar" style="margin-top:0">Scan to give · every code is a live page</h2>
+      <div class="qrrow">
+        <div class="qr"><img src="assets/qr/sponsor.png" alt="QR $100"><span>Sponsor a block $100</span></div>
+        <div class="qr"><img src="assets/qr/calculator.png" alt="QR packages"><span>Build custom packages</span></div>
+        <div class="qr"><img src="assets/qr/how-it-works.png" alt="QR how it works"><span>How it works</span></div>
+        <div class="qr"><img src="assets/qr/sponsors.png" alt="QR sponsors tab"><span>For Sponsors tab</span></div>
+        <div class="qr"><img src="assets/qr/ios.png" alt="QR iOS"><span>iOS app download</span></div>
+        <div class="qr"><img src="assets/qr/home.png" alt="QR home"><span>GCC home / honor wall</span></div>
+      </div>
+      <p class="tiny" style="margin-top:5px">How It Works: <b>globalcommunitycleaners.org/how-it-works</b> · Calculator (Blocks / Branding / Services / Events / Media): <b>/sponsor/calculator</b> · iOS: App Store id 6760203806 · Android: coming, UIC device in house.</p>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div style="display:flex;align-items:center;gap:8px">
+      <img src="assets/photos/gcc-logo.png" alt="GCC">
+      <div>
+        <b style="color:#14532d">Shaquille Tate, Founder</b> — lifelong resident, trash + opportunity. <b style="color:#14532d">Blake Bullard, CTO</b> — Graphene Gangway; trash→data, hustle→tech.<br>
+        Global Community Cleaners NFP · 1844 S. Harding Ave, 2nd Floor · Chicago, IL 60623 · 501(c)(3) · EIN 39-3553882<br>
+        hello@ · partnerships@ · donate@globalcommunitycleaners.org
+      </div>
+    </div>
+    <div style="text-align:right">Dr. King’s apartment is six blocks away.<br>The work continues.</div>
+  </div>
+</div>
+
+</body>
+</html>

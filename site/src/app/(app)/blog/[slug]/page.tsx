@@ -16,10 +16,13 @@ export const dynamic = 'force-dynamic'
 const SCHEDULE: Record<string, string> = {
   '2026-05-01-issue-01': '2026-05-01T00:00:00-05:00',
   '2026-06-01-issue-02': '2026-06-01T08:00:00-05:00',
-  '2026-07-03-issue-03': '2026-07-03T08:00:00-05:00',
-  '2026-07-31-issue-04': '2026-07-31T08:00:00-05:00',
+  '2026-07-03-issue-03': '2026-07-01T08:00:00-05:00',
+  // Extra July issue — unpublished so the index stays one-per-month on the 1st.
+  '2026-07-31-issue-04': '2099-01-01T00:00:00-05:00',
   '2026-08-01-issue-05': '2026-08-01T08:00:00-05:00',
-  '2026-08-19-issue-06': '2026-08-19T08:00:00-05:00',
+  '2026-09-01-issue-06': '2026-09-01T08:00:00-05:00',
+  // Alias for the old mid-August URL — same issue, now dated September 1.
+  '2026-08-19-issue-06': '2026-09-01T08:00:00-05:00',
 }
 
 function isPublished(slug: string): boolean {
@@ -32,9 +35,9 @@ const POSTS = [
   '2026-05-01-issue-01',
   '2026-06-01-issue-02',
   '2026-07-03-issue-03',
-  '2026-07-31-issue-04',
   '2026-08-01-issue-05',
-  '2026-08-19-issue-06',
+  '2026-09-01-issue-06',
+  '2026-08-19-issue-06', // alias → Issue 6
 ]
 
 export async function generateStaticParams() {
@@ -53,7 +56,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
         description: "GCC's first newsletter. Six blocks from Dr. King's 1966 apartment, with 110+ resident-mapped hotspots.",
         type: 'article',
         publishedTime: '2026-05-01',
-        images: ['/newsletter/issue-01/heatmap.png'],
+        images: ['/newsletter/issue-01/condition-1.jpg'],
       },
     }
   }
@@ -84,26 +87,13 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
         description:
           "UIC backs our pilot goal, the first North Lawndale cleanups land July 5-6, and the map starts running on real scan data.",
         type: 'article',
-        publishedTime: '2026-07-03',
-        images: ['/newsletter/issue-02/heatmap.png'],
+        publishedTime: '2026-07-01',
+        images: ['/newsletter/issue-03/cover.jpg'],
       },
     }
   }
   if (slug === '2026-07-31-issue-04') {
-    if (!isPublished(slug)) return {} // don't advertise an unpublished post in <head>
-    return {
-      title: 'The scan system grows teeth — Global Community Cleaners Issue #4',
-      description:
-        "GCC's fourth newsletter. The first North Lawndale cleanups ran July 5-6, UIC's $2,000 gift came through its Office of Community Collaboration, the iOS env-scan overhaul shipped across TestFlight builds 165-178, and the scan-powered heatmap sharpens with every session.",
-      openGraph: {
-        title: 'The scan system grows teeth — GCC Issue #4',
-        description:
-          "The first cleanups are on the books, UIC's gift came through the office built for this neighborhood, and the scan system grew teeth over fourteen TestFlight builds.",
-        type: 'article',
-        publishedTime: '2026-07-31',
-        images: ['/newsletter/issue-02/heatmap.png'],
-      },
-    }
+    return {}
   }
   if (slug === '2026-08-01-issue-05') {
     if (!isPublished(slug)) return {} // don't advertise an unpublished post in <head>
@@ -121,8 +111,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       },
     }
   }
-  if (slug === '2026-08-19-issue-06') {
-    if (!isPublished(slug)) return {} // don't advertise an unpublished post in <head>
+  if (slug === '2026-08-19-issue-06' || slug === '2026-09-01-issue-06') {
+    if (!isPublished(slug)) return {}
     return {
       title: 'From cleaning blocks to mapping them in 3D — Global Community Cleaners Issue #6',
       description:
@@ -132,8 +122,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
         description:
           '20 blocks cleaned, $2,000 paid to residents, and 158 scan sessions fusing into a digital twin of the neighborhood — built for accountability, not for show.',
         type: 'article',
-        publishedTime: '2026-08-19',
-        images: ['/newsletter/issue-02/heatmap.png'],
+        publishedTime: '2026-09-01',
+        images: ['/newsletter/issue-06/cover.png'],
       },
     }
   }
@@ -148,9 +138,8 @@ export default async function BlogPostPage({
   const { slug } = await params
   if (!POSTS.includes(slug) || !isPublished(slug)) notFound()
 
-  if (slug === '2026-08-19-issue-06') return <Issue6 />
+  if (slug === '2026-08-19-issue-06' || slug === '2026-09-01-issue-06') return <Issue6 />
   if (slug === '2026-08-01-issue-05') return <Issue5 />
-  if (slug === '2026-07-31-issue-04') return <Issue4 />
   if (slug === '2026-07-03-issue-03') return <Issue3 />
   if (slug === '2026-06-01-issue-02') return <Issue2 />
   return <Issue1 />
@@ -702,7 +691,7 @@ function Issue3() {
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-700">
             GCC Blog · Issue #3 · Boots on the Ground
           </p>
-          <p className="mt-2 text-sm text-neutral-500">July 3, 2026</p>
+          <p className="mt-2 text-sm text-neutral-500">July 1, 2026</p>
           <h1 className="mt-6 font-serif text-5xl font-bold tracking-tight text-neutral-900 sm:text-6xl">
             Boots on the ground
           </h1>
@@ -1071,7 +1060,7 @@ function Issue5() {
           </h2>
           <p>
             In{' '}
-            <a className="font-semibold text-emerald-700 underline" href="/blog/2026-07-31-issue-04">
+            <a className="font-semibold text-emerald-700 underline" href="/blog/2026-07-03-issue-03">
               Issue #4
             </a>
             , the first cleanups had just run and we were calling them alpha tests. July turned them into a program. <strong>Twenty blocks in North Lawndale were cleaned by North Lawndale residents</strong>, each one paid <strong>$100 per block</strong> — <strong>$2,000 total</strong>, every dollar going directly to the person who did the work on their own street.
@@ -1183,7 +1172,7 @@ function Issue5() {
               Sponsor a block →
             </a>
             {' · '}
-            <a className="text-emerald-700 underline" href="/blog/2026-07-31-issue-04">
+            <a className="text-emerald-700 underline" href="/blog/2026-07-03-issue-03">
               Read Issue #4
             </a>
             {' · '}
@@ -1210,7 +1199,7 @@ function Issue6() {
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-700">
             GCC Blog · Issue #6 · The Digital Twin
           </p>
-          <p className="mt-2 text-sm text-neutral-500">August 19, 2026</p>
+          <p className="mt-2 text-sm text-neutral-500">September 1, 2026</p>
           <h1 className="mt-6 font-serif text-5xl font-bold tracking-tight text-neutral-900 sm:text-6xl">
             From cleaning blocks to mapping them in 3D
           </h1>
@@ -1223,7 +1212,7 @@ function Issue6() {
         <Section label="§1 · Where we left off">
           <p>
             In{' '}
-            <a className="font-semibold text-emerald-700 underline" href="/blog/2026-07-31-issue-04">
+            <a className="font-semibold text-emerald-700 underline" href="/blog/2026-07-03-issue-03">
               Issue #4
             </a>
             , the first cleanups had just run and the scan system had grown teeth &mdash; full-screen AR camera, coverage fog, guided routes. A month on, we crossed the pilot&rsquo;s first real milestone, and the scan archive started turning into something we didn&rsquo;t have a word for yet. Now we do: a digital twin.
@@ -1341,7 +1330,7 @@ function Issue6() {
               Sponsor a block →
             </a>
             {' · '}
-            <a className="text-emerald-700 underline" href="/blog/2026-07-31-issue-04">
+            <a className="text-emerald-700 underline" href="/blog/2026-07-03-issue-03">
               Read Issue #4
             </a>
             {' · '}
