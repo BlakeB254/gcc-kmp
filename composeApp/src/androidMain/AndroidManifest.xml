@@ -26,22 +26,30 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Deep links: globalcommunitycleaners.org URLs -->
+            <!-- App-only paths. Marketing URLs (/sponsor, /how-it-works, /)
+                 must stay in the browser so QR codes to the website work. -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data
-                    android:scheme="https"
-                    android:host="globalcommunitycleaners.org" />
+                <data android:scheme="https" android:host="globalcommunitycleaners.org" android:pathPrefix="/routes" />
+                <data android:scheme="https" android:host="globalcommunitycleaners.org" android:pathPrefix="/bounties" />
+                <data android:scheme="https" android:host="globalcommunitycleaners.org" android:pathPrefix="/jobs" />
+                <data android:scheme="https" android:host="globalcommunitycleaners.org" android:pathPrefix="/auth" />
+                <data android:scheme="https" android:host="www.globalcommunitycleaners.org" android:pathPrefix="/routes" />
+                <data android:scheme="https" android:host="www.globalcommunitycleaners.org" android:pathPrefix="/bounties" />
+                <data android:scheme="https" android:host="www.globalcommunitycleaners.org" android:pathPrefix="/jobs" />
+                <data android:scheme="https" android:host="www.globalcommunitycleaners.org" android:pathPrefix="/auth" />
             </intent-filter>
-            <intent-filter>
+            <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data
-                    android:scheme="http"
-                    android:host="globalcommunitycleaners.org" />
+                <data android:scheme="https" android:host="globalcommunitycleaners.org" android:path="/dashboard" />
+                <data android:scheme="https" android:host="globalcommunitycleaners.org" android:path="/wallet" />
+                <data android:scheme="https" android:host="globalcommunitycleaners.org" android:path="/leaderboard" />
+                <data android:scheme="https" android:host="globalcommunitycleaners.org" android:path="/feed" />
+                <data android:scheme="https" android:host="globalcommunitycleaners.org" android:pathPrefix="/app" />
             </intent-filter>
         </activity>
         <service

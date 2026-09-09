@@ -4,13 +4,43 @@
     "details": [
       {
         "appID": "7BBNW25LZM.com.globalcommunitycleaners.worker",
-        "paths": ["*"]
+        "appIDs": ["7BBNW25LZM.com.globalcommunitycleaners.worker"],
+        "paths": [
+          "/auth/mobile-callback",
+          "/auth/mobile-callback*",
+          "/auth/callback",
+          "/auth/callback*",
+          "/routes/*",
+          "/bounties/*",
+          "/jobs/*",
+          "/dashboard",
+          "/wallet",
+          "/leaderboard",
+          "/feed",
+          "/app",
+          "/app/*"
+        ],
+        "components": [
+          { "/": "/auth/mobile-callback*" },
+          { "/": "/auth/callback*" },
+          { "/": "/routes/*" },
+          { "/": "/bounties/*" },
+          { "/": "/jobs/*" },
+          { "/": "/dashboard" },
+          { "/": "/wallet" },
+          { "/": "/leaderboard" },
+          { "/": "/feed" },
+          { "/": "/app" },
+          { "/": "/app/*" },
+          { "/": "/sponsor*", "exclude": true },
+          { "/": "/how-it-works*", "exclude": true },
+          { "/": "/blog*", "exclude": true },
+          { "/": "/", "exclude": true }
+        ]
       }
     ]
   },
   "webcredentials": {
-    "apps": [
-      "7BBNW25LZM.com.globalcommunitycleaners.worker"
-    ]
+    "apps": ["7BBNW25LZM.com.globalcommunitycleaners.worker"]
   }
 }

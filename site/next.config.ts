@@ -31,6 +31,18 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        // Apple fetches this with no file extension. Wrong Content-Type
+        // (or a catch-all applinks path of "*") makes every website QR
+        // open the iOS app instead of Safari.
+        source: '/.well-known/apple-app-site-association',
+        headers: [
+          {
+            key: 'Content-Type',
+            value: 'application/json',
+          },
+        ],
+      },
     ]
   },
 }
