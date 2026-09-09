@@ -73,6 +73,44 @@ Litter is recorded as `world_observations` (not standalone "spots," which were r
 
 ---
 
+## 10. Watch — vision-based localization (not scheduled)
+
+Recorded from the 2026-09-08 X-bookmark round; nothing here is implemented or scheduled.
+
+**The structural observation.** The cell lattice is ~3m (§2), but consumer GPS error on a
+street is routinely 5–10m and worse against buildings. So the grid is *finer than the
+position estimate that feeds it*. That mismatch is upstream of several defects we have
+repeatedly patched downstream: the GPS floor (§3) credits a 5m disc around a fix that may
+itself be off by more than a cell, and GPS accuracy is 0.3 of `ScanQualityScorer`, so a bad
+fix silently caps otherwise-good close scans at GRAZED (§2). Each fix we have shipped —
+gap-closing the silhouette, letting the disc upgrade fan-SEEN cells, widening tiers — has
+adjusted how we *spend* an uncertain position rather than improving the position.
+
+**What would change that.** Visual positioning against a prior Gaussian-splat reconstruction
+of the route: [RadianceFields 2096520025859399751](https://x.com/RadianceFields/status/2096520025859399751)
+localizes from a splat where GPS cannot ("my phone thinks I'm on 42nd Street, but I'm in the
+subway two levels down"). Pose would come from what the camera sees, not from the fix — which
+is the same signal the raycast fan already depends on. This is the second independent signal
+on this idea; the first is logged in
+`cdx-platform/docs/research/2026-08-28-x-bookmarks/kb-docs/radiance-vps-gcc-video.md`.
+
+The reconstruction half now looks affordable:
+[Scal3R 2096451469029298306](https://x.com/HuggingPapers/status/2096451469029298306) (NVIDIA)
+does accurate **online** reconstruction over kilometre-scale sequences with ~1% extra
+parameters on a frozen backbone, trained in 8h on a single GPU. Online suits a walked route
+rather than an offline batch solve, kilometre scale is a route rather than a lot, and the
+training budget fits the Spark. Related: `docs/governance/scan-splat-registration-contract.md`.
+
+**Honest limits.** This is a heavy dependency — a prior splat per route, kept current as the
+street changes, plus on-device matching cost and a fallback whenever the match fails. It does
+not replace the GPS floor; at best it becomes a fourth, higher-confidence source alongside the
+ray fan. And a phone-scale test is not a paper result.
+
+**If it gets picked up**, the bounded first test is a re-scan of an already-captured North
+Lawndale strip (sources: `cdx-platform/docs/research/north-lawndale-splat-sources.md`),
+comparing VPS-derived pose against the GPS fix on the *same* walk — measuring position delta
+and how many cells change tier, before touching `CoverageTracker` at all.
+
 ## File index (open these for detail)
 
 | Concern | File(s) |
