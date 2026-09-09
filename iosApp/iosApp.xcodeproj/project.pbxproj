@@ -8,22 +8,23 @@
 
 /* Begin PBXBuildFile section */
 		0E491BD994BF55DEDECFC18A /* ArSessionRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FEC62F63AED0655E631F3E9 /* ArSessionRecorder.swift */; };
+		1C2D3E4F5A6B7C8D9E0F1A2B /* GroundAnomalyDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C2D3E4F5A6B7C8D9E0F1A2C /* GroundAnomalyDetector.swift */; };
 		7555FF7F242A565900829871 /* iosAppApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7555FF7E242A565900829871 /* iosAppApp.swift */; };
 		7555FF81242A565900829871 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7555FF80242A565900829871 /* ContentView.swift */; };
 		7C0DDE11AA24E70190CCA011 /* GccArNative.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C0DDE22AA24E70190CCA022 /* GccArNative.swift */; };
 		8D1EEF11BB35F80201DDB011 /* ObjectCapturePhotogrammetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D1EEF22BB35F80201DDB022 /* ObjectCapturePhotogrammetry.swift */; };
 		9B394AFAF97842079AD45E20 /* CrashDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6E5D06565BFCF8AAE37CEEC /* CrashDiagnostics.swift */; };
-		1C2D3E4F5A6B7C8D9E0F1A2B /* GroundAnomalyDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C2D3E4F5A6B7C8D9E0F1A2C /* GroundAnomalyDetector.swift */; };
-		D41C0FFEE5A6B7C8D9E0F1B1 /* LitterCropClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41C0FFEE5A6B7C8D9E0F1B2 /* LitterCropClassifier.swift */; };
-		EECC00000000000000A005 /* LitterCropClassifier.mlmodelc in Resources */ = {isa = PBXBuildFile; fileRef = EECC00000000000000A006 /* LitterCropClassifier.mlmodelc */; };
-		EECC00000000000000A002 /* splash-hero.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = EECC00000000000000A004 /* splash-hero.mp4 */; };
 		AAAA000100010001 /* MapLibre in Frameworks */ = {isa = PBXBuildFile; productRef = AAAA000100010002 /* MapLibre */; };
 		BBBB000100010001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BBBB000100010002 /* Assets.xcassets */; };
+		D41C0FFEE5A6B7C8D9E0F1B1 /* LitterCropClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41C0FFEE5A6B7C8D9E0F1B2 /* LitterCropClassifier.swift */; };
 		DDDD000100010001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = DDDD000100010002 /* PrivacyInfo.xcprivacy */; };
+		EECC00000000000000A002 /* splash-hero.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = EECC00000000000000A004 /* splash-hero.mp4 */; };
+		EECC00000000000000A005 /* LitterCropClassifier.mlmodelc in Resources */ = {isa = PBXBuildFile; fileRef = EECC00000000000000A006 /* LitterCropClassifier.mlmodelc */; };
 		EEEE000100010001 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = EEEE000100010002 /* GoogleSignIn */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		1C2D3E4F5A6B7C8D9E0F1A2C /* GroundAnomalyDetector.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GroundAnomalyDetector.swift; sourceTree = "<group>"; };
 		5FEC62F63AED0655E631F3E9 /* ArSessionRecorder.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ArSessionRecorder.swift; sourceTree = "<group>"; };
 		7555FF7B242A565900829871 /* Global Community Cleaners.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Global Community Cleaners.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		7555FF7E242A565900829871 /* iosAppApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iosAppApp.swift; sourceTree = "<group>"; };
@@ -32,13 +33,12 @@
 		7C0DDE22AA24E70190CCA022 /* GccArNative.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GccArNative.swift; sourceTree = "<group>"; };
 		8D1EEF22BB35F80201DDB022 /* ObjectCapturePhotogrammetry.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ObjectCapturePhotogrammetry.swift; sourceTree = "<group>"; };
 		A6E5D06565BFCF8AAE37CEEC /* CrashDiagnostics.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CrashDiagnostics.swift; sourceTree = "<group>"; };
-		1C2D3E4F5A6B7C8D9E0F1A2C /* GroundAnomalyDetector.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GroundAnomalyDetector.swift; sourceTree = "<group>"; };
-		D41C0FFEE5A6B7C8D9E0F1B2 /* LitterCropClassifier.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LitterCropClassifier.swift; sourceTree = "<group>"; };
-		EECC00000000000000A006 /* LitterCropClassifier.mlmodelc */ = {isa = PBXFileReference; lastKnownFileType = folder; path = LitterCropClassifier.mlmodelc; sourceTree = "<group>"; };
-		EECC00000000000000A004 /* splash-hero.mp4 */ = {isa = PBXFileReference; lastKnownFileType = video.mp4; path = "splash-hero.mp4"; sourceTree = "<group>"; };
 		BBBB000100010002 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		CCCC000100010001 /* iosApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = iosApp.entitlements; sourceTree = "<group>"; };
+		D41C0FFEE5A6B7C8D9E0F1B2 /* LitterCropClassifier.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LitterCropClassifier.swift; sourceTree = "<group>"; };
 		DDDD000100010002 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		EECC00000000000000A004 /* splash-hero.mp4 */ = {isa = PBXFileReference; lastKnownFileType = video.mp4; path = "splash-hero.mp4"; sourceTree = "<group>"; };
+		EECC00000000000000A006 /* LitterCropClassifier.mlmodelc */ = {isa = PBXFileReference; lastKnownFileType = folder; path = LitterCropClassifier.mlmodelc; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
