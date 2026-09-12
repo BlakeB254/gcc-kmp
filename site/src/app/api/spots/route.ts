@@ -17,6 +17,7 @@ import {
   buildSyntheticScanReport,
 } from '@/lib/spot-utils'
 import { reverseGeocode } from '@/lib/geo-lookup'
+import { toSpotMarker, type SpotMarkerSource } from '@/lib/spot-marker'
 import {
   recordWorldObservation,
   gridCell,
@@ -85,27 +86,13 @@ export async function GET(request: NextRequest) {
       tagsCache.set(r.id, (Array.isArray(raw) && raw.length > 0) ? raw : autoTagFromDescription(r.description))
     }
 
-    // Map markers for website frontend - normalize coordinates to [lng, lat]
-    const spots = reports.map((report) => {
-      const raw = report.coordinates as any
-      let coords: [number, number]
-      if (Array.isArray(raw)) {
-        coords = [raw[0], raw[1]]
-      } else if (raw && typeof raw === 'object') {
-        coords = [raw.lng ?? raw.lon ?? 0, raw.lat ?? 0]
-      } else {
-        coords = [0, 0]
-      }
-      return {
-        id: String(report.id),
-        coordinates: coords,
-        radiusMeters: parseFloat(report.affectedRadiusMeters || '15'),
-        label: report.title || (report.type === 'sighting' ? 'Sighting' : 'Volunteer Cleanup'),
-        tags: tagsCache.get(report.id) || [],
-        affectedArea: (report as any).affectedArea || null,
-        needsVerification: report.nextVerificationDue ? new Date(report.nextVerificationDue) <= new Date() : true,
-      }
-    })
+    // Map markers for website frontend — coordinates normalised to [lng, lat]
+    // and the spot's photos carried through. See lib/spot-marker.ts: markers
+    // used to omit media entirely, so the map popup rendered no photos even
+    // though the sibling `data` array below carried the same URLs.
+    const spots = reports.map((report) =>
+      toSpotMarker(report as SpotMarkerSource, tagsCache.get(report.id) || [])
+    )
 
     // Full CommunityReport objects for iOS admin panel (via ApiResponse<T>.data)
     const fullReports = reports.map((r) => toCommunityReport(r, tagsCache.get(r.id)))
