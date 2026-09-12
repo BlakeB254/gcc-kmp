@@ -127,7 +127,11 @@ android {
         // CFBundleShortVersionString, versionCode matches CFBundleVersion
         // at the time of each Android cut (Android had been parked at 2/1.0.1
         // since before the KMP consolidation).
-        versionCode = 188
+        //
+        // Enforced by scripts/check-version-parity.sh in CI. It is a gate
+        // because this was only a comment when PR #280 bumped iOS to 189 and
+        // left Android on 188. Bump both platforms in the same PR.
+        versionCode = 189
         versionName = "1.1.0"
     }
     if (signingProps.containsKey("KEYSTORE_PATH")) {

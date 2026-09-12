@@ -94,13 +94,29 @@ jobs:
         with:
           gradle-home-cache-cleanup: true
 
+      # The two stores ship one release line: Android versionCode/versionName
+      # must equal iOS CFBundleVersion/CFBundleShortVersionString. This was a
+      # comment in composeApp/build.gradle.kts until PR #280 shipped iOS 189
+      # and left Android on 188, so it is a gate now. Cheap, so it runs first.
+      - name: Check iOS/Android version parity
+        run: ./scripts/check-version-parity.sh
+
       # Note: we deliberately avoid `:shared:build` and `:composeApp:build`
       # because both declare `androidTarget()`, which requires the Android SDK
       # (not installed on this runner). Instead we drive the JVM + Desktop
       # targets explicitly, which still compile commonMain end-to-end and
-      # catch the vast majority of regressions. Android + iOS builds run on
-      # the MacBook via cdx-mobile; the optional `android-debug` job below
-      # provisions the SDK for occasional full Android verification.
+      # catch the vast majority of regressions.
+      #
+      # Real device builds happen off-runner, split by platform:
+      #   iOS      → MacBook Air via cdx-mobile (.cdx-mobile.yaml). Signing
+      #              lives here. Kotlin/Native builds Apple frameworks only
+      #              on macOS, so this cannot move.
+      #   Android  → ms-a2 (x86-64) only. See docs/android-build-msa2.md.
+      #              The MacBook is deliberately NOT an Android host, and the
+      #              DGX Spark cannot be one: no ARM64-Linux aapt2.
+      #
+      # The optional `android-debug` job below provisions the SDK for
+      # occasional full Android verification on a runner.
 
       - name: Compile + test shared (JVM target)
         run: ./gradlew :shared:jvmJar :shared:jvmTest --no-daemon --stacktrace

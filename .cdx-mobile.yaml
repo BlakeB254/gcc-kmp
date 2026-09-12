@@ -1,6 +1,36 @@
 # cdx-mobile project config — gcc-kmp
 # Kotlin Multiplatform project: worker app (iOS + Android) + admin desktop app
 # Docs: cdx-mobile --help
+#
+# ---------------------------------------------------------------------------
+# THIS FILE IS THE iOS PATH ONLY. Android does not build through cdx-mobile.
+# ---------------------------------------------------------------------------
+#
+# Why: cdx-mobile drives a single BUILD_HOST for every platform (default
+# cdx-macbook) — it has no per-platform host setting. The MacBook Air is tight
+# on space and is reserved for iOS, so Android was moved off it entirely.
+# Android APKs build on ms-a2 (x86-64): see docs/android-build-msa2.md.
+#
+# `android_build` / `android_output` are therefore deliberately absent:
+#   cdx-mobile build ios      → builds iOS on the MacBook (normal path)
+#   cdx-mobile build both     → silently skips Android, builds iOS only
+#   cdx-mobile build android  → errors out, by design. Use ms-a2.
+# Do not re-add them without moving Android back onto the MacBook on purpose.
+#
+# The MacBook still needs JDK 17 and a MINIMAL Android SDK (platforms/android-36,
+# build-tools, platform-tools). That is not optional and is not "Android tooling
+# we forgot to remove": composeApp applies the androidApplication plugin, and
+# Gradle configures every module on every invocation, so the Xcode build phase
+# `./gradlew :composeApp:embedAndSignAppleFrameworkForXcode` fails without it.
+# What the Mac does NOT need is the emulator and system-images (~5 GB) — those
+# are removable. See scripts/macbook-trim-android-sdk.sh.
+#
+# remote_path below is the MacBook's layout and is correct as written;
+# cdx-mobile's own header warns against "fixing" it to ~/cdx/dev-projects.
+#
+# Release parity: Android versionCode/versionName must equal iOS
+# CFBundleVersion/CFBundleShortVersionString. Enforced by
+# scripts/check-version-parity.sh in CI.
 
 name: gcc-kmp
 type: kmp
@@ -10,7 +40,3 @@ remote_path: ~/CDX-DEV-PROJECTS/gcc-kmp
 # iOS build (KMP via xcodebuild — runs on MacBook Air)
 ios_build: xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' -derivedDataPath iosApp/build/DerivedData build
 ios_output: iosApp/build/DerivedData
-
-# Android build (KMP via Gradle — runs on MacBook Air)
-android_build: ./gradlew :composeApp:assembleDebug
-android_output: composeApp/build/outputs
