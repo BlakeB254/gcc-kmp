@@ -64,6 +64,8 @@ actual fun GccMap(
     innerBoundaryFallback: Boolean,
     showGridLines: Boolean,
     showControls: Boolean,
+    // Desktop draws MapControls at the top; the bottom band is unused here.
+    @Suppress("UNUSED_PARAMETER") controlsBottomPadding: androidx.compose.ui.unit.Dp,
     statusBarPadding: Boolean,
     zoomPresets: List<ZoomPreset>,
     cameraBounds: AreaBounds?,

@@ -85,29 +85,49 @@ still declared three times (`release-route-jobs.ts`, `route-queue.ts`,
 
 ## 3. Mobile — verified on the S26 (Android 16, build 189)
 
-### 3.1 Bottom overlays ignore system insets
+### 3.1 The zoom column and the assigned-route banner overlap
 
-`MapFullScreen.kt:629` sets `contentWindowInsets = WindowInsets(0)`, and the
-map overlays are stacked with plain `Alignment.BottomStart` (zoom buttons,
-878/887), `BottomCenter` (active-job sheet and cards, 902–1022) and
-`BottomEnd` (811/844). On a 1080-wide One UI device the zoom column occludes
-the left edge of the "Route in progress" sheet ("…te in progress" /
-"…ki Rd Block") and the route-card row clips at the right edge
-("Recor…"). iOS does not show this because its insets differ.
+Corrected after tracing (an earlier draft blamed window insets; that was
+wrong — the Material3 `NavigationBar` insets itself and the Scaffold's
+`WindowInsets(0)` is fine).
 
-Fix: `navigationBarsPadding()` on the overlay container, and either reserve
-the zoom column's width in the sheet's start padding or move zoom into the
-existing top cluster (`MapControls` is already `TopCenter`).
+The +/− zoom column is drawn **inside the platform map**
+(`GccMap.android.kt:944`, `GccMap.ios.kt:1380`) with a hardcoded
+`padding(bottom = 72.dp)`, so it cannot see what the screen stacks along the
+bottom edge. `MapFullScreen` places route chips at `BottomStart`, a 44.dp
+Spot/Location row at `BottomEnd` (bottom 80/16.dp), and the full-width
+`AssignedMapRouteBanner` at `BottomCenter` (bottom 94/16.dp). On the S26 the
+zoom column sat across the banner's left edge ("…te in progress" /
+"…ki Rd Block") and the banner ran over the Spot/Location buttons on the
+right (the green pill peeking out). The same geometry exists on iOS.
 
-### 3.2 Block chips render the placeholder branch
+The "clipped" route card at the right edge ("Recor…") is not a defect: it
+is the `LazyRow`'s next chip peeking in as a scroll affordance.
 
-`RouteOverlay.kt:159` shows `block.displayImage` when present. Those blocks
-come from `/api/affected-areas` (`AffectedAreasRepository.kt:57`), whose
-GeoJSON properties carry **no `displayImage` or `imageUrl`** (nothing in
-`api/affected-areas/route.ts` sets either). `/api/blocks` does carry it —
-10 of 10 blocks in production. This is #288 again on a different endpoint:
-one field missing from one serializer. Route thumbnails (`RouteThumbnail.kt`
-← `Route.imageUrl` ← `/api/routes`, 10/10 populated) are fine.
+Fix (this audit's item 3): `GccMap` takes `controlsBottomPadding` so the
+screen puts the zoom column in the same band as its own bottom row, and the
+banner moves above that band instead of across it.
+
+### 3.2 The photographed chips were demo data, not a serializer bug
+
+Corrected after tracing. The chips on the S26 read `NL-001 Pulaski &
+Roosevelt` / `NL-002 Homan & Ogden` — those are `SeedData.kt:550/562`, the
+offline/demo seed. Production routes are `NL-RS01…04` ("1500 S. Drake Ave"
+…) and carry `imageUrl` 10 of 10; `/api/blocks` carries `displayImage`
+10 of 10. The seed routes and blocks have **no image fields**, so they draw
+the `drawPhotoPointScene()` placeholder. The app had never been logged in.
+
+Two real findings replace the wrong one:
+
+- An unauthenticated first launch shows demo data that looks real —
+  "$2,350 earned", "47 jobs", a live-looking map — with no "demo" marking.
+  A UIC reviewer or a new worker cannot tell. Label demo mode visibly.
+- Seed data should carry images (the production blob URLs are public), so
+  demo mode exercises the same image path the field app uses.
+
+For the record: `/api/affected-areas` GeoJSON properties carry no
+`displayImage`, but that endpoint feeds the funding-intensity layer, not the
+chips, so it is not a cause of anything seen.
 
 ### 3.3 Admin panel parity for the new 409
 
@@ -248,8 +268,8 @@ next tranche, on the S26, end to end.
 | # | Fix | Area | Value / Effort | Status |
 |---|---|---|---|---|
 | 1 | Route-guard test + fix `jobs/[id]` and the verified `me/`/`my-` routes | site | Critical / S | open |
-| 2 | `displayImage` in `/api/affected-areas` properties (Android chips) | site+mobile | High / XS | open |
-| 3 | Map overlay insets + zoom column on Android | mobile | High / S | open |
+| 2 | Label demo mode visibly; give seed routes/blocks images (§3.2, corrected) | mobile | Med / S | open |
+| 3 | Zoom column and banner share the bottom band instead of overlapping (§3.1) | mobile | High / S | in PR |
 | 4 | Unify spot media onto observations; flag-down covers everything | site | High / M | open |
 | 5 | `cancelled` job state; dedupe `ACTIVE_JOB_STATUSES` | site+shared | Med / S | open |
 | 6 | Typed API consumers; ESLint back on with `no-explicit-any` | site | Med / M | open |

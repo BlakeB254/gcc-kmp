@@ -665,6 +665,9 @@ fun MapFullScreen(
             explorerAreaStates = explorerAreaStates,
             enableGestures = true,
             showControls = true,
+            // Same band as the bottom-right Spot/Location row, so the zoom
+            // column never sits on the route chips or the assigned-route banner.
+            controlsBottomPadding = if (hasBottomRecords) 80.dp else 16.dp,
             statusBarPadding = true,
             routeCoordinates = if (mapMode == MapMode.MY_AREA) {
                 selectedRouteCoordinates.ifEmpty { mapRouteCoordinates }
@@ -903,7 +906,11 @@ fun MapFullScreen(
                             .padding(
                                 start = 12.dp,
                                 end = 12.dp,
-                                bottom = if (hasBottomRecords) 94.dp else 16.dp,
+                                // The banner fills the width, so it must sit
+                                // ABOVE the bottom band (zoom column on the
+                                // left, 44.dp Spot/Location row on the right)
+                                // rather than across it: band offset + 44 + 12.
+                                bottom = if (hasBottomRecords) 136.dp else 72.dp,
                             ),
                     )
                 }

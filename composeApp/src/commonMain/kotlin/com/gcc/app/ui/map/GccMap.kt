@@ -8,6 +8,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.theme.MapGpsBlue
 import com.gcc.shared.geo.MapProjection
@@ -94,6 +95,14 @@ expect fun GccMap(
     innerBoundaryFallback: Boolean = true,
     showGridLines: Boolean = true,
     showControls: Boolean = false,
+    /**
+     * Bottom offset for the platform zoom column. The map cannot see what a
+     * screen stacks along its bottom edge (route chips, an assigned-route
+     * banner, action buttons), so the screen passes the band it uses for its
+     * own bottom overlays and the zoom column sits in the same band instead
+     * of on top of them. 72.dp was the old hardcoded value on Android and iOS.
+     */
+    controlsBottomPadding: Dp = 72.dp,
     statusBarPadding: Boolean = false,
     zoomPresets: List<ZoomPreset> = overviewZoomPresets,
     cameraBounds: AreaBounds? = null,

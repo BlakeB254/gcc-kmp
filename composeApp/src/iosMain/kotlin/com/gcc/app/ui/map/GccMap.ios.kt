@@ -10,6 +10,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.gcc.app.ui.theme.*
 import com.gcc.shared.model.CommunityReport
@@ -87,6 +88,7 @@ actual fun GccMap(
     innerBoundaryFallback: Boolean,
     showGridLines: Boolean,
     showControls: Boolean,
+    controlsBottomPadding: Dp,
     statusBarPadding: Boolean,
     zoomPresets: List<ZoomPreset>,
     cameraBounds: AreaBounds?,
@@ -1378,7 +1380,7 @@ actual fun GccMap(
                 zoomState = scaleBarZoom,
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .padding(bottom = 72.dp),
+                    .padding(bottom = controlsBottomPadding),
                 onZoomIn = {
                     coroutineScope.launch {
                         val nextZoom = (camera.position.zoom + 1.0).coerceAtMost(20.0)

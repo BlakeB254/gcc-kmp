@@ -70,6 +70,7 @@ actual fun GccMap(
     innerBoundaryFallback: Boolean,
     showGridLines: Boolean,
     showControls: Boolean,
+    controlsBottomPadding: androidx.compose.ui.unit.Dp,
     statusBarPadding: Boolean,
     zoomPresets: List<ZoomPreset>,
     cameraBounds: AreaBounds?,
@@ -937,12 +938,14 @@ actual fun GccMap(
         // Overlay content (composables positioned in the Box)
         content()
 
-        // Zoom controls and scale bar — bottom-left stack
+        // Zoom controls and scale bar — bottom-left stack. The bottom offset
+        // comes from the screen so this column shares the band of whatever the
+        // screen draws along the bottom edge rather than overlapping it.
         if (showControls) {
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .padding(bottom = 72.dp),
+                    .padding(bottom = controlsBottomPadding),
             ) {
                 ZoomButtons(
                     onZoomIn = {
