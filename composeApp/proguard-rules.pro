@@ -24,3 +24,10 @@
 
 # Koin
 -keep class org.koin.** { *; }
+
+# logback-android (SLF4J → logcat). Loaded reflectively from assets/logback.xml;
+# R8 must keep the appender/encoder classes the XML names.
+-keep class ch.qos.logback.** { *; }
+-keep class org.slf4j.** { *; }
+-dontwarn ch.qos.logback.**
+-dontwarn org.slf4j.**

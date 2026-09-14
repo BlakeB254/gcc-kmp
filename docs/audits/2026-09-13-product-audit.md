@@ -256,6 +256,11 @@ next tranche, on the S26, end to end.
   Recommend: `assembleDebug` on PRs touching `composeApp/`/`shared/` (the
   SDK action is already in the manual job; ~4 min), and an e2e smoke against
   the Vercel preview URL.
+- **The site build has a network dependency.** PR #292's `next build`
+  failed on a runner with `ConnectTimeoutError` while prerendering
+  `/opengraph-image`: `next/og` fetches emoji glyphs from a CDN for the
+  `📍`/`💰` characters in `opengraph-image.tsx:119/134`. A rerun passed.
+  Replace the two emoji with inline SVG so the build needs no network.
 - **Play.** Service account (pending JSON), upload keystore, signed AAB, and
   an internal-testing upload script — the same rig then serves every other
   app.
@@ -274,13 +279,18 @@ next tranche, on the S26, end to end.
 | 5 | `cancelled` job state; dedupe `ACTIVE_JOB_STATUSES` | site+shared | Med / S | open |
 | 6 | Typed API consumers; ESLint back on with `no-explicit-any` | site | Med / M | open |
 | 7 | Kotlin enum generator + CI diff | shared | Med / M | open |
-| 8 | SLF4J Android binding | mobile | Med / XS | open |
+| 8 | SLF4J Android binding | mobile | Med / XS | in PR |
 | 9 | Android `assembleDebug` in PR CI | ci | Med / S | open |
 | 10 | Mobile admin: release-and-close on 409 | mobile | Med / S | open |
 | 11 | Perceptual-hash dedup at upload | site | Med / M | open |
 | 12 | Backend annotation → `attributes` write path | site+dgx | Med / M | open |
 | 13 | e2e smoke on preview URL | ci | Low / M | open |
 | 14 | Location layer gated on permission | mobile | Low / XS | open |
+| 15 | Admin web token out of `localStorage` onto an httpOnly cookie (July #18) | site | High / M | open |
+| 16 | Rate limiting on auth/code endpoints (July #17) | site | Med / M | open |
+| 17 | `GET /api/jobs` scoped to own-or-admin like `jobs/[id]` (any worker can list all) | site | Med / XS | open |
+| 18 | Rename `workers/me/service-area` — public aggregate, misleading `me/` | site | Low / XS | open |
+| 19 | OG image: inline SVG instead of emoji so `next build` needs no network | site | Low / XS | open |
 
 **Proposed first tranche, one PR each, in order: 1, 2, 3, 8.** Together they
 close the remaining leak class, make the Android map correct on real

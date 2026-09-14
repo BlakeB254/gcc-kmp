@@ -34,6 +34,10 @@ capturable = "2.1.0"
 # Image Loading (3.3.0 updated to Kotlin 2.2.0)
 coil3 = "3.3.0"
 
+# SLF4J 2.x binding for Android (Ktor 3 logs through slf4j-api 2.0.16; with
+# no binding it is a silent no-op on the phone). 3.x is the SLF4J 2 line.
+logback-android = "3.0.0"
+
 # Android
 androidx-activityCompose = "1.9.3"
 androidx-lifecycle = "2.8.7"
@@ -124,6 +128,9 @@ capturable = { module = "dev.shreyaspatil:capturable", version.ref = "capturable
 # Image Loading
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil3" }
 coil-network-ktor = { module = "io.coil-kt.coil3:coil-network-ktor3", version.ref = "coil3" }
+
+# Logging
+logback-android = { module = "com.github.tony19:logback-android", version.ref = "logback-android" }
 
 # Android
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activityCompose" }

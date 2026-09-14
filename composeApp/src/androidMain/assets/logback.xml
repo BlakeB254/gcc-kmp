@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Android SLF4J binding config (logback-android). Without a binding, SLF4J
+  falls back to a no-op logger on Android and everything Ktor logs through
+  it is discarded — the first-launch logcat says exactly that:
+    SLF4J(W): No SLF4J providers were found. Defaulting to no-operation (NOP)
+  Route it to logcat so field network/upload problems leave a trace.
+-->
+<configuration>
+    <appender name="logcat" class="ch.qos.logback.classic.android.LogcatAppender">
+        <tagEncoder>
+            <pattern>gcc.%logger{0}</pattern>
+        </tagEncoder>
+        <encoder>
+            <pattern>%msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Ktor client is the main SLF4J emitter; keep it at INFO so request
+         lines show without per-byte noise. Everything else WARN. -->
+    <logger name="io.ktor" level="INFO" />
+    <root level="WARN">
+        <appender-ref ref="logcat" />
+    </root>
+</configuration>

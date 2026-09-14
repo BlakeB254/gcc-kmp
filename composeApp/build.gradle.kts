@@ -79,6 +79,10 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.androidx.activity.compose)
             implementation(libs.kotlinx.coroutines.android)
+            // SLF4J binding → logcat. Without it SLF4J is a no-op on Android
+            // ("No SLF4J providers were found" on first launch) and everything
+            // Ktor logs is discarded. Config: src/androidMain/assets/logback.xml
+            implementation(libs.logback.android)
             // Screenshot capture for sharing (Android-only AAR — no desktop/iOS variant)
             implementation(libs.capturable)
             // CameraX (Android camera hardware access)
