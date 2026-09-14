@@ -3,13 +3,22 @@ import { db } from '@/db'
 import { jobs } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { routeIdsByBlockId, toMobileJob } from '@/lib/mobile-job-response'
+import { requireMobileAuth } from '@/lib/mobile-auth'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
-export async function GET(_request: NextRequest, context: RouteContext) {
+export async function GET(request: NextRequest, context: RouteContext) {
+  // A job row carries its worker, route, timing and payout. This was
+  // unauthenticated — the same leak as GET /api/jobs, one id at a time.
+  // Workers may read their own job; admins may read any.
+  const auth = await requireMobileAuth(request)
+  if (!auth) {
+    return NextResponse.json({ data: null, success: false, message: 'Not authenticated' }, { status: 401 })
+  }
+
   try {
     const { id } = await context.params
     const jobId = parseInt(id, 10)
@@ -25,6 +34,10 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
     if (!job) {
       return NextResponse.json({ error: 'Job not found', success: false }, { status: 404 })
+    }
+
+    if (auth.role !== 'admin' && job.workerId !== auth.workerId) {
+      return NextResponse.json({ error: 'Job belongs to a different worker', success: false }, { status: 403 })
     }
 
     const routeMap = await routeIdsByBlockId([job.blockId])
