@@ -3,6 +3,7 @@ import { db } from '@/db'
 import { blocks, jobs } from '@/db/schema'
 import { and, desc, eq, inArray, sql, SQL } from 'drizzle-orm'
 import { toMobileJobs } from '@/lib/mobile-job-response'
+import { requireMobileAuth } from '@/lib/mobile-auth'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -19,6 +20,14 @@ const allowedStatuses = new Set([
 ])
 
 export async function GET(request: NextRequest) {
+  // This listing carries every job's workerId, routeId, timing and payout.
+  // It was unauthenticated; the only caller is the KMP client, which already
+  // sends a Bearer token on every request.
+  const auth = await requireMobileAuth(request)
+  if (!auth) {
+    return NextResponse.json({ data: null, success: false, message: 'Not authenticated' }, { status: 401 })
+  }
+
   try {
     const searchParams = request.nextUrl.searchParams
     const status = searchParams.get('status')

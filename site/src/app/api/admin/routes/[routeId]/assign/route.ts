@@ -11,6 +11,8 @@ import { and, desc, eq, isNotNull } from 'drizzle-orm'
 import { requireAdmin } from '@/lib/admin-auth'
 import { toMobileJob } from '@/lib/mobile-job-response'
 import { ensureJobForRouteWorker } from '@/lib/ensure-job-for-route-worker'
+import { eligibleBlockStatusForRoute } from '@/lib/admin-route-status'
+import { isReleasableJobStatus, releaseJobPatch } from '@/lib/release-route-jobs'
 import {
   commitPublicDataMutation,
   type PublicDataInvalidator,
@@ -28,8 +30,6 @@ export function commitRouteAssignmentMutation<T>(
 }
 
 type RouteContext = { params: Promise<{ routeId: string }> }
-
-const cancellableStatuses = ['claimed', 'in_progress'] as const
 
 function parseRouteId(routeIdStr: string) {
   const routeId = parseInt(routeIdStr, 10)
@@ -184,27 +184,33 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Assignment not found', success: false }, { status: 404 })
     }
 
-    if (!existing.job.status || !cancellableStatuses.includes(existing.job.status as typeof cancellableStatuses[number])) {
+    if (!isReleasableJobStatus(existing.job.status)) {
       return NextResponse.json({ error: 'Only claimed or in-progress assignments can be cancelled', success: false }, { status: 409 })
     }
 
+    // The reset lives in lib/release-route-jobs.ts, shared with the
+    // unpublish/archive verbs. The block follows the job: linkedBlockStatusUpdate
+    // never touches `in_progress` blocks (they belong to a job), so once the job
+    // is released the block must be put back or the map keeps showing it worked.
     const now = new Date().toISOString()
-    const payoutAmount = existing.job.payoutAmount ? Math.round(parseFloat(existing.job.payoutAmount)) : 0
-    const cancelledStatus = payoutAmount > 0 ? 'available' : 'disputed'
-    const [updated] = await commitRouteAssignmentMutation(() =>
-      db
-        .update(jobs)
-        .set({
-          workerId: null,
-          status: cancelledStatus,
-          claimedAt: null,
-          startedAt: null,
-          payoutStatus: null,
-          updatedAt: now,
-        })
-        .where(eq(jobs.id, jobId))
-        .returning(),
+    const [route] = await db
+      .select({ status: routes.status, claimStatus: routes.claimStatus })
+      .from(routes)
+      .where(eq(routes.id, routeId))
+      .limit(1)
+    const blockStatus = route
+      ? eligibleBlockStatusForRoute({ status: route.status ?? 'draft', claimStatus: route.claimStatus })
+      : 'funded'
+    const [updatedRows] = await commitRouteAssignmentMutation(() =>
+      db.batch([
+        db.update(jobs).set(releaseJobPatch(existing.job, now)).where(eq(jobs.id, jobId)).returning(),
+        db
+          .update(blocks)
+          .set({ status: blockStatus, updatedAt: now })
+          .where(and(eq(blocks.id, existing.job.blockId), eq(blocks.status, 'in_progress'))),
+      ]),
     )
+    const updated = updatedRows[0]
 
     return NextResponse.json({
       data: toMobileJob(updated, routeId),

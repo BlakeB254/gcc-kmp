@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { Fragment, useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { RouteDrawer } from '@/components/admin/RouteDrawer'
 import { RouteGenerator } from '@/components/admin/RouteGenerator'
@@ -49,6 +49,36 @@ type DeleteDialog =
   | { kind: 'blocked'; route: RouteRow; message: string; summary: { activeJobs?: number; pendingOffers?: number } }
   | { kind: 'result'; route: RouteRow; summary: Record<string, unknown> | null }
 
+// A close verb (unpublish/archive) refused with 409 because workers are
+// mid-way through the route. Mirrors the DELETE `conflicts` shape, plus the
+// server's word on whether a retry with releaseActiveJobs can succeed.
+type VerbConflict = {
+  route: RouteRow
+  verb: 'unpublish' | 'archive'
+  message: string
+  conflicts: { activeJobs?: number; pendingOffers?: number }
+  releasable: { count: number; heldForReview: number }
+}
+
+type VerbResult =
+  | { data: unknown; summary?: { releasedJobs?: number } }
+  | { conflict: { error?: string; conflicts?: VerbConflict['conflicts']; releasable?: VerbConflict['releasable'] } }
+
+// One row of GET /api/admin/routes/:id/assign.
+interface Assignment {
+  jobId: number
+  workerId: number | null
+  workerName: string
+  workerEmail: string
+  status: string
+  isTest: boolean
+  payoutAmount: number
+  claimedAt: string | null
+  startedAt: string | null
+}
+
+const VERB_PAST = { unpublish: 'unpublished', archive: 'archived' } as const
+
 interface BlockRow {
   id: number
   code: string | null
@@ -70,6 +100,13 @@ export default function AdminRoutesPage() {
   const [savingEdit, setSavingEdit] = useState(false)
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialog | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [verbConflict, setVerbConflict] = useState<VerbConflict | null>(null)
+  const [releasing, setReleasing] = useState(false)
+  const [expandedRouteId, setExpandedRouteId] = useState<number | null>(null)
+  const [assignments, setAssignments] = useState<
+    Record<number, { loading: boolean; rows: Assignment[]; error?: string }>
+  >({})
+  const [unassigningJobId, setUnassigningJobId] = useState<number | null>(null)
   const [toast, setToast] = useState<{ kind: 'ok' | 'warn' | 'error'; text: string } | null>(null)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -100,6 +137,62 @@ export default function AdminRoutesPage() {
   useEffect(() => {
     fetchRoutes()
   }, [fetchRoutes])
+
+  // Who is on this route right now. GET …/assign existed but nothing in the
+  // web admin consumed it, so an admin had no way to see — let alone clear —
+  // a job stuck in_progress after the route was closed.
+  const loadAssignments = useCallback(async (routeId: number) => {
+    setAssignments((a) => ({ ...a, [routeId]: { loading: true, rows: a[routeId]?.rows ?? [] } }))
+    try {
+      const token = localStorage.getItem('adminToken')
+      const res = await fetch(`/api/admin/routes/${routeId}/assign`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error || `Failed to load assignments (${res.status})`)
+      setAssignments((a) => ({ ...a, [routeId]: { loading: false, rows: json.data ?? [] } }))
+    } catch (e) {
+      setAssignments((a) => ({
+        ...a,
+        [routeId]: { loading: false, rows: [], error: e instanceof Error ? e.message : 'Failed to load assignments' },
+      }))
+    }
+  }, [])
+
+  const toggleAssignments = useCallback(
+    (routeId: number) => {
+      if (expandedRouteId === routeId) {
+        setExpandedRouteId(null)
+        return
+      }
+      setExpandedRouteId(routeId)
+      loadAssignments(routeId)
+    },
+    [expandedRouteId, loadAssignments]
+  )
+
+  const handleUnassign = useCallback(
+    async (route: RouteRow, job: Assignment) => {
+      setUnassigningJobId(job.jobId)
+      try {
+        const token = localStorage.getItem('adminToken')
+        const res = await fetch(`/api/admin/routes/${route.id}/assign?jobId=${job.jobId}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(json.error || `Unassign failed (${res.status})`)
+        showToast('ok', `Released ${job.workerName} from ${route.code}. It leaves their dashboard on next refresh.`)
+        loadAssignments(route.id)
+        fetchRoutes()
+      } catch (e) {
+        showToast('error', e instanceof Error ? e.message : 'Failed to unassign.')
+      } finally {
+        setUnassigningJobId(null)
+      }
+    },
+    [fetchRoutes, loadAssignments, showToast]
+  )
 
   const fetchBlocks = useCallback(async () => {
     setBlocksLoading(true)
@@ -139,7 +232,11 @@ export default function AdminRoutesPage() {
   // New verb endpoints (phase 2 API): publish/unpublish/archive/claim-status.
   // Each returns the updated route; we refetch the list to stay consistent.
   const postRouteVerb = useCallback(
-    async (routeId: number, verb: 'publish' | 'unpublish' | 'archive' | 'claim-status', body?: Record<string, unknown>) => {
+    async (
+      routeId: number,
+      verb: 'publish' | 'unpublish' | 'archive' | 'claim-status',
+      body?: Record<string, unknown>
+    ): Promise<VerbResult> => {
       const token = localStorage.getItem('adminToken')
       const res = await fetch(`/api/admin/routes/${routeId}/${verb}`, {
         method: 'POST',
@@ -147,8 +244,10 @@ export default function AdminRoutesPage() {
         body: JSON.stringify(body ?? {}),
       })
       const json = await res.json().catch(() => ({}))
+      // 409 is a refusal with a payload the UI can act on, not a failure.
+      if (res.status === 409) return { conflict: json }
       if (!res.ok) throw new Error(json.error || `${verb} failed (${res.status})`)
-      return json.data
+      return { data: json.data, summary: json.summary }
     },
     []
   )
@@ -157,7 +256,18 @@ export default function AdminRoutesPage() {
     async (route: RouteRow, verb: 'publish' | 'unpublish' | 'archive') => {
       setBusyRouteId(route.id)
       try {
-        await postRouteVerb(route.id, verb)
+        const result = await postRouteVerb(route.id, verb)
+        if ('conflict' in result) {
+          if (verb === 'publish') throw new Error(result.conflict.error || 'Publish refused.')
+          setVerbConflict({
+            route,
+            verb,
+            message: result.conflict.error ?? 'Route has active work.',
+            conflicts: result.conflict.conflicts ?? {},
+            releasable: result.conflict.releasable ?? { count: 0, heldForReview: 0 },
+          })
+          return
+        }
         if (verb === 'publish') {
           showToast('ok', `${route.code} published — live for workers.`)
         } else if (verb === 'unpublish') {
@@ -173,6 +283,36 @@ export default function AdminRoutesPage() {
       }
     },
     [postRouteVerb, fetchRoutes, showToast]
+  )
+
+  // "Release N and unpublish/archive": retry the verb with releaseActiveJobs.
+  // The server does the release and the close in one transaction.
+  const handleVerbRelease = useCallback(async () => {
+    if (!verbConflict) return
+    const { route, verb } = verbConflict
+    setReleasing(true)
+    try {
+      const result = await postRouteVerb(route.id, verb, { releaseActiveJobs: true })
+      if ('conflict' in result) {
+        setVerbConflict({
+          ...verbConflict,
+          message: result.conflict.error ?? verbConflict.message,
+          conflicts: result.conflict.conflicts ?? verbConflict.conflicts,
+          releasable: result.conflict.releasable ?? verbConflict.releasable,
+        })
+        return
+      }
+      const n = result.summary?.releasedJobs ?? 0
+      showToast('ok', `${route.code} ${VERB_PAST[verb]} — released ${n} assignment${n === 1 ? '' : 's'}.`)
+      setVerbConflict(null)
+      fetchRoutes()
+      if (expandedRouteId === route.id) loadAssignments(route.id)
+    } catch (e) {
+      showToast('error', e instanceof Error ? e.message : `Failed to ${verb} route.`)
+    } finally {
+      setReleasing(false)
+    }
+  }, [verbConflict, postRouteVerb, showToast, fetchRoutes, expandedRouteId, loadAssignments]
   )
 
   const handleClaimToggle = useCallback(
@@ -215,7 +355,8 @@ export default function AdminRoutesPage() {
           kind: 'blocked',
           route,
           message: json.error || 'Route has active work and cannot be deleted.',
-          summary: json.summary || {},
+          // The API sends `conflicts`; this read `summary` and always showed 0/0.
+          summary: json.conflicts ?? json.summary ?? {},
         })
         return
       }
@@ -440,8 +581,10 @@ export default function AdminRoutesPage() {
             <tbody className="divide-y divide-neutral-800">
               {routes.map((r) => {
                 const busy = busyRouteId === r.id
+                const expanded = expandedRouteId === r.id
                 return (
-                  <tr key={r.id} className="hover:bg-neutral-900/50 transition-colors">
+                  <Fragment key={r.id}>
+                  <tr className="hover:bg-neutral-900/50 transition-colors">
                     <td className="px-4 py-3 font-mono text-green-400">{r.code}</td>
                     <td className="px-4 py-3 text-neutral-200">{r.displayName}</td>
                     <td className="px-4 py-3 text-neutral-400">
@@ -522,6 +665,16 @@ export default function AdminRoutesPage() {
                           </button>
                         )}
                         <button
+                          onClick={() => toggleAssignments(r.id)}
+                          disabled={busy}
+                          aria-expanded={expanded}
+                          className={`px-2 py-1 rounded text-xs font-medium disabled:opacity-40 transition-colors ${
+                            expanded ? 'bg-neutral-700 text-white' : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'
+                          }`}
+                        >
+                          Assignments
+                        </button>
+                        <button
                           onClick={() => setEditingRoute(r)}
                           disabled={busy}
                           className="px-2 py-1 rounded text-xs font-medium bg-neutral-800 text-neutral-300 hover:bg-neutral-700 disabled:opacity-40 transition-colors"
@@ -553,6 +706,76 @@ export default function AdminRoutesPage() {
                       </div>
                     </td>
                   </tr>
+                  {expanded && (
+                    <tr className="bg-neutral-950/60">
+                      <td colSpan={8} className="px-4 py-3">
+                        {(() => {
+                          const a = assignments[r.id]
+                          if (!a || a.loading) {
+                            return <div className="text-xs text-neutral-500">Loading assignments…</div>
+                          }
+                          if (a.error) return <div className="text-xs text-red-400">{a.error}</div>
+                          if (a.rows.length === 0) {
+                            return (
+                              <div className="text-xs text-neutral-500">
+                                No worker is attached to this route.
+                              </div>
+                            )
+                          }
+                          return (
+                            <div className="space-y-1.5">
+                              <div className="text-[10px] uppercase tracking-wide text-neutral-500">
+                                Assignments — Unassign releases the job and clears it from the worker&apos;s dashboard
+                              </div>
+                              {a.rows.map((j) => {
+                                const active = j.status === 'claimed' || j.status === 'in_progress'
+                                const held = j.status === 'pending_review'
+                                const when = j.startedAt
+                                  ? `started ${new Date(j.startedAt).toLocaleDateString()}`
+                                  : j.claimedAt
+                                    ? `claimed ${new Date(j.claimedAt).toLocaleDateString()}`
+                                    : ''
+                                return (
+                                  <div key={j.jobId} className="flex items-center gap-3 text-xs">
+                                    <span className="text-neutral-200">{j.workerName}</span>
+                                    <span className="text-neutral-600">{j.workerEmail}</span>
+                                    <span
+                                      className={`px-1.5 py-0.5 rounded ${
+                                        active
+                                          ? 'bg-amber-900/40 text-amber-300'
+                                          : held
+                                            ? 'bg-blue-900/40 text-blue-300'
+                                            : 'bg-neutral-800 text-neutral-400'
+                                      }`}
+                                    >
+                                      {j.status.replace('_', ' ')}
+                                    </span>
+                                    {j.isTest && <span className="text-neutral-600">test · $0</span>}
+                                    <span className="text-neutral-600">{when}</span>
+                                    {active && (
+                                      <button
+                                        onClick={() => handleUnassign(r, j)}
+                                        disabled={unassigningJobId === j.jobId}
+                                        className="ml-auto px-2 py-1 rounded text-xs font-medium bg-red-900/50 text-red-400 hover:bg-red-900 disabled:opacity-40 transition-colors"
+                                      >
+                                        {unassigningJobId === j.jobId ? 'Releasing…' : 'Unassign'}
+                                      </button>
+                                    )}
+                                    {held && (
+                                      <span className="ml-auto text-neutral-500">
+                                        awaiting review — review it before releasing
+                                      </span>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )
+                        })()}
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 )
               })}
             </tbody>
@@ -592,6 +815,52 @@ export default function AdminRoutesPage() {
           busy={deleting}
           onConfirm={handleDeleteConfirm}
           onClose={() => setDeleteDialog(null)}
+        />
+      )}
+
+      {verbConflict && (
+        <AdminConfirmDialog
+          title={
+            <>
+              Cannot {verbConflict.verb}{' '}
+              <span className="font-mono text-amber-400">{verbConflict.route.code}</span> yet
+            </>
+          }
+          body={
+            <>
+              <p>{verbConflict.message}</p>
+              <div className="rounded-md border border-neutral-800 bg-neutral-900 px-3 py-2 text-xs space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-neutral-400">Active jobs</span>
+                  <span className="text-white font-medium">{verbConflict.conflicts.activeJobs ?? 0}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-neutral-400">Releasable now</span>
+                  <span className="text-white font-medium">{verbConflict.releasable.count}</span>
+                </div>
+                {verbConflict.releasable.heldForReview > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-neutral-400">Awaiting review</span>
+                    <span className="text-white font-medium">{verbConflict.releasable.heldForReview}</span>
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-neutral-500">
+                Releasing puts each job back to available (a $0 test job is retired) and clears it from
+                the worker&apos;s dashboard. Jobs awaiting review are never released — review them first,
+                or open Assignments on the route to see who holds them.
+              </p>
+            </>
+          }
+          confirmLabel={
+            verbConflict.releasable.heldForReview > 0
+              ? undefined
+              : `Release ${verbConflict.releasable.count} and ${verbConflict.verb}`
+          }
+          confirmTone="danger"
+          busy={releasing}
+          onConfirm={verbConflict.releasable.heldForReview > 0 ? undefined : handleVerbRelease}
+          onClose={() => setVerbConflict(null)}
         />
       )}
 
