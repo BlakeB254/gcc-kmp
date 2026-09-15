@@ -92,7 +92,11 @@ export default function PrivacyPage() {
             <section className="mb-8">
               <h2 className="text-xl font-semibold text-neutral-900 mb-4">6. Data Retention</h2>
               <p className="text-neutral-700 mb-4">
-                We retain your personal information for as long as necessary to provide our services and comply with legal obligations. You may request deletion of your account and associated data at any time.
+                We retain your personal information for as long as necessary to provide our services and comply with legal obligations. You may request deletion of your account and associated data at any time — see{' '}
+                <Link href="/delete-account" className="text-brand-green-600 hover:underline">
+                  how to delete your account
+                </Link>
+                .
               </p>
             </section>
 
