@@ -595,3 +595,37 @@
 .group:hover .icon-bounce {
   animation: iconBounce 0.4s ease-out;
 }
+
+/* Money Breakdown custom animations - added for t_81932943 */
+@keyframes dash {
+  to {
+    stroke-dashoffset: -28;
+  }
+}
+
+@keyframes moneyFlow {
+  0% {
+    opacity: 0;
+    transform: translate(-25px, 0) scale(0.5);
+  }
+  25% {
+    opacity: 0.9;
+    transform: translate(0px, -8px) scale(1);
+  }
+  75% {
+    opacity: 0.9;
+    transform: translate(55px, 8px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(75px, 0) scale(0.6);
+  }
+}
+
+.animate-dash {
+  animation: dash 1.8s linear infinite;
+}
+
+.animate-money-flow {
+  animation: moneyFlow 2.2s ease-in-out infinite;
+}

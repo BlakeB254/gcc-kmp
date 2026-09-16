@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import { Users } from 'lucide-react'
 import { DonateCard } from '@/components/shared/DonateCard'
+import { MoneyBreakdown } from './MoneyBreakdown'
 
 export function DonateCTASection() {
   const [recentDonorCount, setRecentDonorCount] = useState<number | null>(null)
@@ -68,16 +69,8 @@ export function DonateCTASection() {
               </div>
             )}
 
-            {/* Where the $100 goes — real GCC brand graphic, not a generated one */}
-            <div className="mx-auto lg:mx-0 max-w-xs lg:max-w-sm">
-              <Image
-                src="/images/optimized/money-breakdown.webp"
-                alt="Where the $100 goes: sponsor pays $100, neighbor earns $100, 0% overhead taken from the cleaning fee"
-                width={1080}
-                height={1080}
-                className="w-full rounded-xl"
-              />
-            </div>
+            {/* Where the $100 goes — interactive animated component replacing the static webp (t_81932943) */}
+            <MoneyBreakdown />
           </div>
 
           {/* Reusable DonateCard */}
