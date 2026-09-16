@@ -1,0 +1,303 @@
+[
+  {
+    "id": "living-room-window",
+    "expected_state": "INDOOR",
+    "request": {
+      "observations": [
+        {"identifier": "living_room", "confidence": 0.62},
+        {"identifier": "sofa", "confidence": 0.48},
+        {"identifier": "tree", "confidence": 0.41}
+      ],
+      "events": [
+        {"kind": "scene", "vote": "INDOOR", "timestamp_ms": 1000000},
+        {"kind": "scene", "vote": "INDOOR", "timestamp_ms": 1001000}
+      ]
+    }
+  },
+  {
+    "id": "bathroom-residence",
+    "expected_state": "INDOOR",
+    "request": {
+      "observations": [
+        {"identifier": "toilet", "confidence": 0.55},
+        {"identifier": "tile", "confidence": 0.4}
+      ],
+      "events": [
+        {"kind": "scene", "vote": "INDOOR", "timestamp_ms": 1000000},
+        {"kind": "scene", "vote": "INDOOR", "timestamp_ms": 1000800}
+      ]
+    }
+  },
+  {
+    "id": "kitchen-residence",
+    "expected_state": "INDOOR",
+    "request": {
+      "observations": [
+        {"identifier": "kitchen", "confidence": 0.7},
+        {"identifier": "stove", "confidence": 0.45}
+      ],
+      "events": [
+        {"kind": "scene", "vote": "INDOOR", "timestamp_ms": 1000000},
+        {"kind": "scene", "vote": "INDOOR", "timestamp_ms": 1000900}
+      ]
+    }
+  },
+  {
+    "id": "bedroom-residence",
+    "expected_state": "INDOOR",
+    "request": {
+      "observations": [
+        {"identifier": "bed", "confidence": 0.66},
+        {"identifier": "dresser", "confidence": 0.4}
+      ],
+      "events": [
+        {"kind": "scene", "vote": "INDOOR", "timestamp_ms": 1000000},
+        {"kind": "scene", "vote": "INDOOR", "timestamp_ms": 1001100}
+      ]
+    }
+  },
+  {
+    "id": "ceiling-plane",
+    "expected_state": "INDOOR",
+    "request": {
+      "ceiling_detected": true,
+      "observations": [{"identifier": "ceiling", "confidence": 0.8}]
+    }
+  },
+  {
+    "id": "mapped-residence-footprint",
+    "expected_state": "INDOOR",
+    "request": {
+      "inside_building": true,
+      "horizontal_accuracy_m": 6.0
+    }
+  },
+  {
+    "id": "scene-plus-degraded-gps",
+    "expected_state": "INDOOR",
+    "request": {
+      "observations": [{"identifier": "hallway", "confidence": 0.7}],
+      "horizontal_accuracy_m": 32.0,
+      "events": [
+        {"kind": "accuracy", "horizontal_accuracy_m": 32.0, "timestamp_ms": 999000}
+      ]
+    }
+  },
+  {
+    "id": "curtain-lamp-interior",
+    "expected_state": "INDOOR",
+    "request": {
+      "observations": [
+        {"identifier": "curtain", "confidence": 0.5},
+        {"identifier": "lamp", "confidence": 0.45}
+      ],
+      "events": [
+        {"kind": "scene", "vote": "INDOOR", "timestamp_ms": 1000000},
+        {"kind": "scene", "vote": "INDOOR", "timestamp_ms": 1000700}
+      ]
+    }
+  },
+  {
+    "id": "north-lawndale-block-street",
+    "expected_state": "OUTDOOR",
+    "request": {
+      "observations": [
+        {"identifier": "street", "confidence": 0.72},
+        {"identifier": "sidewalk", "confidence": 0.51},
+        {"identifier": "car", "confidence": 0.4}
+      ],
+      "events": [
+        {"kind": "scene", "vote": "OUTDOOR", "timestamp_ms": 1000000},
+        {"kind": "scene", "vote": "OUTDOOR", "timestamp_ms": 1000750}
+      ]
+    }
+  },
+  {
+    "id": "park-lawn",
+    "expected_state": "OUTDOOR",
+    "request": {
+      "observations": [
+        {"identifier": "grass", "confidence": 0.8},
+        {"identifier": "tree", "confidence": 0.6},
+        {"identifier": "sky", "confidence": 0.55}
+      ],
+      "events": [
+        {"kind": "scene", "vote": "OUTDOOR", "timestamp_ms": 1000000},
+        {"kind": "scene", "vote": "OUTDOOR", "timestamp_ms": 1000800}
+      ]
+    }
+  },
+  {
+    "id": "alley-asphalt",
+    "expected_state": "OUTDOOR",
+    "request": {
+      "observations": [
+        {"identifier": "alley", "confidence": 0.58},
+        {"identifier": "asphalt", "confidence": 0.5}
+      ],
+      "events": [
+        {"kind": "scene", "vote": "OUTDOOR", "timestamp_ms": 1000000},
+        {"kind": "scene", "vote": "OUTDOOR", "timestamp_ms": 1000900}
+      ]
+    }
+  },
+  {
+    "id": "aim-down-soil",
+    "expected_state": "OUTDOOR",
+    "request": {
+      "observations": [
+        {"identifier": "soil", "confidence": 0.7},
+        {"identifier": "gravel", "confidence": 0.45}
+      ],
+      "events": [
+        {"kind": "scene", "vote": "OUTDOOR", "timestamp_ms": 1000000},
+        {"kind": "scene", "vote": "OUTDOOR", "timestamp_ms": 1000850}
+      ]
+    }
+  },
+  {
+    "id": "clean-gps-unlock",
+    "expected_state": "OUTDOOR",
+    "request": {
+      "events": [
+        {"kind": "accuracy", "horizontal_accuracy_m": 5.0, "timestamp_ms": 1000000},
+        {"kind": "accuracy", "horizontal_accuracy_m": 4.5, "timestamp_ms": 1001000},
+        {"kind": "accuracy", "horizontal_accuracy_m": 5.2, "timestamp_ms": 1002000},
+        {"kind": "accuracy", "horizontal_accuracy_m": 4.8, "timestamp_ms": 1003000},
+        {"kind": "accuracy", "horizontal_accuracy_m": 5.1, "timestamp_ms": 1004000},
+        {"kind": "accuracy", "horizontal_accuracy_m": 4.9, "timestamp_ms": 1005000},
+        {"kind": "accuracy", "horizontal_accuracy_m": 5.0, "timestamp_ms": 1006000}
+      ]
+    }
+  },
+  {
+    "id": "porch-tie-reads-outdoor",
+    "expected_state": "OUTDOOR",
+    "request": {
+      "observations": [
+        {"identifier": "ceiling", "confidence": 0.5},
+        {"identifier": "yard", "confidence": 0.5}
+      ],
+      "events": [
+        {"kind": "scene", "vote": "OUTDOOR", "timestamp_ms": 1000000},
+        {"kind": "scene", "vote": "OUTDOOR", "timestamp_ms": 1000750}
+      ]
+    }
+  },
+  {
+    "id": "manual-override-stale-footprint",
+    "expected_state": "OUTDOOR",
+    "request": {
+      "force_outdoors": true,
+      "inside_building": true
+    }
+  },
+  {
+    "id": "empty-packet-uncertain",
+    "expected_state": "UNCERTAIN",
+    "request": {}
+  },
+  {
+    "id": "weak-lamp-only",
+    "expected_state": "UNCERTAIN",
+    "request": {
+      "observations": [{"identifier": "lamp", "confidence": 0.35}]
+    }
+  },
+  {
+    "id": "neutral-gps",
+    "expected_state": "UNCERTAIN",
+    "request": {
+      "events": [
+        {"kind": "accuracy", "horizontal_accuracy_m": 15.0, "timestamp_ms": 1000000},
+        {"kind": "accuracy", "horizontal_accuracy_m": 15.0, "timestamp_ms": 1001000},
+        {"kind": "accuracy", "horizontal_accuracy_m": 15.0, "timestamp_ms": 1002000},
+        {"kind": "accuracy", "horizontal_accuracy_m": 15.0, "timestamp_ms": 1003000},
+        {"kind": "accuracy", "horizontal_accuracy_m": 15.0, "timestamp_ms": 1004000},
+        {"kind": "accuracy", "horizontal_accuracy_m": 15.0, "timestamp_ms": 1005000}
+      ]
+    }
+  },
+  {
+    "id": "single-indoor-vote",
+    "expected_state": "UNCERTAIN",
+    "request": {
+      "observations": [{"identifier": "kitchen", "confidence": 0.8}],
+      "events": [{"kind": "scene", "vote": "INDOOR", "timestamp_ms": 999000}]
+    }
+  },
+  {
+    "id": "sub-threshold-kitchen",
+    "expected_state": "UNCERTAIN",
+    "request": {
+      "observations": [
+        {"identifier": "kitchen", "confidence": 0.29},
+        {"identifier": "bedroom", "confidence": 0.29}
+      ]
+    }
+  },
+  {
+    "id": "shower-mirror",
+    "expected_state": "INDOOR",
+    "request": {
+      "observations": [
+        {"identifier": "shower", "confidence": 0.52},
+        {"identifier": "mirror", "confidence": 0.4}
+      ],
+      "events": [
+        {"kind": "scene", "vote": "INDOOR", "timestamp_ms": 1000000},
+        {"kind": "scene", "vote": "INDOOR", "timestamp_ms": 1001000}
+      ]
+    }
+  },
+  {
+    "id": "playground",
+    "expected_state": "OUTDOOR",
+    "request": {
+      "observations": [
+        {"identifier": "playground", "confidence": 0.64},
+        {"identifier": "sky", "confidence": 0.5}
+      ],
+      "events": [
+        {"kind": "scene", "vote": "OUTDOOR", "timestamp_ms": 1000000},
+        {"kind": "scene", "vote": "OUTDOOR", "timestamp_ms": 1000800}
+      ]
+    }
+  },
+  {
+    "id": "highway-bridge",
+    "expected_state": "OUTDOOR",
+    "request": {
+      "observations": [
+        {"identifier": "highway", "confidence": 0.6},
+        {"identifier": "bridge", "confidence": 0.5}
+      ],
+      "events": [
+        {"kind": "scene", "vote": "OUTDOOR", "timestamp_ms": 1000000},
+        {"kind": "scene", "vote": "OUTDOOR", "timestamp_ms": 1000700}
+      ]
+    }
+  },
+  {
+    "id": "wardrobe-closet",
+    "expected_state": "INDOOR",
+    "request": {
+      "observations": [
+        {"identifier": "wardrobe", "confidence": 0.58},
+        {"identifier": "closet", "confidence": 0.42}
+      ],
+      "events": [
+        {"kind": "scene", "vote": "INDOOR", "timestamp_ms": 1000000},
+        {"kind": "scene", "vote": "INDOOR", "timestamp_ms": 1000950}
+      ]
+    }
+  },
+  {
+    "id": "override-then-ceiling",
+    "expected_state": "INDOOR",
+    "request": {
+      "force_outdoors": true,
+      "ceiling_detected": true
+    }
+  }
+]

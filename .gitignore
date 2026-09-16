@@ -71,6 +71,7 @@ target/
 .cache/
 scripts/reconstruction/.venv/
 scripts/privacy_scrub/.venv/
+scripts/indoor_gate_v4/.venv/
 
 # Isolated implementation worktrees
 .worktrees/

@@ -1,0 +1,19 @@
+[project]
+name = "gcc-indoor-gate-v4"
+version = "1.0.0"
+description = "Server-side Indoor Gate v4 classifier (label packets only; no pixels)."
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115",
+  "pydantic>=2.8",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "httpx>=0.27"]
+
+[project.scripts]
+gcc-indoor-gate = "indoor_gate_v4.app:app"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
