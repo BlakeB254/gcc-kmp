@@ -73,7 +73,7 @@ function SponsorCalculatorPage() {
   return (
     <div className="bg-gradient-to-b from-brand-green-50 to-white">
       {/* Page Title and Steps */}
-      <div className="bg-white/80 backdrop-blur border-b sticky top-16 z-10">
+      <div className="bg-white/80 backdrop-blur border-b sticky top-20 z-10">
         <div className="section-container py-4">
           <h1 className="font-bold text-xl mb-4">Build Your Sponsorship Package</h1>
           {/* Progress Steps */}

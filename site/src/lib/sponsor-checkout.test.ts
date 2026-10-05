@@ -27,10 +27,13 @@ test('blocksFromApi: still accepts the older `blocks` key, and anything else is 
 
 // ── buildSponsorCheckoutPayload ───────────────────────────────────────────
 
-test('specific blocks that exist are sponsored by id', () => {
+test('available blocks are sponsored by id', () => {
   const payload = buildSponsorCheckoutPayload({
     mode: 'specific',
-    selectedBlocks: [{ id: 7, code: 'NL-N01' }, { id: '9', code: 'NL-N02' }],
+    selectedBlocks: [
+      { id: 7, code: 'NL-N01', status: 'available' },
+      { id: '9', code: 'NL-N02', status: 'available' },
+    ],
     generalBlockCount: 1,
     availableBlockCount: 10,
     shared,
@@ -38,12 +41,29 @@ test('specific blocks that exist are sponsored by id', () => {
   assert.deepEqual(payload, { ...shared, blockIds: [7, 9] })
 })
 
+test('a block that was already cleaned can be sponsored again, for its next cleaning', () => {
+  const payload = buildSponsorCheckoutPayload({
+    mode: 'specific',
+    selectedBlocks: [
+      { id: '3', code: 'NL-N03', status: 'completed' },
+      { id: '4', code: 'NL-N04', status: 'available' },
+    ],
+    generalBlockCount: 1,
+    availableBlockCount: 1,
+    shared,
+  })
+  assert.deepEqual(payload, {
+    ...shared,
+    reservation: { blockCount: 2, blockCodes: ['NL-N03', 'NL-N04'] },
+  })
+})
+
 test('upcoming route blocks are a reservation, never a NaN block id', () => {
   const payload = buildSponsorCheckoutPayload({
     mode: 'specific',
     selectedBlocks: [
-      { id: 'upcoming-NL-N01', code: 'NL-N01' },
-      { id: 'upcoming-NL-N02', code: 'NL-N02' },
+      { id: 'upcoming-NL-N01', code: 'NL-N01', status: 'available' },
+      { id: 'upcoming-NL-N02', code: 'NL-N02', status: 'available' },
     ],
     generalBlockCount: 1,
     availableBlockCount: 0,

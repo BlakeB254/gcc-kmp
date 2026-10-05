@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   ChevronDown,
   ChevronUp,
@@ -476,8 +477,10 @@ export function QuoteSummary({ config, priceBreakdown, checkoutRequest = 0 }: Qu
         </div>
       </div>
 
-      {/* Checkout / Walkthrough Modal */}
-      {showModal && (
+      {/* Checkout / Walkthrough Modal. Portalled to <body>: this component sits inside a
+          sticky sidebar, which is its own stacking context, so a dialog rendered here
+          ends up underneath the page's sticky step bar and the site header. */}
+      {showModal && createPortal(
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" role="presentation">
           <div
             className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto"
@@ -756,7 +759,8 @@ export function QuoteSummary({ config, priceBreakdown, checkoutRequest = 0 }: Qu
               </>
             )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )

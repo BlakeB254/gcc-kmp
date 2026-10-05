@@ -14,7 +14,7 @@ import { UpsellModal } from '@/components/sponsor/UpsellModal'
 import type { SponsorBlock, SponsorshipMode, SponsorFormData } from '@/components/sponsor/types'
 import { formatStreetName } from '@/components/sponsor/types'
 import { InlineError } from '@/components/shared/InlineError'
-import { blocksFromApi, buildSponsorCheckoutPayload } from '@/lib/sponsor-checkout'
+import { blocksFromApi, buildSponsorCheckoutPayload, isAssignableNow } from '@/lib/sponsor-checkout'
 
 const FREQUENCY_TO_API: Record<SponsorFrequency, string> = {
   single: 'one_time',
@@ -95,8 +95,9 @@ function SponsorPage() {
     try {
       const response = await fetch('/api/blocks?limit=50')
       const data = await response.json()
-      const allBlocks = blocksFromApi<SponsorBlock>(data)
-      setBlocks(allBlocks.filter(b => b.status === 'unfunded' || b.status === 'available'))
+      // Every block is offered, whatever its status: a block can be sponsored
+      // at any time, and one that is already cleaned is funded for its next cycle.
+      setBlocks(blocksFromApi<SponsorBlock>(data))
     } catch (error) {
       console.error('Failed to fetch blocks:', error)
     } finally {
@@ -111,6 +112,9 @@ function SponsorPage() {
         : [...prev, block]
     )
   }
+
+  // Blocks that can be funded and released to a worker right away.
+  const assignableBlockCount = blocks.filter(isAssignableNow).length
 
   // Pricing
   const blockCount = mode === 'specific' ? selectedBlocks.length : generalBlockCount
@@ -135,7 +139,7 @@ function SponsorPage() {
       mode,
       selectedBlocks,
       generalBlockCount,
-      availableBlockCount: blocks.length,
+      availableBlockCount: assignableBlockCount,
       shared: {
         frequency: FREQUENCY_TO_API[sponsorType],
         name: formData.name,
@@ -179,7 +183,7 @@ function SponsorPage() {
         <div className="max-w-golden-wide mx-auto">
 
           {/* Hero */}
-          <SponsorHero blockCount={blocks.length} isLoading={isLoading} />
+          <SponsorHero blockCount={assignableBlockCount} isLoading={isLoading} />
 
           {/* Returning-sponsor sign-in prompt */}
           <div className="mb-6 rounded-xl border border-brand-green-200 bg-brand-green-50 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
@@ -207,6 +211,7 @@ function SponsorPage() {
             ref={blockSectionRef}
             mode={mode}
             blocks={blocks}
+            assignableBlockCount={assignableBlockCount}
             selectedBlocks={selectedBlocks}
             isLoading={isLoading}
             generalBlockCount={generalBlockCount}

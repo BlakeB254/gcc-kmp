@@ -4,9 +4,12 @@
  *
  * A sponsor can always pay, whether or not a block is ready to assign:
  *
- *   - blocks exist and are chosen        -> `blockIds`            (block sponsorship)
+ *   - chosen blocks are all `available`  -> `blockIds`            (block sponsorship)
  *   - "let GCC choose", enough available -> `allocationType:area` (auto-assigned)
- *   - anything else                      -> `reservation`         (next available cycle)
+ *   - anything else                      -> `reservation`         (next cleaning cycle)
+ *
+ * "Anything else" includes a block that has already been cleaned: every block
+ * can be sponsored again at any time, and the money buys its next cleaning.
  *
  * A reservation is charged at $100 a block and recorded as a general-fund
  * contribution tagged with the reserved count (and block codes, if the
@@ -39,6 +42,12 @@ export interface Reservation {
 interface SelectableBlock {
   id: number | string
   code?: string
+  status?: string
+}
+
+/** Only an `available` block can be funded and released to a worker right now. */
+export function isAssignableNow(block: { status?: string }): boolean {
+  return block.status === 'available'
 }
 
 /** A block id the database knows: a positive integer, as a number or a string. */
@@ -68,9 +77,10 @@ export function buildSponsorCheckoutPayload<S extends object>(input: {
 
   if (mode === 'specific') {
     if (selectedBlocks.length === 0) return null
-    const ids = selectedBlocks.map((b) => realBlockId(b.id))
+    const ids = selectedBlocks.map((b) => (isAssignableNow(b) ? realBlockId(b.id) : null))
     if (ids.every((id): id is number => id !== null)) return { ...shared, blockIds: ids }
-    // Upcoming route blocks have no database row yet: reserve them by code.
+    // A block that is already cleaned or in progress, or an upcoming route
+    // block with no database row yet, is reserved by code for its next cycle.
     const blockCodes = selectedBlocks.map((b) => b.code).filter((c): c is string => !!c)
     return { ...shared, reservation: { blockCount: selectedBlocks.length, blockCodes } }
   }
