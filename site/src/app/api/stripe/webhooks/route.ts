@@ -32,7 +32,7 @@ import {
   commitPublicDataMutation,
   type PublicDataInvalidator,
 } from '@/lib/public-data/invalidation'
-import { reservationFromMetadata } from '@/lib/sponsor-checkout'
+import { renewalFromInvoice, reservationFromMetadata } from '@/lib/sponsor-checkout'
 
 export const runtime = 'nodejs'
 
@@ -252,7 +252,7 @@ export async function POST(request: NextRequest) {
               email: sponsor.email,
               amount: amountDollars,
               blockAddress: blockCount === 1 ? blockNames : `${blockCount} blocks: ${blockNames}`,
-              isRecurring: frequency === 'monthly',
+              isRecurring: frequency !== 'one_time',
             })
 
             const emailResult = await sendEmail({
@@ -323,7 +323,7 @@ export async function POST(request: NextRequest) {
               name: sponsor.name,
               email: sponsor.email,
               amount: amountDollars,
-              isRecurring: frequency === 'monthly',
+              isRecurring: frequency !== 'one_time',
             })
 
             const emailResult = await sendEmail({
@@ -448,6 +448,50 @@ export async function POST(request: NextRequest) {
       }
 
       // Payout events (worker payouts)
+      // A subscription renewed (weekly, every two weeks or monthly). The first
+      // payment is recorded by checkout.session.completed above; without this,
+      // every later payment was charged by Stripe and never reached our books.
+      // Stripe must be sending `invoice.paid` to this endpoint for it to run.
+      case 'invoice.paid': {
+        const renewal = renewalFromInvoice(event.data.object as Stripe.Invoice)
+        if (!renewal) break
+
+        const now = new Date().toISOString()
+        await commitSponsorshipMutation(() => db.insert(transactions).values({
+          sponsorId: renewal.sponsorId,
+          blockId: null,
+          stripeSubscriptionId: renewal.subscriptionId,
+          amount: String(renewal.amountCents),
+          currency: renewal.currency,
+          status: 'completed',
+          allocationType: 'general',
+          sponsorType: renewal.frequency,
+          displayName: renewal.displayName,
+          isAnonymous: renewal.isAnonymous,
+          // A renewed block reservation owes the sponsor another cleaning; it
+          // shows up in /admin/reservations and opens no block by itself.
+          reservedBlockCount: renewal.reservation?.blockCount ?? null,
+          reservedBlockCodes: renewal.reservation?.blockCodes ?? null,
+          completedAt: now,
+        }))
+
+        await commitSponsorshipMutation(() => db
+          .update(sponsors)
+          .set({
+            statsTotalContributed: sql`COALESCE(${sponsors.statsTotalContributed}, 0) + ${renewal.amountCents}`,
+            statsLastContributionAt: now,
+            updatedAt: now,
+          })
+          .where(eq(sponsors.id, renewal.sponsorId)))
+
+        console.log('[Webhook] Recorded subscription renewal:', {
+          sponsorId: renewal.sponsorId,
+          subscriptionId: renewal.subscriptionId,
+          amount: renewal.amountCents,
+        })
+        break
+      }
+
       case 'payout.paid': {
         const payout = event.data.object as Stripe.Payout
         const jobId = payout.metadata?.jobId

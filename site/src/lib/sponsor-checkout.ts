@@ -152,3 +152,61 @@ export function reservationFromMetadata(
   if (!parsed) return null
   return { blockCount: parsed.blockCount, blockCodes: parsed.blockCodes.join(',') || null }
 }
+
+/** The parts of a Stripe invoice the renewal rule reads. */
+export interface InvoiceLike {
+  id?: string
+  billing_reason?: string | null
+  amount_paid?: number
+  currency?: string | null
+  parent?: {
+    subscription_details?: {
+      subscription?: string | { id: string } | null
+      metadata?: Record<string, string | undefined> | null
+    } | null
+  } | null
+}
+
+/**
+ * Webhook side: what to record for a paid subscription renewal, or null.
+ *
+ * Only `subscription_cycle` invoices count. The first invoice of a
+ * subscription (`subscription_create`) is recorded by
+ * `checkout.session.completed`, so recording it here too would double it.
+ * The sponsor comes from the subscription metadata set at checkout; a
+ * subscription created before that metadata existed has none, and is skipped
+ * rather than guessed at.
+ */
+export function renewalFromInvoice(invoice: InvoiceLike): {
+  sponsorId: number
+  amountCents: number
+  currency: string
+  subscriptionId: string
+  frequency: string
+  displayName: string | null
+  isAnonymous: boolean
+  reservation: { blockCount: number; blockCodes: string | null } | null
+} | null {
+  if (invoice.billing_reason !== 'subscription_cycle') return null
+  const amountCents = invoice.amount_paid ?? 0
+  if (amountCents <= 0) return null
+
+  const details = invoice.parent?.subscription_details
+  const sub = details?.subscription
+  const subscriptionId = typeof sub === 'string' ? sub : sub?.id
+  if (!subscriptionId) return null
+
+  const meta = details?.metadata ?? {}
+  if (!meta.sponsorId || !/^\d+$/.test(meta.sponsorId)) return null
+
+  return {
+    sponsorId: Number(meta.sponsorId),
+    amountCents,
+    currency: invoice.currency || 'usd',
+    subscriptionId,
+    frequency: meta.frequency || 'monthly',
+    displayName: meta.displayName || null,
+    isAnonymous: meta.isAnonymous === 'true',
+    reservation: reservationFromMetadata(meta),
+  }
+}

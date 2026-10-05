@@ -5,6 +5,7 @@ import {
   blocksFromApi,
   buildSponsorCheckoutPayload,
   parseReservation,
+  renewalFromInvoice,
   reservationFromMetadata,
   stripeRecurring,
 } from './sponsor-checkout'
@@ -170,5 +171,71 @@ test('reservationFromMetadata: block codes that are not codes are dropped', () =
   assert.deepEqual(
     reservationFromMetadata({ reservedBlockCount: '2', reservedBlockCodes: 'NL-N01,<b>x</b>' }),
     { blockCount: 2, blockCodes: 'NL-N01' },
+  )
+})
+
+// ── renewalFromInvoice (webhook side) ─────────────────────────────────────
+
+const cycleInvoice = {
+  id: 'in_123',
+  billing_reason: 'subscription_cycle',
+  amount_paid: 10000,
+  currency: 'usd',
+  parent: {
+    subscription_details: {
+      subscription: 'sub_abc',
+      metadata: { sponsorId: '42', frequency: 'weekly', displayName: 'Del-Kar Pharmacy', isAnonymous: 'false' },
+    },
+  },
+}
+
+test('renewalFromInvoice: a paid renewal becomes a payment to record', () => {
+  assert.deepEqual(renewalFromInvoice(cycleInvoice), {
+    sponsorId: 42,
+    amountCents: 10000,
+    currency: 'usd',
+    subscriptionId: 'sub_abc',
+    frequency: 'weekly',
+    displayName: 'Del-Kar Pharmacy',
+    isAnonymous: false,
+    reservation: null,
+  })
+})
+
+test('renewalFromInvoice: a renewal of a block reservation owes another cleaning', () => {
+  const invoice = {
+    ...cycleInvoice,
+    parent: {
+      subscription_details: {
+        subscription: { id: 'sub_obj' },
+        metadata: { sponsorId: '42', frequency: 'monthly', reservedBlockCount: '2', reservedBlockCodes: 'NL-N01,NL-N02' },
+      },
+    },
+  }
+  const renewal = renewalFromInvoice(invoice)
+  assert.equal(renewal?.subscriptionId, 'sub_obj')
+  assert.deepEqual(renewal?.reservation, { blockCount: 2, blockCodes: 'NL-N01,NL-N02' })
+})
+
+test('renewalFromInvoice: the first invoice is not a renewal — checkout already recorded it', () => {
+  assert.equal(renewalFromInvoice({ ...cycleInvoice, billing_reason: 'subscription_create' }), null)
+})
+
+test('renewalFromInvoice: nothing to record without a payment, a subscription, or a known sponsor', () => {
+  assert.equal(renewalFromInvoice({ ...cycleInvoice, amount_paid: 0 }), null)
+  assert.equal(renewalFromInvoice({ ...cycleInvoice, parent: null }), null)
+  assert.equal(
+    renewalFromInvoice({
+      ...cycleInvoice,
+      parent: { subscription_details: { subscription: 'sub_abc', metadata: { frequency: 'weekly' } } },
+    }),
+    null,
+  )
+  assert.equal(
+    renewalFromInvoice({
+      ...cycleInvoice,
+      parent: { subscription_details: { subscription: 'sub_abc', metadata: { sponsorId: 'abc' } } },
+    }),
+    null,
   )
 })

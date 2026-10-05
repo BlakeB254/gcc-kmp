@@ -9,6 +9,7 @@ import type { Route } from '@/components/map/RouteMap'
 import { BOUNTY_MINIMUM_CENTS, SPOT_STATUS_COLORS } from '@/lib/design-tokens'
 import { CombinedMap } from '@/components/map/CombinedMap'
 import type { MapObservation } from '@/lib/litter-footprints'
+import { blocksFromApi } from '@/lib/sponsor-checkout'
 
 // Note: CombinedMap was previously next/dynamic-imported with ssr:false plus
 // a "Loading map..." fallback. The fallback was getting stuck on prod
@@ -196,7 +197,7 @@ export default function BountiesPage() {
       // Process blocks
       if (blocksResult.status === 'fulfilled' && blocksResult.value) {
         const data = blocksResult.value
-        const apiBlocks = data.blocks || []
+        const apiBlocks = blocksFromApi<any>(data)
         if (apiBlocks.length > 0) {
           setBlockCards(apiBlocks.map((b: any) => ({
             id: String(b.id),

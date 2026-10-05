@@ -326,6 +326,21 @@ export async function POST(request: NextRequest) {
         preferredCleaningTimeStart: preferredCleaningTimeStart || '',
         preferredCleaningTimeEnd: preferredCleaningTimeEnd || '',
       },
+      // A renewal invoice carries the subscription's metadata, not the
+      // session's — this is what lets the webhook record each later payment.
+      subscription_data: recurring
+        ? {
+            metadata: {
+              sponsorId: String(sponsorId),
+              allocationType,
+              frequency,
+              displayName: displayName || name,
+              isAnonymous: isAnonymous ? 'true' : 'false',
+              reservedBlockCount: reservation ? String(reservation.blockCount) : '',
+              reservedBlockCodes: reservation ? reservation.blockCodes.join(',').slice(0, 480) : '',
+            },
+          }
+        : undefined,
       payment_intent_data:
         !recurring
           ? {

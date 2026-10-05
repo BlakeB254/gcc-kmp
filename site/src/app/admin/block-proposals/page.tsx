@@ -66,6 +66,15 @@ export default function BlockProposalsPage() {
   const selected = useMemo(() => proposals.find((p) => p.id === selectedId) || null, [proposals, selectedId])
 
   async function handleApprove(id: number) {
+    // An approved proposal becomes a block with status `available`, which is
+    // the status that lets a worker claim it — and a claimed, cleaned block is
+    // $100 owed. Make that a decision, not a side effect of a click.
+    const ok = window.confirm(
+      'Approving creates this block as AVAILABLE, which lets workers claim it now.\n\n' +
+        'A claimed and cleaned block is $100 owed to the worker. Only approve a block that has money behind it.\n\n' +
+        'Approve this block?',
+    )
+    if (!ok) return
     setActioningId(id)
     try {
       const res = await fetch(`/api/admin/block-proposals/${id}/approve`, { method: 'POST', headers: authHeaders() })
@@ -118,7 +127,10 @@ export default function BlockProposalsPage() {
         <p className="text-neutral-500 mt-1">
           Auto-generated block candidates from real street data, awaiting review. Nothing here is live until
           approved — approving inserts a real row into <code className="text-xs bg-neutral-100 px-1 py-0.5 rounded">blocks</code>,
-          rejecting just marks the candidate as declined.
+          rejecting just marks the candidate as declined.{' '}
+          <strong className="text-neutral-700">
+            An approved block is open for workers to claim straight away, so approve only blocks that are funded.
+          </strong>
         </p>
       </div>
 

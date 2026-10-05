@@ -6,6 +6,7 @@ import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { Heart, MapPin, Sparkles, Users, ChevronRight, X, Check, Package } from 'lucide-react'
 import { InlineError } from '@/components/shared/InlineError'
+import { blocksFromApi, buildSponsorCheckoutPayload, isAssignableNow } from '@/lib/sponsor-checkout'
 
 // Dynamically import BlockMap to avoid SSR issues with MapLibre
 const BlockMap = dynamic(
@@ -154,10 +155,12 @@ function DonateContent() {
     if (blocks.length > 0) return
     setIsLoadingBlocks(true)
     try {
-      const response = await fetch('/api/blocks?status=available')
+      // Every block is offered, as on /sponsor: one that is not open yet is
+      // sponsored as a reservation for its next cleaning.
+      const response = await fetch('/api/blocks?limit=200')
       const data = await response.json()
       // Transform API response to BlockMap format
-      const transformedBlocks = (data.blocks || []).map(transformApiBlock)
+      const transformedBlocks = blocksFromApi<ApiBlock>(data).map(transformApiBlock)
       setBlocks(transformedBlocks)
     } catch (error) {
       console.error('Failed to fetch blocks:', error)
@@ -197,28 +200,26 @@ function DonateContent() {
     setCheckoutError(null)
 
     try {
+      const shared = {
+        frequency,
+        name: formData.name,
+        email: formData.email,
+        company: formData.company,
+        displayName: formData.displayName || formData.name,
+        isAnonymous: formData.isAnonymous,
+        message: formData.message,
+      }
       const payload =
         activeTab === 'donate'
-          ? {
-              amount: donationAmount,
-              frequency,
-              name: formData.name,
-              email: formData.email,
-              company: formData.company,
-              displayName: formData.displayName || formData.name,
-              isAnonymous: formData.isAnonymous,
-              message: formData.message,
-            }
-          : {
-              blockIds: selectedBlocks.map(b => Number(b.id)),
-              frequency,
-              name: formData.name,
-              email: formData.email,
-              company: formData.company,
-              displayName: formData.displayName || formData.name,
-              isAnonymous: formData.isAnonymous,
-              message: formData.message,
-            }
+          ? { amount: donationAmount, ...shared }
+          : buildSponsorCheckoutPayload({
+              mode: 'specific',
+              selectedBlocks,
+              generalBlockCount: 0,
+              availableBlockCount: blocks.filter(isAssignableNow).length,
+              shared,
+            })
+      if (!payload) return
 
       const response = await fetch('/api/contribute/checkout', {
         method: 'POST',
