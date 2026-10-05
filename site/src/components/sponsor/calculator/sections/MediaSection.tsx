@@ -22,10 +22,12 @@ interface MediaSectionProps {
   config: SponsorPackageConfig
   onChange: (updates: Partial<SponsorPackageConfig>) => void
   onBack: () => void
+  /** Opens the checkout form in the quote summary. */
+  onCheckout: () => void
   priceBreakdown: PriceBreakdown
 }
 
-export function MediaSection({ config, onChange, onBack, priceBreakdown }: MediaSectionProps) {
+export function MediaSection({ config, onChange, onBack, onCheckout, priceBreakdown }: MediaSectionProps) {
   const selectPhotoPackage = (packageId: MediaPackage | undefined) => {
     onChange({ photoPackage: packageId })
   }
@@ -179,12 +181,13 @@ export function MediaSection({ config, onChange, onBack, priceBreakdown }: Media
               Request Custom Quote
             </Link>
           ) : (
-            <Link
-              href={`/sponsor/checkout?package=${encodeURIComponent(JSON.stringify(config))}`}
+            <button
+              type="button"
+              onClick={onCheckout}
               className="flex-1 btn-primary py-4 text-lg flex items-center justify-center gap-2"
             >
               Proceed to Checkout
-            </Link>
+            </button>
           )}
         </div>
       </CardContent>

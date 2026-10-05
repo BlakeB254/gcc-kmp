@@ -6,6 +6,7 @@ import { stripe, isStripeConfigured, STRIPE_CONFIG } from '@/lib/stripe/client'
 import { hashPassword } from '@/lib/auth'
 import { stripeIdempotencyKey } from '@/lib/stripe-idempotency'
 import { appUrl as getAppUrl } from '@/lib/env'
+import { parseReservation, type Reservation } from '@/lib/sponsor-checkout'
 
 export const runtime = 'nodejs'
 
@@ -21,6 +22,11 @@ export const runtime = 'nodejs'
  * - blockIds provided → Block sponsorship (specific blocks)
  * - allocationType = 'area' → Area sponsorship (auto-assign)
  * - Neither → General donation
+ *
+ * A `reservation` is a block sponsorship made while no block is ready to
+ * assign: $100 a block, taken through the general-donation branch (no block
+ * row is touched) and tagged in the Stripe metadata as `reservedBlockCount` /
+ * `reservedBlockCodes` so it can be allocated when blocks are scheduled.
  */
 
 interface ContributeRequest {
@@ -32,6 +38,9 @@ interface ContributeRequest {
   // Area mode (auto-assign blocks)
   allocationType?: 'block' | 'area' | 'general'
   blockCount?: number // For area mode - how many blocks to auto-assign
+
+  // Block sponsorship for the next available cycle (see lib/sponsor-checkout.ts)
+  reservation?: Reservation
 
   // Supporter info
   name: string
@@ -107,6 +116,7 @@ export async function POST(request: NextRequest) {
     let totalAmountCents: number
     let blocksToFund: typeof blocks.$inferSelect[] = []
     let finalBlockIds: number[] = []
+    let reservation: ReturnType<typeof parseReservation> = null
 
     if (isSpecificBlockSponsorship) {
       // Block sponsorship: $100 per block, specific blocks selected
@@ -152,6 +162,16 @@ export async function POST(request: NextRequest) {
       blocksToFund = availableBlocks.slice(0, requestedBlockCount)
       finalBlockIds = blocksToFund.map(b => b.id)
       totalAmountCents = blocksToFund.length * STRIPE_CONFIG.standardJobAmount
+    } else if (body.reservation !== undefined) {
+      // Reservation: priced here from the block count, never from the client
+      reservation = parseReservation(body.reservation)
+      if (!reservation) {
+        return NextResponse.json(
+          { error: 'Invalid block reservation' },
+          { status: 400 }
+        )
+      }
+      totalAmountCents = reservation.amountCents
     } else {
       // General donation: use provided amount
       if (!amount || amount < 1) {
@@ -233,6 +253,12 @@ export async function POST(request: NextRequest) {
         ? `${modeLabel}Block Sponsorship: ${blocksToFund[0].name}`
         : `${modeLabel}Block Sponsorship: ${blocksToFund.length} blocks`
       productDescription = `Sponsoring: ${blockNames}`
+    } else if (reservation) {
+      const n = reservation.blockCount
+      productName = `Block Sponsorship: ${n} block${n === 1 ? '' : 's'} (next available)`
+      productDescription = reservation.blockCodes.length > 0
+        ? `Reserved: ${reservation.blockCodes.join(', ')}`.slice(0, 300)
+        : 'GCC assigns the next blocks scheduled for cleaning'
     } else {
       productName = 'General Fund Donation'
       productDescription = 'Supporting community cleaning where it\'s needed most'
@@ -288,6 +314,9 @@ export async function POST(request: NextRequest) {
         displayName: displayName || name,
         isAnonymous: isAnonymous ? 'true' : 'false',
         message: message || '',
+        // Set only for a reservation; Stripe metadata values cap at 500 chars
+        reservedBlockCount: reservation ? String(reservation.blockCount) : '',
+        reservedBlockCodes: reservation ? reservation.blockCodes.join(',').slice(0, 480) : '',
         // Cleaning schedule (optional)
         preferredCleaningDate: preferredCleaningDate || '',
         preferredCleaningTimeStart: preferredCleaningTimeStart || '',
@@ -310,7 +339,8 @@ export async function POST(request: NextRequest) {
       sessionId: session.id,
       allocationType,
       totalAmount: totalAmountCents / 100,
-      blockCount: blocksToFund.length,
+      blockCount: reservation ? reservation.blockCount : blocksToFund.length,
+      reserved: reservation !== null,
       // For area mode, return assigned block info so sponsor knows what they're getting
       assignedBlocks: allocationType === 'area'
         ? blocksToFund.map(b => ({

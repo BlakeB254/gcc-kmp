@@ -14,6 +14,7 @@ import { UpsellModal } from '@/components/sponsor/UpsellModal'
 import type { SponsorBlock, SponsorshipMode, SponsorFormData } from '@/components/sponsor/types'
 import { formatStreetName } from '@/components/sponsor/types'
 import { InlineError } from '@/components/shared/InlineError'
+import { blocksFromApi, buildSponsorCheckoutPayload } from '@/lib/sponsor-checkout'
 
 const FREQUENCY_TO_API: Record<SponsorFrequency, string> = {
   single: 'one_time',
@@ -94,7 +95,7 @@ function SponsorPage() {
     try {
       const response = await fetch('/api/blocks?limit=50')
       const data = await response.json()
-      const allBlocks: SponsorBlock[] = data.blocks || []
+      const allBlocks = blocksFromApi<SponsorBlock>(data)
       setBlocks(allBlocks.filter(b => b.status === 'unfunded' || b.status === 'available'))
     } catch (error) {
       console.error('Failed to fetch blocks:', error)
@@ -113,7 +114,9 @@ function SponsorPage() {
 
   // Pricing
   const blockCount = mode === 'specific' ? selectedBlocks.length : generalBlockCount
-  const isBlocksSelected = mode === 'specific' ? selectedBlocks.length > 0 : generalBlockCount <= blocks.length
+  // "Let GCC choose" is always a valid selection: when fewer blocks are ready
+  // than were asked for, the sponsorship is a reservation for the next cycle.
+  const isBlocksSelected = mode === 'specific' ? selectedBlocks.length > 0 : generalBlockCount > 0
   const isFormReady = isBlocksSelected && !!formData.name && !!formData.email
 
   // Build calculator URL with current selections preserved
@@ -128,12 +131,12 @@ function SponsorPage() {
   }, [blockCount, sponsorType, mode, selectedBlocks])
 
   const handleCheckout = async () => {
-    if (mode === 'specific' && selectedBlocks.length === 0) return
-    setIsProcessing(true)
-    setCheckoutError(null)
-
-    try {
-      const shared = {
+    const payload = buildSponsorCheckoutPayload({
+      mode,
+      selectedBlocks,
+      generalBlockCount,
+      availableBlockCount: blocks.length,
+      shared: {
         frequency: FREQUENCY_TO_API[sponsorType],
         name: formData.name,
         email: formData.email,
@@ -143,12 +146,13 @@ function SponsorPage() {
         preferredCleaningDate: cleaningDate,
         preferredCleaningTimeStart: cleaningTimeStart || null,
         preferredCleaningTimeEnd: cleaningTimeEnd || null,
-      }
+      },
+    })
+    if (!payload) return
+    setIsProcessing(true)
+    setCheckoutError(null)
 
-      const payload = mode === 'specific'
-        ? { blockIds: selectedBlocks.map(b => Number(b.id)), ...shared }
-        : { allocationType: 'area', blockCount: generalBlockCount, ...shared }
-
+    try {
       const response = await fetch('/api/contribute/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

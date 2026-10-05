@@ -53,6 +53,8 @@ function SponsorCalculatorPage() {
   const searchParams = useSearchParams()
   const [config, setConfig] = useState<SponsorPackageConfig>(() => initConfigFromParams(searchParams))
   const [activeStep, setActiveStep] = useState(0)
+  // Incremented when the last step asks for checkout; QuoteSummary owns the form.
+  const [checkoutRequest, setCheckoutRequest] = useState(0)
 
   const priceBreakdown = useMemo(() => calculatePackagePrice(config), [config])
 
@@ -167,6 +169,7 @@ function SponsorCalculatorPage() {
                 config={config}
                 onChange={updateConfig}
                 onBack={() => setActiveStep(3)}
+                onCheckout={() => setCheckoutRequest((n) => n + 1)}
                 priceBreakdown={priceBreakdown}
               />
             )}
@@ -175,7 +178,11 @@ function SponsorCalculatorPage() {
           {/* Right Column - Quote Summary (Sticky) */}
           <div className="lg:col-span-1">
             <div className="sticky top-36">
-              <QuoteSummary config={config} priceBreakdown={priceBreakdown} />
+              <QuoteSummary
+                config={config}
+                priceBreakdown={priceBreakdown}
+                checkoutRequest={checkoutRequest}
+              />
             </div>
           </div>
         </div>

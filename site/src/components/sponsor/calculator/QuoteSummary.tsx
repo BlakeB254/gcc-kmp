@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   ChevronDown,
   ChevronUp,
@@ -27,6 +27,11 @@ import {
 interface QuoteSummaryProps {
   config: SponsorPackageConfig
   priceBreakdown: PriceBreakdown
+  /**
+   * Bumped by the builder's last step ("Proceed to Checkout") to open the
+   * checkout form here, so there is one checkout path for the whole page.
+   */
+  checkoutRequest?: number
 }
 
 interface ContactForm {
@@ -39,7 +44,7 @@ interface ContactForm {
 
 type ModalMode = 'checkout' | 'walkthrough'
 
-export function QuoteSummary({ config, priceBreakdown }: QuoteSummaryProps) {
+export function QuoteSummary({ config, priceBreakdown, checkoutRequest = 0 }: QuoteSummaryProps) {
   const [isExpanded, setIsExpanded] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [modalMode, setModalMode] = useState<ModalMode>('checkout')
@@ -59,6 +64,10 @@ export function QuoteSummary({ config, priceBreakdown }: QuoteSummaryProps) {
     setShowModal(true)
     setCheckoutError(null)
   }
+
+  useEffect(() => {
+    if (checkoutRequest > 0) openCheckoutModal()
+  }, [checkoutRequest])
 
   const openWalkthroughModal = () => {
     setModalMode('walkthrough')
