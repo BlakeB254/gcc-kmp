@@ -2,7 +2,7 @@ import { Header } from '@/components/landing/Header'
 import Link from 'next/link'
 
 export const metadata = {
-  title: 'Privacy Policy | GCC',
+  title: 'Privacy Policy',
   description: 'Privacy Policy for Global Community Cleaners',
 }
 

@@ -779,6 +779,14 @@ export const transactions = pgTable('transactions', {
   preferredCleaningTimeStart: varchar('preferred_cleaning_time_start', { length: 5 }), // HH:MM format, optional
   preferredCleaningTimeEnd: varchar('preferred_cleaning_time_end', { length: 5 }), // HH:MM format, optional
 
+  // Block reservation: a block sponsorship paid while the blocks could not be
+  // assigned (lib/sponsor-checkout.ts). Set on a `general` row with no blockId;
+  // an admin allocates it from /admin/reservations. Null on every other row.
+  reservedBlockCount: integer('reserved_block_count'),
+  reservedBlockCodes: varchar('reserved_block_codes', { length: 500 }), // comma-separated, or null = GCC chooses
+  reservationAllocatedAt: timestamp('reservation_allocated_at', { mode: 'string', withTimezone: true }),
+  reservationNote: text('reservation_note'), // admin's note on how it was allocated
+
   // Timestamps
   completedAt: timestamp('completed_at', { mode: 'string', withTimezone: true }),
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
@@ -2421,3 +2429,25 @@ export const phoneVerificationCodes = pgTable('phone_verification_codes', {
 
 export type PhoneVerificationCodeRow = typeof phoneVerificationCodes.$inferSelect
 export type NewPhoneVerificationCodeRow = typeof phoneVerificationCodes.$inferInsert
+
+// Android closed-test tester signups (/android-beta). Google Play requires 12
+// opted-in testers for 14 days before a personal developer account may
+// publish. A row is one Google account address; an admin copies new ones into
+// the Play Console tester list and sends the opt-in link from
+// /admin/android-testers. Status values and transitions: lib/android-testers.ts.
+export const androidTesterSignups = pgTable('android_tester_signups', {
+  id: serial('id').primaryKey(),
+  email: varchar('email', { length: 254 }).notNull().unique(),
+  name: varchar('name', { length: 120 }),
+  // Where on the site the signup came from (e.g. 'android-beta', 'hero-banner').
+  source: varchar('source', { length: 64 }),
+  status: varchar('status', { length: 16 }).default('new').notNull(),
+  addedAt: timestamp('added_at', { mode: 'string', withTimezone: true }),
+  inviteSentAt: timestamp('invite_sent_at', { mode: 'string', withTimezone: true }),
+  joinedAt: timestamp('joined_at', { mode: 'string', withTimezone: true }),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+export type AndroidTesterSignupRow = typeof androidTesterSignups.$inferSelect
+export type NewAndroidTesterSignupRow = typeof androidTesterSignups.$inferInsert

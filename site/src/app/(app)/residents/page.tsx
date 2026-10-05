@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 export const metadata: Metadata = {
-  title: 'For Residents | GCC',
+  title: 'For Residents',
   description:
     'How North Lawndale residents benefit from GCC and ways to get involved.',
 }

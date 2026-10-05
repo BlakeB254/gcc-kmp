@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: 'GCC North Lawndale | Clean Blocks. Paid Workers. Community Pride.',
   description:
-    'Global Community Cleaners is launching in North Lawndale, Chicago. Join your neighbors to clean blocks, earn $100 same-day, and build the community Dr. King fought for.',
+    'Global Community Cleaners is at work in North Lawndale, Chicago. Join your neighbors to clean blocks, earn $100 same-day, and build the community Dr. King fought for.',
   keywords: [
     'North Lawndale',
     'Chicago',

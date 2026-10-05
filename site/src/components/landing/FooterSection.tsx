@@ -7,12 +7,14 @@ export function FooterSection() {
     { href: '/worker/signup', label: 'Sign Up to Earn' },
     { href: '/login', label: 'Sign In' },
     { href: '/worker/leaderboard', label: 'Leaderboard' },
+    { href: '/android-beta', label: 'Test the Android App' },
     { href: '/faq', label: 'FAQ' },
   ]
 
   const sponsorLinks = [
     { href: '/how-it-works?tab=sponsors', label: 'How It Works' },
     { href: '/sponsor', label: 'Sponsor a Block' },
+    { href: '/business', label: 'For Businesses' },
     { href: '/sponsor/calculator', label: 'Custom Package' },
     { href: '/sponsor/enterprise', label: 'Enterprise' },
     { href: '/login', label: 'Sign In' },
@@ -20,6 +22,7 @@ export function FooterSection() {
   ]
 
   const aboutLinks = [
+    { href: '/about', label: 'About GCC' },
     { href: '/impact-supporters', label: 'Impact & Supporters' },
     { href: '/bounties', label: 'Community Bounties' },
     { href: '/join', label: 'Join Movement' },

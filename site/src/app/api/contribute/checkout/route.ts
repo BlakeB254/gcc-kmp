@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { sponsors, blocks } from '@/db/schema'
-import { eq } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import { stripe, isStripeConfigured, STRIPE_CONFIG } from '@/lib/stripe/client'
 import { hashPassword } from '@/lib/auth'
 import { stripeIdempotencyKey } from '@/lib/stripe-idempotency'
 import { appUrl as getAppUrl } from '@/lib/env'
+import { codesWithin, parseReservation, stripeRecurring, type Reservation } from '@/lib/sponsor-checkout'
 
 export const runtime = 'nodejs'
 
@@ -21,17 +22,25 @@ export const runtime = 'nodejs'
  * - blockIds provided → Block sponsorship (specific blocks)
  * - allocationType = 'area' → Area sponsorship (auto-assign)
  * - Neither → General donation
+ *
+ * A `reservation` is a block sponsorship made while no block is ready to
+ * assign: $100 a block, taken through the general-donation branch (no block
+ * row is touched) and tagged in the Stripe metadata as `reservedBlockCount` /
+ * `reservedBlockCodes` so it can be allocated when blocks are scheduled.
  */
 
 interface ContributeRequest {
   // Contribution details
   amount?: number // In dollars (for donations) - ignored for block sponsorships
   blockIds?: number[] // Array of block IDs to sponsor (each $100)
-  frequency: 'one_time' | 'monthly'
+  frequency: 'one_time' | 'weekly' | 'biweekly' | 'monthly'
 
   // Area mode (auto-assign blocks)
   allocationType?: 'block' | 'area' | 'general'
   blockCount?: number // For area mode - how many blocks to auto-assign
+
+  // Block sponsorship for the next available cycle (see lib/sponsor-checkout.ts)
+  reservation?: Reservation
 
   // Supporter info
   name: string
@@ -107,6 +116,7 @@ export async function POST(request: NextRequest) {
     let totalAmountCents: number
     let blocksToFund: typeof blocks.$inferSelect[] = []
     let finalBlockIds: number[] = []
+    let reservation: ReturnType<typeof parseReservation> = null
 
     if (isSpecificBlockSponsorship) {
       // Block sponsorship: $100 per block, specific blocks selected
@@ -118,22 +128,34 @@ export async function POST(request: NextRequest) {
       // Filter to only requested blocks that are available
       blocksToFund = availableBlocks.filter(b => blockIds.includes(b.id))
 
-      if (blocksToFund.length === 0) {
-        return NextResponse.json(
-          { error: 'No available blocks found with the provided IDs' },
-          { status: 400 }
-        )
+      if (blocksToFund.length === blockIds.length) {
+        finalBlockIds = blocksToFund.map(b => b.id)
+        totalAmountCents = blocksToFund.length * STRIPE_CONFIG.standardJobAmount
+      } else {
+        // One or more of the chosen blocks is not open right now (it may have
+        // closed since the page loaded). Every block is sponsorable at any
+        // time, so this is a reservation for those same blocks, not an error.
+        const requested = await db
+          .select({ id: blocks.id, code: blocks.code })
+          .from(blocks)
+          .where(inArray(blocks.id, blockIds))
+        if (requested.length !== new Set(blockIds).size) {
+          return NextResponse.json(
+            { error: 'One or more of the selected blocks could not be found' },
+            { status: 400 }
+          )
+        }
+        reservation = parseReservation({
+          blockCount: requested.length,
+          blockCodes: requested.map(b => b.code).filter((c): c is string => !!c),
+        })
+        if (!reservation) {
+          return NextResponse.json({ error: 'Invalid block reservation' }, { status: 400 })
+        }
+        blocksToFund = []
+        allocationType = 'general'
+        totalAmountCents = reservation.amountCents
       }
-
-      if (blocksToFund.length !== blockIds.length) {
-        return NextResponse.json(
-          { error: 'Some blocks are no longer available for sponsorship' },
-          { status: 400 }
-        )
-      }
-
-      finalBlockIds = blocksToFund.map(b => b.id)
-      totalAmountCents = blocksToFund.length * STRIPE_CONFIG.standardJobAmount
     } else if (isAreaSponsorship) {
       // Area sponsorship: $100 per block, auto-assign available blocks
       const availableBlocks = await db
@@ -142,16 +164,29 @@ export async function POST(request: NextRequest) {
         .where(eq(blocks.status, 'available'))
 
       if (availableBlocks.length < requestedBlockCount) {
+        // Not enough open blocks to assign now: reserve the next ones instead.
+        reservation = parseReservation({ blockCount: requestedBlockCount })
+        if (!reservation) {
+          return NextResponse.json({ error: 'Invalid block reservation' }, { status: 400 })
+        }
+        allocationType = 'general'
+        totalAmountCents = reservation.amountCents
+      } else {
+        // Auto-assign the requested number of blocks (take first N available)
+        blocksToFund = availableBlocks.slice(0, requestedBlockCount)
+        finalBlockIds = blocksToFund.map(b => b.id)
+        totalAmountCents = blocksToFund.length * STRIPE_CONFIG.standardJobAmount
+      }
+    } else if (body.reservation !== undefined) {
+      // Reservation: priced here from the block count, never from the client
+      reservation = parseReservation(body.reservation)
+      if (!reservation) {
         return NextResponse.json(
-          { error: `Only ${availableBlocks.length} blocks available. Please select ${availableBlocks.length} or fewer.` },
+          { error: 'Invalid block reservation' },
           { status: 400 }
         )
       }
-
-      // Auto-assign the requested number of blocks (take first N available)
-      blocksToFund = availableBlocks.slice(0, requestedBlockCount)
-      finalBlockIds = blocksToFund.map(b => b.id)
-      totalAmountCents = blocksToFund.length * STRIPE_CONFIG.standardJobAmount
+      totalAmountCents = reservation.amountCents
     } else {
       // General donation: use provided amount
       if (!amount || amount < 1) {
@@ -233,6 +268,12 @@ export async function POST(request: NextRequest) {
         ? `${modeLabel}Block Sponsorship: ${blocksToFund[0].name}`
         : `${modeLabel}Block Sponsorship: ${blocksToFund.length} blocks`
       productDescription = `Sponsoring: ${blockNames}`
+    } else if (reservation) {
+      const n = reservation.blockCount
+      productName = `Block Sponsorship: ${n} block${n === 1 ? '' : 's'} (next available)`
+      productDescription = reservation.blockCodes.length > 0
+        ? `Reserved: ${reservation.blockCodes.join(', ')}`.slice(0, 300)
+        : 'GCC assigns the next blocks scheduled for cleaning'
     } else {
       productName = 'General Fund Donation'
       productDescription = 'Supporting community cleaning where it\'s needed most'
@@ -252,14 +293,22 @@ export async function POST(request: NextRequest) {
       sponsorId,
       allocationType,
       blockIds: finalBlockIds,
+      // A reservation has no block ids, so without this a reservation for
+      // block A, one for block B, and a plain $100 donation all share a key —
+      // and Stripe rejects the second with an idempotency error.
+      reservation: reservation ? { n: reservation.blockCount, codes: reservation.blockCodes } : null,
       totalAmountCents,
       frequency,
     })
 
+    // Weekly, every-two-weeks and monthly sponsorships are subscriptions on
+    // that schedule. (Weekly and biweekly used to be charged once.)
+    const recurring = stripeRecurring(frequency)
+
     // Create Stripe checkout session
     const session = await stripe.checkout.sessions.create({
       customer: customer.id,
-      mode: frequency === 'monthly' ? 'subscription' : 'payment',
+      mode: recurring ? 'subscription' : 'payment',
       line_items: [
         {
           price_data: {
@@ -273,7 +322,7 @@ export async function POST(request: NextRequest) {
                 blockIds: finalBlockIds.join(','),
               },
             },
-            ...(frequency === 'monthly' ? { recurring: { interval: 'month' } } : {}),
+            ...(recurring ? { recurring } : {}),
           },
           quantity: 1,
         },
@@ -288,13 +337,41 @@ export async function POST(request: NextRequest) {
         displayName: displayName || name,
         isAnonymous: isAnonymous ? 'true' : 'false',
         message: message || '',
+        // Set only for a reservation; Stripe metadata values cap at 500 chars
+        reservedBlockCount: reservation ? String(reservation.blockCount) : '',
+        reservedBlockCodes: reservation ? codesWithin(reservation.blockCodes, 480) : '',
         // Cleaning schedule (optional)
         preferredCleaningDate: preferredCleaningDate || '',
         preferredCleaningTimeStart: preferredCleaningTimeStart || '',
         preferredCleaningTimeEnd: preferredCleaningTimeEnd || '',
       },
+      // A renewal invoice carries the subscription's metadata, not the
+      // session's — this is what lets the webhook record each later payment.
+      subscription_data: recurring
+        ? {
+            metadata: {
+              sponsorId: String(sponsorId),
+              allocationType,
+              frequency,
+              displayName: displayName || name,
+              isAnonymous: isAnonymous ? 'true' : 'false',
+              // Every renewal is a cleaning owed. For a reservation that is the
+              // reservation again; for a block or area sponsorship the blocks
+              // were funded once at checkout, so each later payment reserves
+              // the same blocks' next cleaning. (Session metadata is left
+              // alone, so the first payment still funds the blocks.)
+              reservedBlockCount: String(reservation ? reservation.blockCount : blocksToFund.length || ''),
+              reservedBlockCodes: codesWithin(
+                reservation
+                  ? reservation.blockCodes
+                  : blocksToFund.map(b => b.code).filter((c): c is string => !!c),
+                480,
+              ),
+            },
+          }
+        : undefined,
       payment_intent_data:
-        frequency !== 'monthly'
+        !recurring
           ? {
               metadata: {
                 sponsorId: String(sponsorId),
@@ -310,7 +387,8 @@ export async function POST(request: NextRequest) {
       sessionId: session.id,
       allocationType,
       totalAmount: totalAmountCents / 100,
-      blockCount: blocksToFund.length,
+      blockCount: reservation ? reservation.blockCount : blocksToFund.length,
+      reserved: reservation !== null,
       // For area mode, return assigned block info so sponsor knows what they're getting
       assignedBlocks: allocationType === 'area'
         ? blocksToFund.map(b => ({

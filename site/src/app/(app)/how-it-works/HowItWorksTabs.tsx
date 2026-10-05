@@ -943,9 +943,13 @@ function AppFeaturesTab({ onNavigate }: { onNavigate: (tab: TabKey) => void }) {
                 <span className="text-base font-semibold">App Store</span>
               </div>
             </Link>
-            <div className="inline-flex min-w-[220px] items-center justify-center gap-3 rounded-2xl border border-dashed border-neutral-300 px-6 py-3.5 font-semibold text-neutral-500">
-              Android — coming soon
-            </div>
+            <Link
+              href="/android-beta"
+              className="inline-flex min-w-[220px] flex-col items-center justify-center rounded-2xl border-2 border-brand-green-500 px-6 py-2.5 font-semibold text-brand-green-700 transition-colors hover:bg-brand-green-50"
+            >
+              <span className="text-xs font-medium opacity-80">Android testers wanted</span>
+              <span className="text-base">Join the test</span>
+            </Link>
           </div>
         </div>
       </section>

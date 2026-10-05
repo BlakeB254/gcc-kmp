@@ -2,7 +2,7 @@ import { Metadata } from 'next'
 import { FAQSection } from '@/components/landing/FAQSection'
 
 export const metadata: Metadata = {
-  title: 'FAQ | Global Community Cleaners',
+  title: 'FAQ',
   description: 'Frequently asked questions about becoming a GCC worker or sponsoring block cleanings in North Lawndale, Chicago.',
 }
 

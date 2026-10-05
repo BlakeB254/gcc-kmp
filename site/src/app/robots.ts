@@ -1,7 +1,7 @@
 import type { MetadataRoute } from 'next'
 
 export default function robots(): MetadataRoute.Robots {
-  const siteUrl = 'https://globalcommunitycleaners.org'
+  const siteUrl = 'https://www.globalcommunitycleaners.org'
 
   return {
     rules: [

@@ -23,6 +23,7 @@ const SCHEDULE: Record<string, string> = {
   '2026-09-01-issue-06': '2026-09-01T08:00:00-05:00',
   // Alias for the old mid-August URL — same issue, now dated September 1.
   '2026-08-19-issue-06': '2026-09-01T08:00:00-05:00',
+  '2026-10-01-issue-07': '2026-10-01T08:00:00-05:00',
 }
 
 function isPublished(slug: string): boolean {
@@ -38,6 +39,7 @@ const POSTS = [
   '2026-08-01-issue-05',
   '2026-09-01-issue-06',
   '2026-08-19-issue-06', // alias → Issue 6
+  '2026-10-01-issue-07',
 ]
 
 export async function generateStaticParams() {
@@ -111,6 +113,23 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       },
     }
   }
+  if (slug === '2026-10-01-issue-07') {
+    if (!isPublished(slug)) return {}
+    return {
+      title: 'A phone, a storefront, and the block in between — Global Community Cleaners Issue #7',
+      description:
+        "Thank you to UIC's Office of Community Collaboration for the Android phone behind our Android app. Android testers wanted, more paid work for neighbors, and an invitation to local businesses: sponsor a cleaning outside your door.",
+      openGraph: {
+        title: 'A phone, a storefront, and the block in between — GCC Issue #7',
+        description:
+          "Thank you, UIC Office of Community Collaboration. Android testers wanted, and an invitation to local businesses to sponsor a cleaning outside their door.",
+        type: 'article',
+        publishedTime: '2026-10-01T08:00:00-05:00',
+        authors: ['The team at Global Community Cleaners NFP'],
+        images: ['/newsletter/issue-07/cover.jpg'],
+      },
+    }
+  }
   if (slug === '2026-08-19-issue-06' || slug === '2026-09-01-issue-06') {
     if (!isPublished(slug)) return {}
     return {
@@ -138,6 +157,7 @@ export default async function BlogPostPage({
   const { slug } = await params
   if (!POSTS.includes(slug) || !isPublished(slug)) notFound()
 
+  if (slug === '2026-10-01-issue-07') return <Issue7 />
   if (slug === '2026-08-19-issue-06' || slug === '2026-09-01-issue-06') return <Issue6 />
   if (slug === '2026-08-01-issue-05') return <Issue5 />
   if (slug === '2026-07-03-issue-03') return <Issue3 />
@@ -1332,6 +1352,194 @@ function Issue6() {
             {' · '}
             <a className="text-emerald-700 underline" href="/blog/2026-07-03-issue-03">
               Read Issue #4
+            </a>
+            {' · '}
+            <a className="text-emerald-700 underline" href="/">
+              GCC home
+            </a>
+          </p>
+          <p className="mt-3 text-xs">
+            Global Community Cleaners NFP · 1844 S. Harding Ave, 2nd Floor · Chicago, IL 60623 ·
+            501(c)(3) tax-exempt · EIN 39-3553882
+          </p>
+        </div>
+      </div>
+    </article>
+  )
+}
+
+function Issue7() {
+  const link = 'font-semibold text-emerald-700 underline'
+  return (
+    <article className="bg-neutral-50 pb-24 pt-12">
+      <div className="mx-auto max-w-3xl px-5">
+        <header className="text-center">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-700">
+            GCC Blog · Issue #7 · Open for Business
+          </p>
+          <p className="mt-2 text-sm text-neutral-500">October 1, 2026</p>
+          <h1 className="mt-6 font-serif text-5xl font-bold tracking-tight text-neutral-900 sm:text-6xl">
+            A phone, a storefront, and the block in between
+          </h1>
+          <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-neutral-600">
+            A thank-you to the UIC office that put an Android phone in our hands, a call for Android testers, and an invitation to every local business: let a neighbor clean the block outside your door.
+          </p>
+        </header>
+
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/newsletter/issue-07/cover.jpg"
+          alt="A push broom sweeping the sidewalk in front of a brick building"
+          className="mt-10 w-full rounded-2xl object-cover shadow-sm ring-1 ring-neutral-200"
+        />
+
+        {/* §1 Where we left off */}
+        <Section label="§1 · Where we left off">
+          <p>
+            In{' '}
+            <a className={link} href="/blog/2026-09-01-issue-06">
+              Issue #6
+            </a>
+            , we reported the pilot&rsquo;s first milestone &mdash; 20 of 100 blocks cleaned and $2,000 paid to the North Lawndale residents who cleaned them &mdash; and showed how every scan is becoming a 3D record of the neighborhood. This month is about who gets to take part next: the neighbors who carry Android phones, and the businesses on the blocks we clean.
+          </p>
+          <Pull>A clean block is good for the people who live on it and the people who do business on it. This issue is for both.</Pull>
+        </Section>
+
+        {/* §2 Thank you, UIC */}
+        <Section label="§2 · Thank you, UIC">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            UIC&rsquo;s Office of Community Collaboration gave us the Android phone we build on.
+          </h2>
+          <p>
+            We have said it in almost every issue: a large share of North Lawndale carries Android, and an app that only runs on iPhone leaves those neighbors out of the paid work. Building for Android properly takes a real Android phone to test on &mdash; and now we have one, thanks to the <strong>Office of Community Collaboration at the University of Illinois Chicago</strong>.
+          </p>
+          <p>
+            This is the same office whose $2,000 sponsorship paid for the first twenty blocks. First they funded the work. Then they funded the tool that lets more residents do it. To everyone at UIC&rsquo;s Office of Community Collaboration: <strong>thank you</strong>. Every Android screen we test from here on has your support behind it.
+          </p>
+        </Section>
+
+        {/* §3 Android testers wanted */}
+        <Section label="§3 · Android testers wanted">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            The Android app is built. Now we need you to help us launch it.
+          </h2>
+          <p>
+            Before Google Play will offer a new app to everyone, Google asks for it to be tried by a small group first: <strong>at least 12 people, for 14 days</strong>. That is the last step between the GCC app and every Android phone in the neighborhood &mdash; and in every other neighborhood, anywhere in the world.
+          </p>
+          <p>
+            If you have an Android phone, you can be one of those testers. It is free, it takes about a minute to sign up, and you can do it from anywhere.
+          </p>
+          <div className="mt-6">
+            <a
+              href="/android-beta"
+              className="block rounded-lg bg-emerald-700 px-5 py-4 text-center text-base font-semibold text-white hover:bg-emerald-800"
+            >
+              Become an Android tester
+            </a>
+          </div>
+          <p className="text-sm text-neutral-600">
+            On an iPhone? You are already set &mdash; the app is on the App Store. Please pass this along to someone with an Android phone.
+          </p>
+        </Section>
+
+        {/* §4 Built with the neighborhood */}
+        <Section label="§4 · Built with the neighborhood">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            We are building this with our neighbors, for the neighbors who are looking for work.
+          </h2>
+          <p>
+            Nothing about GCC is done to a community from the outside. Residents mapped the first hotspots. Residents cleaned the first twenty blocks, each on a street they know, and were paid <strong>$100 a block</strong> for it. Residents&rsquo; walks are what the block-by-block record is made from.
+          </p>
+          <p>
+            What we hear most from neighbors is simple: people are looking for work they can start now, close to home. Every sponsored block is exactly that &mdash; one paid job for one neighbor. Our goal for this pilot has not changed: <strong>100 blocks cleaned, 100 community members paid</strong>. The more blocks that are sponsored, the more opportunities there are to offer.
+          </p>
+        </Section>
+
+        {/* §5 The storefront */}
+        <Section label="§5 · The block outside your door">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            Local businesses: your sidewalk is your first impression.
+          </h2>
+          <p>
+            This is where we are growing next. We are expanding from residential blocks to the blocks where our neighbors shop, eat and get their hair cut &mdash; and we are inviting the businesses on those blocks to take part.
+          </p>
+          <p>The thinking is straightforward:</p>
+          <ul className="list-disc space-y-2 pl-6">
+            <li>
+              <strong>A clean front invites people in.</strong> People slow down, stop and shop where the sidewalk is swept and cared for. The outside of your business is the first thing every customer sees.
+            </li>
+            <li>
+              <strong>It tells the community you care.</strong> When a business pays a neighbor to clean the block it sits on, people notice &mdash; and they remember who did it.
+            </li>
+            <li>
+              <strong>The money stays on the block.</strong> Your sponsorship goes to a resident who lives nearby, for work done in front of your door.
+            </li>
+          </ul>
+          <Pull>A swept sidewalk says two things at once: we are open, and we care about this block.</Pull>
+          <p>
+            Here is how it works for a participating business. You sponsor the block your business is on. A local resident cleans it and is paid for the work. You receive before-and-after photos of the cleaning, and a tax receipt &mdash; GCC is a 501(c)(3) nonprofit.
+          </p>
+        </Section>
+
+        {/* §6 The ask */}
+        <Section label="§6 · The ask">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            Sponsor a cleaning today.
+          </h2>
+          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <a
+              href="/sponsor"
+              className="rounded-lg bg-emerald-700 px-5 py-4 text-center text-base font-semibold text-white hover:bg-emerald-800"
+            >
+              Sponsor a block — $100
+            </a>
+            <a
+              href="/business"
+              className="rounded-lg bg-neutral-900 px-5 py-4 text-center text-base font-semibold text-white hover:bg-neutral-800"
+            >
+              For businesses
+            </a>
+          </div>
+          <p className="mt-4 text-sm text-neutral-700">
+            <strong>$100</strong> = one cleanup, one paid resident, one before-and-after photo set in your inbox.<br />
+            <strong>Own or manage a business?</strong> Sponsor the block outside your door, or write to{' '}
+            <a className={link} href="mailto:info@globalcommunitycleaners.org">
+              info@globalcommunitycleaners.org
+            </a>{' '}
+            and we will walk it with you.<br />
+            <strong>Have an Android phone?</strong>{' '}
+            <a className={link} href="/android-beta">
+              Join the test group
+            </a>{' '}
+            and help us launch.
+          </p>
+        </Section>
+
+        {/* §7 What's next */}
+        <Section label="§7 · What's next">
+          <h2 className="text-3xl font-bold leading-tight text-neutral-900">
+            Next issue: the Android test, and the first businesses on the map.
+          </h2>
+          <p>
+            We will report back on how the Android test went and on the first businesses to sponsor the block outside their door &mdash; with the photos to show for it.
+          </p>
+          <p className="mt-4 font-semibold">Dr. King&rsquo;s apartment is six blocks away. The work continues.</p>
+          <p className="mt-2 italic text-neutral-500">— The team at Global Community Cleaners NFP</p>
+        </Section>
+
+        {/* Footer / share */}
+        <div className="mt-16 border-t border-neutral-200 pt-8 text-center text-sm text-neutral-500">
+          <p>
+            <a className="text-emerald-700 underline" href="/sponsor">
+              Sponsor a block →
+            </a>
+            {' · '}
+            <a className="text-emerald-700 underline" href="/android-beta">
+              Test the Android app
+            </a>
+            {' · '}
+            <a className="text-emerald-700 underline" href="/blog/2026-09-01-issue-06">
+              Read Issue #6
             </a>
             {' · '}
             <a className="text-emerald-700 underline" href="/">

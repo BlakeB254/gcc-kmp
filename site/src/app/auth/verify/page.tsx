@@ -92,7 +92,7 @@ function VerifyContent() {
             <h1 className="text-2xl font-bold text-neutral-900 mb-2">Email Verified!</h1>
             <p className="text-neutral-600 mb-6">{message}</p>
             <Link
-              href={`/worker/register?token=${registrationToken}`}
+              href={`/worker/signup?token=${registrationToken}`}
               className="inline-block w-full py-3 px-6 bg-brand-green-500 text-brand-green-900 font-semibold rounded-xl hover:bg-brand-green-400 transition-colors"
             >
               Complete Registration

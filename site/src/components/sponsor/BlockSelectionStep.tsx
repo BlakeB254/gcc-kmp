@@ -52,6 +52,8 @@ const SponsorBlockMap = dynamic(
 interface BlockSelectionStepProps {
   mode: SponsorshipMode
   blocks: SponsorBlock[]
+  /** How many of `blocks` can be funded and released right now. */
+  assignableBlockCount: number
   selectedBlocks: SponsorBlock[]
   isLoading: boolean
   generalBlockCount: number
@@ -61,10 +63,10 @@ interface BlockSelectionStepProps {
 
 export const BlockSelectionStep = forwardRef<HTMLDivElement, BlockSelectionStepProps>(
   function BlockSelectionStep(
-    { mode, blocks, selectedBlocks, isLoading, generalBlockCount, onToggleBlock, onGeneralCountChange },
+    { mode, blocks, assignableBlockCount, selectedBlocks, isLoading, generalBlockCount, onToggleBlock, onGeneralCountChange },
     ref,
   ) {
-    const availableBlockCount = blocks.length
+    const availableBlockCount = assignableBlockCount
     const canUseGeneralMode = generalBlockCount <= availableBlockCount
 
     return (
@@ -138,6 +140,13 @@ function SpecificBlockPicker({
             </p>
           </div>
         </div>
+      )}
+
+      {!isFallback && (
+        <p className="text-sm text-neutral-600">
+          Any block can be sponsored at any time. If a block has already been cleaned, your
+          sponsorship pays for its next cleaning.
+        </p>
       )}
 
       {/* Map — same green polygon + route line visual as home page */}

@@ -135,6 +135,7 @@ export function DonateCard({
               type="number"
               min="1"
               step="1"
+              aria-label="Custom donation amount in dollars"
               placeholder="Enter amount"
               value={customAmount}
               onChange={(e) => {

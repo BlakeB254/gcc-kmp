@@ -537,7 +537,7 @@ function JoinForm() {
                         </div>
                         <h2 className="text-xl font-bold text-white mb-2">Join the Global Movement</h2>
                         <p className="text-neutral-400 text-sm">
-                          We're launching in Chicago first, but expanding worldwide.
+                          We started in Chicago and are expanding worldwide.
                           <br />Lock in your global position now!
                         </p>
                       </div>
@@ -869,7 +869,7 @@ function JoinForm() {
                   </>
                 ) : (
                   <>
-                    Launching in <span className="text-brand-green-400 font-medium">Chicago</span>, expanding globally.
+                    Started in <span className="text-brand-green-400 font-medium">Chicago</span>, expanding globally.
                     <br />
                     Your rank is permanent and will never change.
                   </>

@@ -2,7 +2,7 @@ import { Header } from '@/components/landing/Header'
 import Link from 'next/link'
 
 export const metadata = {
-  title: 'Terms of Service | GCC',
+  title: 'Terms of Service',
   description: 'Terms of Service for Global Community Cleaners',
 }
 

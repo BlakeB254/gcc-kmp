@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   ChevronDown,
   ChevronUp,
@@ -27,6 +28,11 @@ import {
 interface QuoteSummaryProps {
   config: SponsorPackageConfig
   priceBreakdown: PriceBreakdown
+  /**
+   * Bumped by the builder's last step ("Proceed to Checkout") to open the
+   * checkout form here, so there is one checkout path for the whole page.
+   */
+  checkoutRequest?: number
 }
 
 interface ContactForm {
@@ -39,7 +45,7 @@ interface ContactForm {
 
 type ModalMode = 'checkout' | 'walkthrough'
 
-export function QuoteSummary({ config, priceBreakdown }: QuoteSummaryProps) {
+export function QuoteSummary({ config, priceBreakdown, checkoutRequest = 0 }: QuoteSummaryProps) {
   const [isExpanded, setIsExpanded] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [modalMode, setModalMode] = useState<ModalMode>('checkout')
@@ -59,6 +65,10 @@ export function QuoteSummary({ config, priceBreakdown }: QuoteSummaryProps) {
     setShowModal(true)
     setCheckoutError(null)
   }
+
+  useEffect(() => {
+    if (checkoutRequest > 0) openCheckoutModal()
+  }, [checkoutRequest])
 
   const openWalkthroughModal = () => {
     setModalMode('walkthrough')
@@ -467,8 +477,10 @@ export function QuoteSummary({ config, priceBreakdown }: QuoteSummaryProps) {
         </div>
       </div>
 
-      {/* Checkout / Walkthrough Modal */}
-      {showModal && (
+      {/* Checkout / Walkthrough Modal. Portalled to <body>: this component sits inside a
+          sticky sidebar, which is its own stacking context, so a dialog rendered here
+          ends up underneath the page's sticky step bar and the site header. */}
+      {showModal && createPortal(
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" role="presentation">
           <div
             className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto"
@@ -747,7 +759,8 @@ export function QuoteSummary({ config, priceBreakdown }: QuoteSummaryProps) {
               </>
             )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )

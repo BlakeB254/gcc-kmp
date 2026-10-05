@@ -26,6 +26,16 @@ function isPublished(publishAt: string): boolean {
 // as aliases so existing links do not 404.
 const POSTS: PostCard[] = [
   {
+    slug: '2026-10-01-issue-07',
+    title: 'A phone, a storefront, and the block in between',
+    date: '2026-10-01',
+    publishAt: '2026-10-01T08:00:00-05:00',
+    description:
+      "Issue #7 — Open for Business. Thank you to UIC's Office of Community Collaboration for the Android phone behind our Android app, a call for Android testers to help us launch on Google Play, more paid work for neighbors who are looking, and an invitation to local businesses: sponsor a cleaning outside your door.",
+    heroImage: '/newsletter/issue-07/cover.jpg',
+    badge: 'Issue #7 · Open for Business',
+  },
+  {
     slug: '2026-09-01-issue-06',
     title: 'From cleaning blocks to mapping them in 3D',
     date: '2026-09-01',

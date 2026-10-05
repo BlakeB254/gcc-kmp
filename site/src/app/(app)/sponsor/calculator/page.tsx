@@ -53,6 +53,8 @@ function SponsorCalculatorPage() {
   const searchParams = useSearchParams()
   const [config, setConfig] = useState<SponsorPackageConfig>(() => initConfigFromParams(searchParams))
   const [activeStep, setActiveStep] = useState(0)
+  // Incremented when the last step asks for checkout; QuoteSummary owns the form.
+  const [checkoutRequest, setCheckoutRequest] = useState(0)
 
   const priceBreakdown = useMemo(() => calculatePackagePrice(config), [config])
 
@@ -71,7 +73,7 @@ function SponsorCalculatorPage() {
   return (
     <div className="bg-gradient-to-b from-brand-green-50 to-white">
       {/* Page Title and Steps */}
-      <div className="bg-white/80 backdrop-blur border-b sticky top-16 z-10">
+      <div className="bg-white/80 backdrop-blur border-b sticky top-20 z-10">
         <div className="section-container py-4">
           <h1 className="font-bold text-xl mb-4">Build Your Sponsorship Package</h1>
           {/* Progress Steps */}
@@ -167,6 +169,7 @@ function SponsorCalculatorPage() {
                 config={config}
                 onChange={updateConfig}
                 onBack={() => setActiveStep(3)}
+                onCheckout={() => setCheckoutRequest((n) => n + 1)}
                 priceBreakdown={priceBreakdown}
               />
             )}
@@ -175,7 +178,11 @@ function SponsorCalculatorPage() {
           {/* Right Column - Quote Summary (Sticky) */}
           <div className="lg:col-span-1">
             <div className="sticky top-36">
-              <QuoteSummary config={config} priceBreakdown={priceBreakdown} />
+              <QuoteSummary
+                config={config}
+                priceBreakdown={priceBreakdown}
+                checkoutRequest={checkoutRequest}
+              />
             </div>
           </div>
         </div>

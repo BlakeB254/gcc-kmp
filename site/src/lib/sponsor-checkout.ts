@@ -1,0 +1,234 @@
+/**
+ * Rules for the $100 "Sponsor a Block" checkout (/sponsor ->
+ * POST /api/contribute/checkout).
+ *
+ * A sponsor can always pay, whether or not a block is ready to assign:
+ *
+ *   - chosen blocks are all `available`  -> `blockIds`            (block sponsorship)
+ *   - "let GCC choose", enough available -> `allocationType:area` (auto-assigned)
+ *   - anything else                      -> `reservation`         (next cleaning cycle)
+ *
+ * "Anything else" includes a block that has already been cleaned: every block
+ * can be sponsored again at any time, and the money buys its next cleaning.
+ *
+ * A reservation is charged at $100 a block and recorded as a general-fund
+ * contribution tagged with the reserved count (and block codes, if the
+ * sponsor picked upcoming route blocks), so an admin can allocate it once
+ * blocks are scheduled. Before this existed, a sponsor who arrived while no
+ * block was `available` could not check out at all.
+ *
+ * Pure — no `@/db` or Stripe import — so it runs under `tsx --test`.
+ */
+
+export const BLOCK_PRICE_DOLLARS = 100
+/** Upper bound on one reservation; larger gifts go through the package builder. */
+const MAX_RESERVED_BLOCKS = 10000
+const BLOCK_CODE_RE = /^[A-Za-z0-9][A-Za-z0-9-]{0,31}$/
+
+/** GET /api/blocks returns its list under `data`; older callers read `blocks`. */
+export function blocksFromApi<T = unknown>(body: unknown): T[] {
+  const b = body as { data?: unknown; blocks?: unknown } | null
+  if (Array.isArray(b?.data)) return b.data as T[]
+  if (Array.isArray(b?.blocks)) return b.blocks as T[]
+  return []
+}
+
+export interface Reservation {
+  blockCount: number
+  /** Route block codes the sponsor asked for, when they picked upcoming blocks. */
+  blockCodes?: string[]
+}
+
+interface SelectableBlock {
+  id: number | string
+  code?: string
+  status?: string
+}
+
+/** Only an `available` block can be funded and released to a worker right now. */
+export function isAssignableNow(block: { status?: string }): boolean {
+  return block.status === 'available'
+}
+
+/** A block id the database knows: a positive integer, as a number or a string. */
+function realBlockId(id: number | string): number | null {
+  const n = typeof id === 'number' ? id : /^\d+$/.test(id) ? Number(id) : NaN
+  return Number.isInteger(n) && n > 0 ? n : null
+}
+
+/**
+ * The request body for POST /api/contribute/checkout, or null when there is
+ * nothing to check out yet (specific mode, no block picked).
+ */
+export function buildSponsorCheckoutPayload<S extends object>(input: {
+  mode: 'specific' | 'general'
+  selectedBlocks: SelectableBlock[]
+  generalBlockCount: number
+  /** Blocks that can be assigned right now. */
+  availableBlockCount: number
+  /** Fields sent with every kind of checkout (name, email, frequency, ...). */
+  shared: S
+}):
+  | (S & { blockIds: number[] })
+  | (S & { allocationType: 'area'; blockCount: number })
+  | (S & { reservation: Reservation })
+  | null {
+  const { mode, selectedBlocks, generalBlockCount, availableBlockCount, shared } = input
+
+  if (mode === 'specific') {
+    if (selectedBlocks.length === 0) return null
+    const ids = selectedBlocks.map((b) => (isAssignableNow(b) ? realBlockId(b.id) : null))
+    if (ids.every((id): id is number => id !== null)) return { ...shared, blockIds: ids }
+    // A block that is already cleaned or in progress, or an upcoming route
+    // block with no database row yet, is reserved by code for its next cycle.
+    const blockCodes = selectedBlocks.map((b) => b.code).filter((c): c is string => !!c)
+    return { ...shared, reservation: { blockCount: selectedBlocks.length, blockCodes } }
+  }
+
+  if (generalBlockCount <= availableBlockCount) {
+    return { ...shared, allocationType: 'area', blockCount: generalBlockCount }
+  }
+  return { ...shared, reservation: { blockCount: generalBlockCount } }
+}
+
+/**
+ * Server-side reading of a `reservation` from the request body. The amount is
+ * always computed here from the block count, never taken from the client.
+ */
+export function parseReservation(
+  raw: unknown,
+): { blockCount: number; blockCodes: string[]; amountCents: number } | null {
+  const r = raw as { blockCount?: unknown; blockCodes?: unknown } | null | undefined
+  const blockCount = r?.blockCount
+  if (
+    typeof blockCount !== 'number' ||
+    !Number.isInteger(blockCount) ||
+    blockCount < 1 ||
+    blockCount > MAX_RESERVED_BLOCKS
+  ) {
+    return null
+  }
+  const blockCodes = Array.isArray(r?.blockCodes)
+    ? [...new Set(r.blockCodes.filter((c): c is string => typeof c === 'string' && BLOCK_CODE_RE.test(c)))]
+    : []
+  // Naming more blocks than are paid for would put a false line in the
+  // admin's ledger of cleanings owed.
+  if (blockCodes.length > blockCount) return null
+  return { blockCount, blockCodes, amountCents: blockCount * BLOCK_PRICE_DOLLARS * 100 }
+}
+
+/**
+ * Block codes joined with commas, cut at a whole code so the result fits in
+ * `maxLength` characters. Stripe metadata values are capped at 500; slicing
+ * the joined string could leave half a code that still looks like one.
+ */
+export function codesWithin(codes: string[], maxLength: number): string {
+  let out = ''
+  for (const code of codes) {
+    const next = out ? `${out},${code}` : code
+    if (next.length > maxLength) break
+    out = next
+  }
+  return out
+}
+
+/**
+ * How Stripe should bill a sponsorship frequency, or null for a one-time
+ * payment. The /sponsor page offers weekly, every two weeks and monthly; each
+ * is a real subscription on that schedule.
+ */
+export function stripeRecurring(
+  frequency: string | undefined,
+): { interval: 'week' | 'month'; interval_count: number } | null {
+  switch (frequency) {
+    case 'weekly':
+      return { interval: 'week', interval_count: 1 }
+    case 'biweekly':
+      return { interval: 'week', interval_count: 2 }
+    case 'monthly':
+      return { interval: 'month', interval_count: 1 }
+    default:
+      return null
+  }
+}
+
+/**
+ * Webhook side: the reservation a paid Checkout session carries in its
+ * metadata (written by POST /api/contribute/checkout), or null for an
+ * ordinary donation. `blockCodes` is the comma-separated list, or null when
+ * the sponsor let GCC choose.
+ */
+export function reservationFromMetadata(
+  metadata: Record<string, string | undefined> | null | undefined,
+): { blockCount: number; blockCodes: string | null } | null {
+  const raw = metadata?.reservedBlockCount
+  if (!raw || !/^\d+$/.test(raw)) return null
+  const parsed = parseReservation({
+    blockCount: Number(raw),
+    blockCodes: (metadata?.reservedBlockCodes || '').split(',').map((c) => c.trim()),
+  })
+  if (!parsed) return null
+  return { blockCount: parsed.blockCount, blockCodes: parsed.blockCodes.join(',') || null }
+}
+
+/** The parts of a Stripe invoice the renewal rule reads. */
+export interface InvoiceLike {
+  id?: string
+  billing_reason?: string | null
+  amount_paid?: number
+  currency?: string | null
+  parent?: {
+    subscription_details?: {
+      subscription?: string | { id: string } | null
+      metadata?: Record<string, string | undefined> | null
+    } | null
+  } | null
+  // Shape before Stripe API version 2025-03-31. A webhook payload follows the
+  // API version pinned on the endpoint, not the installed SDK.
+  subscription?: string | { id: string } | null
+  subscription_details?: { metadata?: Record<string, string | undefined> | null } | null
+}
+
+/**
+ * Webhook side: what to record for a paid subscription renewal, or null.
+ *
+ * Only `subscription_cycle` invoices count. The first invoice of a
+ * subscription (`subscription_create`) is recorded by
+ * `checkout.session.completed`, so recording it here too would double it.
+ * The sponsor comes from the subscription metadata set at checkout; a
+ * subscription created before that metadata existed has none, and is skipped
+ * rather than guessed at.
+ */
+export function renewalFromInvoice(invoice: InvoiceLike): {
+  sponsorId: number
+  amountCents: number
+  currency: string
+  subscriptionId: string
+  frequency: string
+  displayName: string | null
+  isAnonymous: boolean
+  reservation: { blockCount: number; blockCodes: string | null } | null
+} | null {
+  if (invoice.billing_reason !== 'subscription_cycle') return null
+  const amountCents = invoice.amount_paid ?? 0
+  if (amountCents <= 0) return null
+
+  const details = invoice.parent?.subscription_details
+  const sub = details?.subscription ?? invoice.subscription
+  const subscriptionId = typeof sub === 'string' ? sub : sub?.id
+  if (!subscriptionId) return null
+
+  const meta = details?.metadata ?? invoice.subscription_details?.metadata ?? {}
+  if (!meta.sponsorId || !/^\d+$/.test(meta.sponsorId)) return null
+
+  return {
+    sponsorId: Number(meta.sponsorId),
+    amountCents,
+    currency: invoice.currency || 'usd',
+    subscriptionId,
+    frequency: meta.frequency || 'monthly',
+    displayName: meta.displayName || null,
+    isAnonymous: meta.isAnonymous === 'true',
+    reservation: reservationFromMetadata(meta),
+  }
+}
