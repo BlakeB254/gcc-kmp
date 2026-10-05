@@ -7,6 +7,7 @@ export function FooterSection() {
     { href: '/worker/signup', label: 'Sign Up to Earn' },
     { href: '/login', label: 'Sign In' },
     { href: '/worker/leaderboard', label: 'Leaderboard' },
+    { href: '/android-beta', label: 'Test the Android App' },
     { href: '/faq', label: 'FAQ' },
   ]
 

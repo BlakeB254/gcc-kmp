@@ -656,11 +656,11 @@ export default function BountiesPage() {
           </h2>
           <p className="text-neutral-400 max-w-xl mx-auto mb-8">
             GPS-verified cleanups ensure bounties only pay out when the job is actually done.
-            Available on iOS and Android.
+            Available on iPhone now. Android is in testing — join the test group.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
             <a
-              href="#"
+              href="https://apps.apple.com/us/app/global-community-cleaners/id6760203806"
               className="inline-flex items-center gap-3 bg-white text-neutral-900 font-semibold px-6 py-3.5 rounded-xl hover:bg-neutral-100 transition-colors"
             >
               <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
@@ -668,15 +668,15 @@ export default function BountiesPage() {
               </svg>
               App Store
             </a>
-            <a
-              href="#"
+            <Link
+              href="/android-beta"
               className="inline-flex items-center gap-3 bg-white text-neutral-900 font-semibold px-6 py-3.5 rounded-xl hover:bg-neutral-100 transition-colors"
             >
               <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M3.609 1.814L13.792 12 3.61 22.186a.996.996 0 01-.61-.92V2.734a1 1 0 01.609-.92zm10.89 10.893l2.302 2.302-10.937 6.333 8.635-8.635zm3.199-3.199l2.807 1.626a1 1 0 010 1.732l-2.807 1.626L15.206 12l2.492-2.492zM5.864 2.658L16.8 8.99l-2.302 2.302-8.634-8.634z" />
               </svg>
-              Google Play
-            </a>
+              Android — join the test
+            </Link>
           </div>
         </div>
       </section>

@@ -1,9 +1,9 @@
 import type { Metadata } from 'next'
 import Image from 'next/image'
 import Link from 'next/link'
+import { ANDROID_BETA_PATH } from '@/lib/android-testers'
 
 const APP_STORE_URL = 'https://apps.apple.com/us/app/global-community-cleaners/id6760203806'
-const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.globalcommunitycleaners.worker'
 
 export const metadata: Metadata = {
   title: 'Get the GCC App',
@@ -66,16 +66,16 @@ export default function AppLandingPage() {
             </Link>
 
             <Link
-              href={PLAY_STORE_URL}
+              href={ANDROID_BETA_PATH}
               className="inline-flex items-center justify-center gap-3 bg-black text-white px-8 py-4 rounded-2xl font-semibold shadow-xl hover:bg-neutral-800 transition-colors min-w-[240px]"
-              aria-label="Get GCC on Google Play"
+              aria-label="Join the GCC Android test"
             >
               <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor">
                 <path d="M3.6 1.2C3.4 1.4 3.2 1.7 3.2 2.1v19.8c0 .4.2.7.4.9l11.7-11L3.6 1.2zm12.6 11.4l3.4 3.4 1.5-.9c1-.6 1-2.1 0-2.7l-1.5-.9-3.4 1.1zm-.7-.7l3.5-3.5L5.1 1.5c-.4-.2-.8-.3-1.2-.1l11.6 10.5zm0 1.4L4 22.6c.4.1.8.1 1.1-.1l13.9-7.9-3.5-3.3z" />
               </svg>
               <div className="flex flex-col items-start leading-none">
-                <span className="text-xs opacity-80">Get it on</span>
-                <span className="text-lg font-semibold">Google Play</span>
+                <span className="text-xs opacity-80">Android testers wanted</span>
+                <span className="text-lg font-semibold">Join the test</span>
               </div>
             </Link>
           </div>

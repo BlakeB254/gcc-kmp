@@ -2421,3 +2421,25 @@ export const phoneVerificationCodes = pgTable('phone_verification_codes', {
 
 export type PhoneVerificationCodeRow = typeof phoneVerificationCodes.$inferSelect
 export type NewPhoneVerificationCodeRow = typeof phoneVerificationCodes.$inferInsert
+
+// Android closed-test tester signups (/android-beta). Google Play requires 12
+// opted-in testers for 14 days before a personal developer account may
+// publish. A row is one Google account address; an admin copies new ones into
+// the Play Console tester list and sends the opt-in link from
+// /admin/android-testers. Status values and transitions: lib/android-testers.ts.
+export const androidTesterSignups = pgTable('android_tester_signups', {
+  id: serial('id').primaryKey(),
+  email: varchar('email', { length: 254 }).notNull().unique(),
+  name: varchar('name', { length: 120 }),
+  // Where on the site the signup came from (e.g. 'android-beta', 'hero-banner').
+  source: varchar('source', { length: 64 }),
+  status: varchar('status', { length: 16 }).default('new').notNull(),
+  addedAt: timestamp('added_at', { mode: 'string', withTimezone: true }),
+  inviteSentAt: timestamp('invite_sent_at', { mode: 'string', withTimezone: true }),
+  joinedAt: timestamp('joined_at', { mode: 'string', withTimezone: true }),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+export type AndroidTesterSignupRow = typeof androidTesterSignups.$inferSelect
+export type NewAndroidTesterSignupRow = typeof androidTesterSignups.$inferInsert

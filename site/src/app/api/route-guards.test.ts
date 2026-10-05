@@ -63,6 +63,7 @@ const PUBLIC_ROUTES: Record<string, string> = {
     'public aggregate block counts for a hardcoded service area; carries no per-worker data despite the me/ path (rename candidate)',
 
   // ── Signup, checkout, password and verification flows (pre-auth) ──────
+  'android-testers': 'Android closed-test signup form; rate-limited, stores an address only',
   'auth/apple': 'sign-in entry point',
   'auth/google': 'sign-in entry point',
   'auth/logout': 'clears the session cookie',
