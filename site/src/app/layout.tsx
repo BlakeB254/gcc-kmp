@@ -84,9 +84,6 @@ export const metadata: Metadata = {
     title: 'GCC',
     statusBarStyle: 'black-translucent',
   },
-  alternates: {
-    canonical: siteUrl,
-  },
   other: {
     'apple-itunes-app': 'app-id=6760203806',
   },

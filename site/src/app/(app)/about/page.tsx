@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { BranasResultsChart, CollectiveEfficacyStat } from './EvidenceCharts'
 
 export const metadata = {
-  title: 'About | Global Community Cleaners',
+  title: 'About',
   description:
     "The history behind Global Community Cleaners — six blocks from Dr. King's 1966 apartment in North Lawndale, the field-evidence layer for community cleanliness, and the founder who built it.",
 }

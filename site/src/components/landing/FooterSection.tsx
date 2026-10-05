@@ -14,6 +14,7 @@ export function FooterSection() {
   const sponsorLinks = [
     { href: '/how-it-works?tab=sponsors', label: 'How It Works' },
     { href: '/sponsor', label: 'Sponsor a Block' },
+    { href: '/business', label: 'For Businesses' },
     { href: '/sponsor/calculator', label: 'Custom Package' },
     { href: '/sponsor/enterprise', label: 'Enterprise' },
     { href: '/login', label: 'Sign In' },
@@ -21,6 +22,7 @@ export function FooterSection() {
   ]
 
   const aboutLinks = [
+    { href: '/about', label: 'About GCC' },
     { href: '/impact-supporters', label: 'Impact & Supporters' },
     { href: '/bounties', label: 'Community Bounties' },
     { href: '/join', label: 'Join Movement' },

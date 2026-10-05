@@ -6,7 +6,7 @@ import Link from 'next/link'
 // it is the link given in the Play Console Data safety form. Keep what it says
 // about deletion in step with lib/delete-worker.ts.
 export const metadata = {
-  title: 'Delete Your Account | GCC',
+  title: 'Delete Your Account',
   description: 'How to delete your Global Community Cleaners (GCC) account and associated data',
 }
 

@@ -83,7 +83,7 @@ export function ImpactCounterSection() {
         {/* CTAs */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
           <Link
-            href="/impact"
+            href="/impact-supporters"
             className="px-8 py-3 text-lg font-semibold rounded-full border-2 border-white/80 bg-white/10 text-white hover:bg-white/20 transition-all"
           >
             See Full Impact

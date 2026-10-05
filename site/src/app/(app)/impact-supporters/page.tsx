@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { ImpactSupportersContent } from './ImpactSupportersContent'
 
 export const metadata: Metadata = {
-  title: 'Our Impact & Supporters | Global Community Cleaners',
+  title: 'Our Impact & Supporters',
   description:
     'See the live impact of Global Community Cleaners in North Lawndale — blocks cleaned, workers paid, and the sponsors and donors making it possible.',
   openGraph: {

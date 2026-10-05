@@ -36,7 +36,7 @@ export default function AppLayout({
   return (
     <div className="min-h-screen bg-neutral-50 flex flex-col">
       <Header />
-      <main className="flex-1 pt-16">
+      <main className="flex-1 pt-20">
         {children}
       </main>
       <FooterSection />

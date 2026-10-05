@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic'
 const APP_STORE_URL = 'https://apps.apple.com/us/app/global-community-cleaners/id6760203806'
 
 export const metadata: Metadata = {
-  title: 'Test the GCC Android App | Global Community Cleaners',
+  title: 'Test the GCC Android App',
   description:
     'Have an Android phone? Join the GCC test group and help us launch the Global Community Cleaners app on Google Play.',
   alternates: { canonical: 'https://globalcommunitycleaners.org/android-beta' },

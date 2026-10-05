@@ -10,7 +10,8 @@ import { FooterSection } from '@/components/landing/FooterSection'
 import { Header } from '@/components/landing/Header'
 
 export const metadata: Metadata = {
-  title: 'Clean Streets. Real Money. Your Neighborhood.',
+  // No title here: the root layout's default already carries the brand name.
+  alternates: { canonical: '/' },
   description:
     'Global Community Cleaners connects neighborhood residents worldwide with paid block-cleaning opportunities. Sponsor a block for $100 or earn money keeping your neighborhood clean.',
   openGraph: {
