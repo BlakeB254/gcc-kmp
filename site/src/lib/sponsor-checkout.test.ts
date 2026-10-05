@@ -5,6 +5,8 @@ import {
   blocksFromApi,
   buildSponsorCheckoutPayload,
   parseReservation,
+  reservationFromMetadata,
+  stripeRecurring,
 } from './sponsor-checkout'
 
 // Rules for the $100 "Sponsor a Block" checkout on /sponsor. Run with:
@@ -129,4 +131,44 @@ test('parseReservation: rejects a missing, fractional, zero or absurd count', ()
   for (const bad of [undefined, null, {}, { blockCount: 0 }, { blockCount: 1.5 }, { blockCount: '2' }, { blockCount: 10001 }]) {
     assert.equal(parseReservation(bad), null, `expected ${JSON.stringify(bad)} to be rejected`)
   }
+})
+
+// ── stripeRecurring ───────────────────────────────────────────────────────
+
+test('stripeRecurring: a one-time gift is not a subscription', () => {
+  assert.equal(stripeRecurring('one_time'), null)
+  assert.equal(stripeRecurring(undefined), null)
+  assert.equal(stripeRecurring('daily'), null)
+})
+
+test('stripeRecurring: weekly, every-two-weeks and monthly bill on the schedule the sponsor chose', () => {
+  assert.deepEqual(stripeRecurring('weekly'), { interval: 'week', interval_count: 1 })
+  assert.deepEqual(stripeRecurring('biweekly'), { interval: 'week', interval_count: 2 })
+  assert.deepEqual(stripeRecurring('monthly'), { interval: 'month', interval_count: 1 })
+})
+
+// ── reservationFromMetadata (webhook side) ────────────────────────────────
+
+test('reservationFromMetadata: reads back what the checkout stored on the Stripe session', () => {
+  assert.deepEqual(
+    reservationFromMetadata({ reservedBlockCount: '2', reservedBlockCodes: 'NL-N01,NL-N02' }),
+    { blockCount: 2, blockCodes: 'NL-N01,NL-N02' },
+  )
+  assert.deepEqual(reservationFromMetadata({ reservedBlockCount: '1', reservedBlockCodes: '' }), {
+    blockCount: 1,
+    blockCodes: null,
+  })
+})
+
+test('reservationFromMetadata: an ordinary donation is not a reservation', () => {
+  for (const meta of [null, undefined, {}, { reservedBlockCount: '' }, { reservedBlockCount: '0' }, { reservedBlockCount: 'abc' }]) {
+    assert.equal(reservationFromMetadata(meta), null, `expected ${JSON.stringify(meta)} to be no reservation`)
+  }
+})
+
+test('reservationFromMetadata: block codes that are not codes are dropped', () => {
+  assert.deepEqual(
+    reservationFromMetadata({ reservedBlockCount: '2', reservedBlockCodes: 'NL-N01,<b>x</b>' }),
+    { blockCount: 2, blockCodes: 'NL-N01' },
+  )
 })

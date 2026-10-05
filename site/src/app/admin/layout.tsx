@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { href: '/admin/reports', label: 'Completion Reports' },
   { href: '/admin/newsletter', label: 'Newsletter' },
   { href: '/admin/android-testers', label: 'Android Testers' },
+  { href: '/admin/reservations', label: 'Block Reservations' },
   { href: '/admin/payments', label: 'Payments' },
   { href: '/admin/scan-sessions', label: 'Scan Sessions' },
   { href: '/admin/crashes', label: 'Crash Reports' },

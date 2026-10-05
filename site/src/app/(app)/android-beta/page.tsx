@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   title: 'Test the GCC Android App',
   description:
     'Have an Android phone? Join the GCC test group and help us launch the Global Community Cleaners app on Google Play.',
-  alternates: { canonical: 'https://globalcommunitycleaners.org/android-beta' },
+  alternates: { canonical: '/android-beta' },
   openGraph: {
     title: 'Help launch GCC on Android',
     description:

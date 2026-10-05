@@ -155,7 +155,8 @@ export function Header() {
           type="button"
           className="lg:hidden p-2 -mr-2 rounded-lg"
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          aria-label="Toggle menu"
+          aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+          aria-expanded={mobileMenuOpen}
         >
           {mobileMenuOpen ? (
             <X className="h-6 w-6 text-neutral-600" />

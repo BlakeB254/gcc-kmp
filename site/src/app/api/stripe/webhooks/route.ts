@@ -32,6 +32,7 @@ import {
   commitPublicDataMutation,
   type PublicDataInvalidator,
 } from '@/lib/public-data/invalidation'
+import { reservationFromMetadata } from '@/lib/sponsor-checkout'
 
 export const runtime = 'nodejs'
 
@@ -271,10 +272,20 @@ export async function POST(request: NextRequest) {
           // Handle general donation
           console.log('[Webhook] Processing general donation:', { amount: amountCents })
 
+          // A block sponsorship paid while no block could be assigned arrives
+          // here as a general payment carrying a reservation. Recording it
+          // changes no block: an admin allocates it from /admin/reservations.
+          const reservation = reservationFromMetadata(session.metadata)
+
           // Create single transaction record for donation
           await commitSponsorshipMutation(() => db.insert(transactions).values({
             sponsorId: Number(sponsorId),
             blockId: null, // No block - general fund
+            reservedBlockCount: reservation?.blockCount ?? null,
+            reservedBlockCodes: reservation?.blockCodes ?? null,
+            preferredCleaningDate: reservation && preferredCleaningDate ? preferredCleaningDate : null,
+            preferredCleaningTimeStart: reservation ? preferredCleaningTimeStart || null : null,
+            preferredCleaningTimeEnd: reservation ? preferredCleaningTimeEnd || null : null,
             stripeCheckoutSessionId: session.id,
             stripePaymentIntentId: session.payment_intent as string,
             amount: String(amountCents),

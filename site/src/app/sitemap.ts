@@ -1,6 +1,6 @@
 import type { MetadataRoute } from 'next'
 
-const siteUrl = 'https://globalcommunitycleaners.org'
+const siteUrl = 'https://www.globalcommunitycleaners.org'
 
 type Entry = [path: string, changeFrequency: 'daily' | 'weekly' | 'monthly' | 'yearly', priority: number]
 

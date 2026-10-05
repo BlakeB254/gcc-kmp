@@ -779,6 +779,14 @@ export const transactions = pgTable('transactions', {
   preferredCleaningTimeStart: varchar('preferred_cleaning_time_start', { length: 5 }), // HH:MM format, optional
   preferredCleaningTimeEnd: varchar('preferred_cleaning_time_end', { length: 5 }), // HH:MM format, optional
 
+  // Block reservation: a block sponsorship paid while the blocks could not be
+  // assigned (lib/sponsor-checkout.ts). Set on a `general` row with no blockId;
+  // an admin allocates it from /admin/reservations. Null on every other row.
+  reservedBlockCount: integer('reserved_block_count'),
+  reservedBlockCodes: varchar('reserved_block_codes', { length: 500 }), // comma-separated, or null = GCC chooses
+  reservationAllocatedAt: timestamp('reservation_allocated_at', { mode: 'string', withTimezone: true }),
+  reservationNote: text('reservation_note'), // admin's note on how it was allocated
+
   // Timestamps
   completedAt: timestamp('completed_at', { mode: 'string', withTimezone: true }),
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),

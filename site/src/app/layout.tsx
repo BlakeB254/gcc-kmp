@@ -13,7 +13,7 @@ const jakarta = Plus_Jakarta_Sans({
   variable: '--font-display',
 })
 
-const siteUrl = 'https://globalcommunitycleaners.org'
+const siteUrl = 'https://www.globalcommunitycleaners.org'
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -89,6 +89,27 @@ export const metadata: Metadata = {
   },
 }
 
+// Who we are, for search engines. Facts match the About page and tax receipts.
+const organizationJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'NGO',
+  name: 'Global Community Cleaners',
+  legalName: 'Global Community Cleaners NFP',
+  url: siteUrl,
+  logo: `${siteUrl}/images/gcc-logo.png`,
+  taxID: '39-3553882',
+  nonprofitStatus: 'Nonprofit501c3',
+  address: {
+    '@type': 'PostalAddress',
+    streetAddress: '1844 S. Harding Ave, 2nd Floor',
+    addressLocality: 'Chicago',
+    addressRegion: 'IL',
+    postalCode: '60623',
+    addressCountry: 'US',
+  },
+  areaServed: 'North Lawndale, Chicago',
+}
+
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
@@ -106,7 +127,14 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${inter.variable} ${jakarta.variable}`}>
-      <body className="min-h-screen bg-white font-sans antialiased">{children}</body>
+      <body className="min-h-screen bg-white font-sans antialiased">
+        <script
+          type="application/ld+json"
+          // Static, hand-written object: nothing user-supplied is serialized here.
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+        />
+        {children}
+      </body>
     </html>
   )
 }

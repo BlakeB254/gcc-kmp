@@ -113,3 +113,42 @@ export function parseReservation(
     : []
   return { blockCount, blockCodes, amountCents: blockCount * BLOCK_PRICE_DOLLARS * 100 }
 }
+
+/**
+ * How Stripe should bill a sponsorship frequency, or null for a one-time
+ * payment. The /sponsor page offers weekly, every two weeks and monthly; each
+ * is a real subscription on that schedule.
+ */
+export function stripeRecurring(
+  frequency: string | undefined,
+): { interval: 'week' | 'month'; interval_count: number } | null {
+  switch (frequency) {
+    case 'weekly':
+      return { interval: 'week', interval_count: 1 }
+    case 'biweekly':
+      return { interval: 'week', interval_count: 2 }
+    case 'monthly':
+      return { interval: 'month', interval_count: 1 }
+    default:
+      return null
+  }
+}
+
+/**
+ * Webhook side: the reservation a paid Checkout session carries in its
+ * metadata (written by POST /api/contribute/checkout), or null for an
+ * ordinary donation. `blockCodes` is the comma-separated list, or null when
+ * the sponsor let GCC choose.
+ */
+export function reservationFromMetadata(
+  metadata: Record<string, string | undefined> | null | undefined,
+): { blockCount: number; blockCodes: string | null } | null {
+  const raw = metadata?.reservedBlockCount
+  if (!raw || !/^\d+$/.test(raw)) return null
+  const parsed = parseReservation({
+    blockCount: Number(raw),
+    blockCodes: (metadata?.reservedBlockCodes || '').split(',').map((c) => c.trim()),
+  })
+  if (!parsed) return null
+  return { blockCount: parsed.blockCount, blockCodes: parsed.blockCodes.join(',') || null }
+}

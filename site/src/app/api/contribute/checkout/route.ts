@@ -6,7 +6,7 @@ import { stripe, isStripeConfigured, STRIPE_CONFIG } from '@/lib/stripe/client'
 import { hashPassword } from '@/lib/auth'
 import { stripeIdempotencyKey } from '@/lib/stripe-idempotency'
 import { appUrl as getAppUrl } from '@/lib/env'
-import { parseReservation, type Reservation } from '@/lib/sponsor-checkout'
+import { parseReservation, stripeRecurring, type Reservation } from '@/lib/sponsor-checkout'
 
 export const runtime = 'nodejs'
 
@@ -33,7 +33,7 @@ interface ContributeRequest {
   // Contribution details
   amount?: number // In dollars (for donations) - ignored for block sponsorships
   blockIds?: number[] // Array of block IDs to sponsor (each $100)
-  frequency: 'one_time' | 'monthly'
+  frequency: 'one_time' | 'weekly' | 'biweekly' | 'monthly'
 
   // Area mode (auto-assign blocks)
   allocationType?: 'block' | 'area' | 'general'
@@ -282,10 +282,14 @@ export async function POST(request: NextRequest) {
       frequency,
     })
 
+    // Weekly, every-two-weeks and monthly sponsorships are subscriptions on
+    // that schedule. (Weekly and biweekly used to be charged once.)
+    const recurring = stripeRecurring(frequency)
+
     // Create Stripe checkout session
     const session = await stripe.checkout.sessions.create({
       customer: customer.id,
-      mode: frequency === 'monthly' ? 'subscription' : 'payment',
+      mode: recurring ? 'subscription' : 'payment',
       line_items: [
         {
           price_data: {
@@ -299,7 +303,7 @@ export async function POST(request: NextRequest) {
                 blockIds: finalBlockIds.join(','),
               },
             },
-            ...(frequency === 'monthly' ? { recurring: { interval: 'month' } } : {}),
+            ...(recurring ? { recurring } : {}),
           },
           quantity: 1,
         },
@@ -323,7 +327,7 @@ export async function POST(request: NextRequest) {
         preferredCleaningTimeEnd: preferredCleaningTimeEnd || '',
       },
       payment_intent_data:
-        frequency !== 'monthly'
+        !recurring
           ? {
               metadata: {
                 sponsorId: String(sponsorId),
