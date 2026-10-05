@@ -16,7 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 
 export const metadata: Metadata = {
-  title: 'For Businesses | GCC',
+  title: 'For Businesses',
   description:
     'Corporate sponsorship programs for businesses. Tax-deductible, employee engagement, and real community impact.',
 }
@@ -34,7 +34,7 @@ const programs = [
     icon: Users,
     title: 'Employee Matching',
     description:
-      'Double your employees charitable contributions. We track and match donations up to your set limit.',
+      "Double your employees' charitable contributions. We track and match donations up to your set limit.",
     features: ['2x impact', 'Employee engagement', 'Tax benefits for company'],
     popular: false,
   },
@@ -53,7 +53,7 @@ const benefits = [
     icon: TrendingUp,
     title: 'Increase Foot Traffic',
     description:
-      'Clean streets attract more customers. Studies show 30% more foot traffic on well-maintained blocks.',
+      'A swept, cared-for sidewalk is the first thing a customer sees. It invites people to slow down, stop and shop.',
   },
   {
     icon: BadgeCheck,
@@ -72,21 +72,6 @@ const benefits = [
     title: 'Employee Engagement',
     description:
       'Give your team a cause to rally around. Volunteer days and matching programs boost morale.',
-  },
-]
-
-const testimonials = [
-  {
-    quote: 'Since sponsoring the blocks around our store, weve seen a noticeable increase in customers feeling safe walking to us.',
-    author: 'Sarah M.',
-    role: 'Owner, Westside Hardware',
-    blocks: 4,
-  },
-  {
-    quote: 'Our employees love the matching program. Its a simple way to support our neighborhood together.',
-    author: 'Marcus T.',
-    role: 'HR Director, Local Credit Union',
-    blocks: 12,
   },
 ]
 
@@ -242,43 +227,19 @@ export default function BusinessPage() {
         </div>
       </section>
 
-      {/* Testimonials */}
-      <section className="bg-muted/50 py-16">
-        <div className="section-container">
-          <h2 className="mb-8 text-center text-2xl font-bold">
-            What Business Partners Say
-          </h2>
-          <div className="grid gap-6 md:grid-cols-2">
-            {testimonials.map((testimonial) => (
-              <Card key={testimonial.author}>
-                <CardContent className="pt-6">
-                  <p className="mb-4 text-lg italic text-muted-foreground">
-                    &quot;{testimonial.quote}&quot;
-                  </p>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold">{testimonial.author}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {testimonial.role}
-                      </p>
-                    </div>
-                    <Badge variant="secondary">
-                      {testimonial.blocks} blocks sponsored
-                    </Badge>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* CTA */}
       <section className="section-container py-16 text-center">
         <div className="mx-auto max-w-2xl">
           <h2 className="mb-4 text-2xl font-bold">Ready to Make a Difference?</h2>
           <p className="mb-8 text-muted-foreground">
-            Contact us to discuss a custom sponsorship package for your business.
+            Sponsor the block outside your door today, or write to{' '}
+            <a
+              href="mailto:info@globalcommunitycleaners.org?subject=Sponsoring%20the%20block%20outside%20my%20business"
+              className="font-medium text-brand-green-600 underline hover:text-brand-green-700"
+            >
+              info@globalcommunitycleaners.org
+            </a>{' '}
+            to talk through a package for your business.
           </p>
           <div className="flex flex-col gap-4 sm:flex-row sm:justify-center">
             <Button size="lg" asChild>
