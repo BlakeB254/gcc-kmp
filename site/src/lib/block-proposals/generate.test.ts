@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { areaCodePrefix, generateBlockProposals, type OsmWay } from './generate'
+import { areaCodePrefix, cleanStreetName, generateBlockProposals, type OsmWay } from './generate'
 
 // City blocks from a street network. Run with:
 //   npx tsx --test src/lib/block-proposals/generate.test.ts
@@ -173,4 +173,35 @@ test('areaCodePrefix: North Lawndale keeps NL; every other area is unique by num
   assert.equal(areaCodePrefix(22), 'C22') // Logan Square
   assert.equal(areaCodePrefix(4), 'C04') // Lincoln Square — both would be "LS" by initials
   assert.notEqual(areaCodePrefix(22), areaCodePrefix(4))
+})
+
+// ── street names are untrusted input (anyone can edit OpenStreetMap) ───────
+
+test('cleanStreetName: ordinary street names pass through', () => {
+  assert.equal(cleanStreetName('South Pulaski Road'), 'South Pulaski Road')
+  assert.equal(cleanStreetName("  Dr. Martin Luther King Jr. Drive "), 'Dr. Martin Luther King Jr. Drive')
+  assert.equal(cleanStreetName("O'Hare Way"), "O'Hare Way")
+  assert.equal(cleanStreetName('Avenida José Martí'), 'Avenida José Martí')
+  assert.equal(cleanStreetName('W 15th St'), 'W 15th St')
+})
+
+test('cleanStreetName: markup, script and control characters never survive', () => {
+  const hostile = cleanStreetName('<img src=x onerror=alert(1)>Main St')
+  assert.ok(!/[<>="&;(){}\\]/.test(hostile), hostile)
+  assert.equal(cleanStreetName('<script>alert(1)</script>'), 'scriptalert1script')
+  assert.equal(cleanStreetName('Main\u0000 St\n'), 'Main St')
+  assert.equal(cleanStreetName(undefined), '')
+  assert.ok(cleanStreetName('x'.repeat(500)).length <= 80)
+})
+
+test('a hostile street name cannot reach a proposal', () => {
+  const ways = grid().map((w) =>
+    w.tags?.name === 'S Harding Ave' ? { ...w, tags: { ...w.tags, name: 'S Harding Ave<script>alert(1)</script>' } } : w,
+  )
+  const { proposals } = generateBlockProposals({ ways, areaRing: AREA, codePrefix: 'NL', neighborhood: 'North Lawndale' })
+  for (const p of proposals) {
+    for (const text of [p.name, p.streetName, p.fromCorner, p.toCorner]) {
+      assert.ok(!/[<>]/.test(text), text)
+    }
+  }
 })

@@ -135,6 +135,22 @@ const edgeKey = (a: [number, number], b: [number, number]) => {
 }
 
 /**
+ * A street name safe to store and show. OpenStreetMap is edited by the
+ * public, so a name is untrusted text that ends up in block names on maps and
+ * admin pages. Only letters, digits, spaces and . ' - survive, capped at 80
+ * characters — enough for any real street, and nothing that can be markup.
+ */
+export function cleanStreetName(raw: string | undefined): string {
+  if (typeof raw !== 'string') return ''
+  return raw
+    .normalize('NFC')
+    .replace(/[^\p{L}\p{M}\p{N} .'\u2019-]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80)
+}
+
+/**
  * Block-code prefix for a Chicago community area. North Lawndale keeps the
  * `NL` the pilot blocks use; every other area is `C` + its two-digit number,
  * because initials collide (Logan Square and Lincoln Square are both "LS").
@@ -163,7 +179,7 @@ export function generateBlockProposals(input: {
   for (const way of ways) {
     if (!BOUNDING_HIGHWAYS.has(way.tags?.highway ?? '')) continue
     if (way.tags?.tunnel === 'yes' || way.tags?.bridge === 'yes') continue
-    const name = way.tags?.name?.trim() || ''
+    const name = cleanStreetName(way.tags?.name)
     for (let i = 0; i < way.geometry.length - 1; i++) {
       const a: [number, number] = [way.geometry[i].lon, way.geometry[i].lat]
       const b: [number, number] = [way.geometry[i + 1].lon, way.geometry[i + 1].lat]
