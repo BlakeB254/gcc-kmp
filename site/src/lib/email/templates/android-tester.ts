@@ -10,14 +10,10 @@ import {
 //   androidTesterSignupEmail — sent when someone signs up at /android-beta
 //   androidTesterInviteEmail — sent by an admin once the address is on the
 //                              Play Console tester list; carries the opt-in link
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
+//
+// Neither email contains anything the visitor typed. The signup form is
+// public and the address is not verified, so any echoed text (a "name") would
+// let a stranger have GCC deliver their words to someone else's inbox.
 
 interface Step {
   title: string
@@ -137,8 +133,8 @@ const REMOVAL_NOTE =
   'You received this email because you signed up to test the GCC Android app. Reply to this email if you want to be taken off the list.'
 
 /** Sent on signup. With a self-join group the tester can finish right away. */
-export function androidTesterSignupEmail(data: { name?: string | null; groupUrl: string | null }) {
-  const greeting = data.name ? `Thank you, ${escapeHtml(data.name)}.` : 'Thank you.'
+export function androidTesterSignupEmail(data: { groupUrl: string | null }) {
+  const greeting = 'Thank you.'
 
   if (data.groupUrl) {
     return layout({
@@ -180,11 +176,10 @@ export function androidTesterSignupEmail(data: { name?: string | null; groupUrl:
 }
 
 /** Sent by an admin once the address is on the Play Console tester list. */
-export function androidTesterInviteEmail(data: { name?: string | null }) {
-  const greeting = data.name ? `Hi ${escapeHtml(data.name)},` : 'Hi,'
+export function androidTesterInviteEmail() {
   return layout({
     heading: 'Your GCC Android test invite is ready',
-    intro: `${greeting} your Google account is now on our tester list. Two taps and the app is on your phone.`,
+    intro: 'Your Google account is now on our tester list. Two taps and the app is on your phone.',
     steps: [BECOME_TESTER_STEP, INSTALL_STEP, STAY_STEP],
     outro:
       'If the link says the app is not available, check that your phone is signed in to Google Play with the email address this message was sent to, then try again. Still stuck? Reply to this email and we will sort it out.',

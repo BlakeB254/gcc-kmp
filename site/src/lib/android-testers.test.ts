@@ -5,6 +5,7 @@ import {
   TESTERS_REQUIRED,
   nextTesterState,
   normalizeTesterEmail,
+  normalizeTesterName,
   playConsoleEmailList,
   testerGroupUrl,
   testerProgress,
@@ -29,6 +30,21 @@ test('normalizeTesterEmail: rejects anything Play Console would refuse', () => {
 
 test('normalizeTesterEmail: accepts non-Gmail Google accounts', () => {
   assert.equal(normalizeTesterEmail('someone@uic.edu'), 'someone@uic.edu')
+})
+
+// ── normalizeTesterName ───────────────────────────────────────────────────
+
+test('normalizeTesterName: keeps real names, including accents and apostrophes', () => {
+  assert.equal(normalizeTesterName('  Keith  '), 'Keith')
+  assert.equal(normalizeTesterName("D'Andre"), "D'Andre")
+  assert.equal(normalizeTesterName('José María'), 'José María')
+  assert.equal(normalizeTesterName('Mary-Jane'), 'Mary-Jane')
+})
+
+test('normalizeTesterName: drops anything that could carry a link, markup or a message', () => {
+  for (const bad of ['', '   ', 'http://evil.example', 'visit evil.example now', '<b>hi</b>', 'a@b.com', 'x'.repeat(61), 7, null]) {
+    assert.equal(normalizeTesterName(bad), null, `expected ${JSON.stringify(bad)} to be dropped`)
+  }
 })
 
 // ── testerGroupUrl ────────────────────────────────────────────────────────

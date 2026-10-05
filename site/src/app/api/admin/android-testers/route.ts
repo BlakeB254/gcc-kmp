@@ -72,7 +72,7 @@ export async function POST(request: Request) {
 
     let inviteSentAt = row.inviteSentAt
     if (action === 'invite' && next.status !== 'removed') {
-      const content = androidTesterInviteEmail({ name: row.name })
+      const content = androidTesterInviteEmail()
       const sent = await sendEmail({
         to: row.email,
         subject: 'Your GCC Android test invite is ready',

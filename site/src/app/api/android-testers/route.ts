@@ -5,7 +5,7 @@ import { androidTesterSignups } from '@/db/schema'
 import { sendEmail } from '@/lib/email'
 import { androidTesterSignupEmail } from '@/lib/email/templates/android-tester'
 import { clientIp, isRateLimited } from '@/lib/rate-limit'
-import { normalizeTesterEmail, testerGroupUrl } from '@/lib/android-testers'
+import { normalizeTesterEmail, normalizeTesterName, testerGroupUrl } from '@/lib/android-testers'
 
 export const runtime = 'nodejs'
 
@@ -16,7 +16,7 @@ export const runtime = 'nodejs'
 
 const signupSchema = z.object({
   email: z.string().max(254),
-  name: z.string().trim().max(120).optional(),
+  name: z.string().max(200).optional(),
   source: z.string().trim().max(64).optional(),
   // Honeypot: hidden from people, filled in by form-stuffing bots.
   website: z.string().optional(),
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
     // A filled honeypot gets the same answer as a real signup and nothing else.
     if (parsed.data.website) return ok
 
-    const name = parsed.data.name || null
+    const name = normalizeTesterName(parsed.data.name)
     const inserted = await db
       .insert(androidTesterSignups)
       .values({ email, name, source: parsed.data.source || 'android-beta' })
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     // cannot be used to find out whether an address is already on the list.
     // Only a first signup sends mail, so it cannot be used to spam one either.
     if (inserted.length > 0) {
-      const content = androidTesterSignupEmail({ name, groupUrl })
+      const content = androidTesterSignupEmail({ groupUrl })
       const sent = await sendEmail({
         to: email,
         subject: groupUrl

@@ -54,6 +54,18 @@ export function normalizeTesterEmail(raw: unknown): string | null {
 }
 
 /**
+ * A first name as typed on the public form, or null. Only letters, spaces,
+ * apostrophes, hyphens and full stops survive, so the admin list can never
+ * show a link, markup or a message someone typed into the name box.
+ */
+export function normalizeTesterName(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  const name = raw.trim().replace(/\s+/g, ' ')
+  if (!name || name.length > 60 || !/^[\p{L}\p{M}][\p{L}\p{M} '’-]*$/u.test(name)) return null
+  return name
+}
+
+/**
  * The self-join Google Group link, when one is configured. With a group
  * attached to the closed-test track, a visitor can join it and opt in at once
  * instead of waiting for an admin. Only a real groups.google.com link is ever
