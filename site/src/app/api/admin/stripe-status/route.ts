@@ -53,10 +53,13 @@ export async function GET(request: Request) {
       error: null,
     })
   } catch (err) {
+    // Stripe's message for a bad key includes the key's last characters, so
+    // report the error's kind, not its text.
+    const e = err as { type?: string; code?: string }
     return NextResponse.json({
       ...base,
       account: null,
-      error: err instanceof Error ? err.message : 'Could not reach Stripe',
+      error: [e?.type, e?.code].filter(Boolean).join(' / ') || 'Could not reach Stripe',
     })
   }
 }

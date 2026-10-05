@@ -4,6 +4,7 @@ import {
   BLOCK_PRICE_DOLLARS,
   blocksFromApi,
   buildSponsorCheckoutPayload,
+  codesWithin,
   parseReservation,
   renewalFromInvoice,
   reservationFromMetadata,
@@ -238,4 +239,40 @@ test('renewalFromInvoice: nothing to record without a payment, a subscription, o
     }),
     null,
   )
+})
+
+// ── review follow-ups ─────────────────────────────────────────────────────
+
+test('parseReservation: the same code twice is one block asked for', () => {
+  assert.deepEqual(parseReservation({ blockCount: 2, blockCodes: ['NL-N01', 'NL-N01', 'NL-N02'] })?.blockCodes, [
+    'NL-N01',
+    'NL-N02',
+  ])
+})
+
+test('parseReservation: more blocks named than paid for is refused', () => {
+  // Otherwise $100 buys a ledger line reading "1 block: [fifty codes]".
+  assert.equal(parseReservation({ blockCount: 1, blockCodes: ['NL-N01', 'NL-N02'] }), null)
+})
+
+test('codesWithin: a long list is cut at a whole code, never mid-code', () => {
+  assert.equal(codesWithin(['NL-N01', 'NL-N02', 'NL-N03'], 13), 'NL-N01,NL-N02')
+  assert.equal(codesWithin(['NL-N01', 'NL-N02'], 500), 'NL-N01,NL-N02')
+  assert.equal(codesWithin(['NL-N01'], 3), '')
+  assert.equal(codesWithin([], 500), '')
+})
+
+test('renewalFromInvoice: also reads the older invoice shape, which a pinned webhook endpoint still sends', () => {
+  const legacy = {
+    id: 'in_old',
+    billing_reason: 'subscription_cycle',
+    amount_paid: 10000,
+    currency: 'usd',
+    subscription: 'sub_legacy',
+    subscription_details: { metadata: { sponsorId: '7', frequency: 'monthly' } },
+  }
+  const renewal = renewalFromInvoice(legacy)
+  assert.equal(renewal?.sponsorId, 7)
+  assert.equal(renewal?.subscriptionId, 'sub_legacy')
+  assert.equal(renewal?.frequency, 'monthly')
 })

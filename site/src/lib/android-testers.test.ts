@@ -28,6 +28,23 @@ test('normalizeTesterEmail: rejects anything Play Console would refuse', () => {
   }
 })
 
+test('normalizeTesterEmail: control characters are rejected, not passed to the database', () => {
+  assert.equal(normalizeTesterEmail('a\u0000b@gmail.com'), null)
+  assert.equal(normalizeTesterEmail('ab@gmail\u0007.com'), null)
+  assert.equal(normalizeTesterEmail('ab\u007f@gmail.com'), null)
+})
+
+test('testerGroupUrl: reads the server-side setting when no value is passed', () => {
+  const before = process.env.ANDROID_TESTER_GROUP_URL
+  process.env.ANDROID_TESTER_GROUP_URL = 'https://groups.google.com/g/gcc-android-testers'
+  try {
+    assert.equal(testerGroupUrl(), 'https://groups.google.com/g/gcc-android-testers')
+  } finally {
+    if (before === undefined) delete process.env.ANDROID_TESTER_GROUP_URL
+    else process.env.ANDROID_TESTER_GROUP_URL = before
+  }
+})
+
 test('normalizeTesterEmail: accepts non-Gmail Google accounts', () => {
   assert.equal(normalizeTesterEmail('someone@uic.edu'), 'someone@uic.edu')
 })
@@ -39,6 +56,11 @@ test('normalizeTesterName: keeps real names, including accents and apostrophes',
   assert.equal(normalizeTesterName("D'Andre"), "D'Andre")
   assert.equal(normalizeTesterName('José María'), 'José María')
   assert.equal(normalizeTesterName('Mary-Jane'), 'Mary-Jane')
+})
+
+test('normalizeTesterName: a name with a full stop is not stored, because a domain looks the same', () => {
+  assert.equal(normalizeTesterName('J.R.'), null)
+  assert.equal(normalizeTesterName('evil.example'), null)
 })
 
 test('normalizeTesterName: drops anything that could carry a link, markup or a message', () => {

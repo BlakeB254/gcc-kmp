@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { sponsors, blocks } from '@/db/schema'
-import { eq } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import { stripe, isStripeConfigured, STRIPE_CONFIG } from '@/lib/stripe/client'
 import { hashPassword } from '@/lib/auth'
 import { stripeIdempotencyKey } from '@/lib/stripe-idempotency'
 import { appUrl as getAppUrl } from '@/lib/env'
-import { parseReservation, stripeRecurring, type Reservation } from '@/lib/sponsor-checkout'
+import { codesWithin, parseReservation, stripeRecurring, type Reservation } from '@/lib/sponsor-checkout'
 
 export const runtime = 'nodejs'
 
@@ -128,22 +128,34 @@ export async function POST(request: NextRequest) {
       // Filter to only requested blocks that are available
       blocksToFund = availableBlocks.filter(b => blockIds.includes(b.id))
 
-      if (blocksToFund.length === 0) {
-        return NextResponse.json(
-          { error: 'No available blocks found with the provided IDs' },
-          { status: 400 }
-        )
+      if (blocksToFund.length === blockIds.length) {
+        finalBlockIds = blocksToFund.map(b => b.id)
+        totalAmountCents = blocksToFund.length * STRIPE_CONFIG.standardJobAmount
+      } else {
+        // One or more of the chosen blocks is not open right now (it may have
+        // closed since the page loaded). Every block is sponsorable at any
+        // time, so this is a reservation for those same blocks, not an error.
+        const requested = await db
+          .select({ id: blocks.id, code: blocks.code })
+          .from(blocks)
+          .where(inArray(blocks.id, blockIds))
+        if (requested.length !== new Set(blockIds).size) {
+          return NextResponse.json(
+            { error: 'One or more of the selected blocks could not be found' },
+            { status: 400 }
+          )
+        }
+        reservation = parseReservation({
+          blockCount: requested.length,
+          blockCodes: requested.map(b => b.code).filter((c): c is string => !!c),
+        })
+        if (!reservation) {
+          return NextResponse.json({ error: 'Invalid block reservation' }, { status: 400 })
+        }
+        blocksToFund = []
+        allocationType = 'general'
+        totalAmountCents = reservation.amountCents
       }
-
-      if (blocksToFund.length !== blockIds.length) {
-        return NextResponse.json(
-          { error: 'Some blocks are no longer available for sponsorship' },
-          { status: 400 }
-        )
-      }
-
-      finalBlockIds = blocksToFund.map(b => b.id)
-      totalAmountCents = blocksToFund.length * STRIPE_CONFIG.standardJobAmount
     } else if (isAreaSponsorship) {
       // Area sponsorship: $100 per block, auto-assign available blocks
       const availableBlocks = await db
@@ -152,16 +164,19 @@ export async function POST(request: NextRequest) {
         .where(eq(blocks.status, 'available'))
 
       if (availableBlocks.length < requestedBlockCount) {
-        return NextResponse.json(
-          { error: `Only ${availableBlocks.length} blocks available. Please select ${availableBlocks.length} or fewer.` },
-          { status: 400 }
-        )
+        // Not enough open blocks to assign now: reserve the next ones instead.
+        reservation = parseReservation({ blockCount: requestedBlockCount })
+        if (!reservation) {
+          return NextResponse.json({ error: 'Invalid block reservation' }, { status: 400 })
+        }
+        allocationType = 'general'
+        totalAmountCents = reservation.amountCents
+      } else {
+        // Auto-assign the requested number of blocks (take first N available)
+        blocksToFund = availableBlocks.slice(0, requestedBlockCount)
+        finalBlockIds = blocksToFund.map(b => b.id)
+        totalAmountCents = blocksToFund.length * STRIPE_CONFIG.standardJobAmount
       }
-
-      // Auto-assign the requested number of blocks (take first N available)
-      blocksToFund = availableBlocks.slice(0, requestedBlockCount)
-      finalBlockIds = blocksToFund.map(b => b.id)
-      totalAmountCents = blocksToFund.length * STRIPE_CONFIG.standardJobAmount
     } else if (body.reservation !== undefined) {
       // Reservation: priced here from the block count, never from the client
       reservation = parseReservation(body.reservation)
@@ -278,6 +293,10 @@ export async function POST(request: NextRequest) {
       sponsorId,
       allocationType,
       blockIds: finalBlockIds,
+      // A reservation has no block ids, so without this a reservation for
+      // block A, one for block B, and a plain $100 donation all share a key —
+      // and Stripe rejects the second with an idempotency error.
+      reservation: reservation ? { n: reservation.blockCount, codes: reservation.blockCodes } : null,
       totalAmountCents,
       frequency,
     })
@@ -320,7 +339,7 @@ export async function POST(request: NextRequest) {
         message: message || '',
         // Set only for a reservation; Stripe metadata values cap at 500 chars
         reservedBlockCount: reservation ? String(reservation.blockCount) : '',
-        reservedBlockCodes: reservation ? reservation.blockCodes.join(',').slice(0, 480) : '',
+        reservedBlockCodes: reservation ? codesWithin(reservation.blockCodes, 480) : '',
         // Cleaning schedule (optional)
         preferredCleaningDate: preferredCleaningDate || '',
         preferredCleaningTimeStart: preferredCleaningTimeStart || '',
@@ -336,8 +355,18 @@ export async function POST(request: NextRequest) {
               frequency,
               displayName: displayName || name,
               isAnonymous: isAnonymous ? 'true' : 'false',
-              reservedBlockCount: reservation ? String(reservation.blockCount) : '',
-              reservedBlockCodes: reservation ? reservation.blockCodes.join(',').slice(0, 480) : '',
+              // Every renewal is a cleaning owed. For a reservation that is the
+              // reservation again; for a block or area sponsorship the blocks
+              // were funded once at checkout, so each later payment reserves
+              // the same blocks' next cleaning. (Session metadata is left
+              // alone, so the first payment still funds the blocks.)
+              reservedBlockCount: String(reservation ? reservation.blockCount : blocksToFund.length || ''),
+              reservedBlockCodes: codesWithin(
+                reservation
+                  ? reservation.blockCodes
+                  : blocksToFund.map(b => b.code).filter((c): c is string => !!c),
+                480,
+              ),
             },
           }
         : undefined,

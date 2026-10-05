@@ -7,8 +7,8 @@ import { AndroidTesterForm } from './AndroidTesterForm'
 // the app until enough testers have stayed in a closed test — the rules, and
 // what to change once Android is public, are in lib/android-testers.ts.
 
-// The self-join group link comes from the environment, so read it per request
-// rather than freezing whatever was set at build time.
+// The self-join group link is a server-only setting (ANDROID_TESTER_GROUP_URL),
+// read when the page is requested rather than frozen at build time.
 export const dynamic = 'force-dynamic'
 
 const APP_STORE_URL = 'https://apps.apple.com/us/app/global-community-cleaners/id6760203806'

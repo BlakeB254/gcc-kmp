@@ -46,6 +46,10 @@ export default function AdminAndroidTestersPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  // The signups whose addresses were copied for Play Console. The invite goes
+  // to these and only these: the list reloads after every action, so anyone
+  // who signed up in between was never pasted, and would get a dead link.
+  const [copied, setCopied] = useState<{ ids: number[]; emails: string } | null>(null)
 
   const authHeaders = useMemo((): Record<string, string> => {
     if (typeof window === 'undefined') return {}
@@ -101,8 +105,11 @@ export default function AdminAndroidTestersPage() {
   }
 
   async function copyEmails() {
+    const waiting = testers.filter((t) => t.status === 'new')
+    const snapshot = { ids: waiting.map((t) => t.id), emails: waiting.map((t) => t.email).join(', ') }
+    setCopied(snapshot)
     try {
-      await navigator.clipboard.writeText(playConsoleEmails)
+      await navigator.clipboard.writeText(snapshot.emails)
       setNotice('Copied. Paste into Play Console, save, then come back and press “Send join link”.')
     } catch {
       setError('Could not copy — select the addresses in the box and copy them by hand.')
@@ -110,6 +117,9 @@ export default function AdminAndroidTestersPage() {
   }
 
   const waitingIds = testers.filter((t) => t.status === 'new').map((t) => t.id)
+  // Of what was copied, those still waiting (a row may have been removed since).
+  const inviteIds = copied ? copied.ids.filter((id) => waitingIds.includes(id)) : []
+  const arrivedSinceCopy = copied ? waitingIds.length - inviteIds.length : 0
 
   return (
     <div className="max-w-5xl p-6 text-white">
@@ -163,7 +173,7 @@ export default function AdminAndroidTestersPage() {
               Copy the {waitingIds.length} new address{waitingIds.length === 1 ? '' : 'es'}:
               <textarea
                 readOnly
-                value={playConsoleEmails}
+                value={copied ? copied.emails : playConsoleEmails}
                 rows={2}
                 aria-label="New tester email addresses"
                 onFocus={(e) => e.currentTarget.select()}
@@ -186,13 +196,24 @@ export default function AdminAndroidTestersPage() {
               Then send everyone their join link:
               <div>
                 <button
-                  onClick={() => run('invite', waitingIds)}
-                  disabled={busy}
+                  onClick={async () => {
+                    await run('invite', inviteIds)
+                    setCopied(null)
+                  }}
+                  disabled={busy || inviteIds.length === 0}
                   className="mt-2 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold hover:bg-emerald-500 disabled:opacity-50"
                 >
-                  I added them — send join link to {waitingIds.length}
+                  {copied
+                    ? `I added them — send join link to ${inviteIds.length}`
+                    : 'Copy the addresses first'}
                 </button>
               </div>
+              {arrivedSinceCopy > 0 && (
+                <span className="mt-2 block text-xs text-amber-300">
+                  {arrivedSinceCopy} more signed up after you copied. They are not included — copy
+                  again once these are sent.
+                </span>
+              )}
               <span className="mt-2 block text-xs text-neutral-500">
                 Only press this after saving in Play Console. The link ({ANDROID_TESTING_OPT_IN_URL})
                 shows “not available” to anyone who is not on the list yet.

@@ -109,9 +109,27 @@ export function parseReservation(
     return null
   }
   const blockCodes = Array.isArray(r?.blockCodes)
-    ? r.blockCodes.filter((c): c is string => typeof c === 'string' && BLOCK_CODE_RE.test(c))
+    ? [...new Set(r.blockCodes.filter((c): c is string => typeof c === 'string' && BLOCK_CODE_RE.test(c)))]
     : []
+  // Naming more blocks than are paid for would put a false line in the
+  // admin's ledger of cleanings owed.
+  if (blockCodes.length > blockCount) return null
   return { blockCount, blockCodes, amountCents: blockCount * BLOCK_PRICE_DOLLARS * 100 }
+}
+
+/**
+ * Block codes joined with commas, cut at a whole code so the result fits in
+ * `maxLength` characters. Stripe metadata values are capped at 500; slicing
+ * the joined string could leave half a code that still looks like one.
+ */
+export function codesWithin(codes: string[], maxLength: number): string {
+  let out = ''
+  for (const code of codes) {
+    const next = out ? `${out},${code}` : code
+    if (next.length > maxLength) break
+    out = next
+  }
+  return out
 }
 
 /**
@@ -165,6 +183,10 @@ export interface InvoiceLike {
       metadata?: Record<string, string | undefined> | null
     } | null
   } | null
+  // Shape before Stripe API version 2025-03-31. A webhook payload follows the
+  // API version pinned on the endpoint, not the installed SDK.
+  subscription?: string | { id: string } | null
+  subscription_details?: { metadata?: Record<string, string | undefined> | null } | null
 }
 
 /**
@@ -192,11 +214,11 @@ export function renewalFromInvoice(invoice: InvoiceLike): {
   if (amountCents <= 0) return null
 
   const details = invoice.parent?.subscription_details
-  const sub = details?.subscription
+  const sub = details?.subscription ?? invoice.subscription
   const subscriptionId = typeof sub === 'string' ? sub : sub?.id
   if (!subscriptionId) return null
 
-  const meta = details?.metadata ?? {}
+  const meta = details?.metadata ?? invoice.subscription_details?.metadata ?? {}
   if (!meta.sponsorId || !/^\d+$/.test(meta.sponsorId)) return null
 
   return {

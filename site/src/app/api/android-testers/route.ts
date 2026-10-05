@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/db'
 import { androidTesterSignups } from '@/db/schema'
@@ -56,19 +56,23 @@ export async function POST(request: NextRequest) {
     // Signing up twice is fine and looks the same from outside, so the form
     // cannot be used to find out whether an address is already on the list.
     // Only a first signup sends mail, so it cannot be used to spam one either.
+    // The mail goes out after the response: waiting for it here would make a
+    // first signup measurably slower than a repeat, which gives the answer away.
     if (inserted.length > 0) {
-      const content = androidTesterSignupEmail({ groupUrl })
-      const sent = await sendEmail({
-        to: email,
-        subject: groupUrl
-          ? 'Join the GCC Android test — 3 short steps'
-          : 'You are signed up to test GCC on Android',
-        html: content.html,
-        text: content.text,
+      after(async () => {
+        const content = androidTesterSignupEmail({ groupUrl })
+        const sent = await sendEmail({
+          to: email,
+          subject: groupUrl
+            ? 'Join the GCC Android test — 3 short steps'
+            : 'You are signed up to test GCC on Android',
+          html: content.html,
+          text: content.text,
+        })
+        if (!sent.success) {
+          console.error('[android-testers] confirmation email failed:', sent.error)
+        }
       })
-      if (!sent.success) {
-        console.error('[android-testers] confirmation email failed:', sent.error)
-      }
     }
 
     return ok

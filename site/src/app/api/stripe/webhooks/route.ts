@@ -453,11 +453,23 @@ export async function POST(request: NextRequest) {
       // every later payment was charged by Stripe and never reached our books.
       // Stripe must be sending `invoice.paid` to this endpoint for it to run.
       case 'invoice.paid': {
-        const renewal = renewalFromInvoice(event.data.object as Stripe.Invoice)
-        if (!renewal) break
+        const invoice = event.data.object as Stripe.Invoice
+        const renewal = renewalFromInvoice(invoice)
+        if (!renewal) {
+          // A paid renewal we cannot attribute is money missing from our
+          // books: say so loudly rather than drop it in silence.
+          if (invoice.billing_reason === 'subscription_cycle' && (invoice.amount_paid ?? 0) > 0) {
+            console.error('[Webhook] Paid renewal NOT recorded — no sponsor on the subscription:', {
+              invoiceId: invoice.id,
+              amount: invoice.amount_paid,
+            })
+          }
+          break
+        }
 
         const now = new Date().toISOString()
-        await commitSponsorshipMutation(() => db.insert(transactions).values({
+        try {
+          await commitSponsorshipMutation(() => db.insert(transactions).values({
           sponsorId: renewal.sponsorId,
           blockId: null,
           stripeSubscriptionId: renewal.subscriptionId,
@@ -473,7 +485,14 @@ export async function POST(request: NextRequest) {
           reservedBlockCount: renewal.reservation?.blockCount ?? null,
           reservedBlockCodes: renewal.reservation?.blockCodes ?? null,
           completedAt: now,
-        }))
+          }))
+        } catch (insertError) {
+          // Nothing has been written yet, so it is safe to let Stripe retry:
+          // release the event claim taken above, or the retry would be treated
+          // as a duplicate and this payment would never be recorded.
+          await db.delete(stripeEvents).where(eq(stripeEvents.id, event.id))
+          throw insertError
+        }
 
         await commitSponsorshipMutation(() => db
           .update(sponsors)

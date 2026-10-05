@@ -62,7 +62,9 @@ export async function POST(request: Request) {
   const rows = await db.select().from(androidTesterSignups).where(inArray(androidTesterSignups.id, ids))
   const failedEmails: string[] = []
 
+  let updated = 0
   for (const row of rows) {
+   try {
     const now = new Date().toISOString()
     const next = nextTesterState(
       { status: row.status as TesterStatus, addedAt: row.addedAt, joinedAt: row.joinedAt },
@@ -87,7 +89,13 @@ export async function POST(request: Request) {
       .update(androidTesterSignups)
       .set({ ...next, inviteSentAt, updatedAt: now })
       .where(eq(androidTesterSignups.id, row.id))
+    updated++
+   } catch (error) {
+    // Keep going: the rows already handled are saved, and this one is reported.
+    console.error('[admin/android-testers] action failed for', row.id, error)
+    if (!failedEmails.includes(row.email)) failedEmails.push(row.email)
+   }
   }
 
-  return NextResponse.json({ updated: rows.length, failedEmails })
+  return NextResponse.json({ updated, failedEmails })
 }

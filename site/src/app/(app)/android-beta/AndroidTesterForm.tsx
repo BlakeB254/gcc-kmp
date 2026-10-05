@@ -165,7 +165,7 @@ export function AndroidTesterForm({ groupUrl }: AndroidTesterFormProps) {
             id="tester-name"
             type="text"
             autoComplete="given-name"
-            maxLength={120}
+            maxLength={60}
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="w-full rounded-lg border border-neutral-300 px-4 py-3 outline-none transition-all focus:border-brand-green-500 focus:ring-2 focus:ring-brand-green-500/20"
@@ -177,9 +177,12 @@ export function AndroidTesterForm({ groupUrl }: AndroidTesterFormProps) {
           <label htmlFor="tester-website">Website</label>
           <input
             id="tester-website"
+            name="gcc-hp-field"
             type="text"
             tabIndex={-1}
             autoComplete="off"
+            data-1p-ignore
+            data-lpignore="true"
             value={website}
             onChange={(e) => setWebsite(e.target.value)}
           />

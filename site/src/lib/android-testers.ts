@@ -43,7 +43,8 @@ export type TesterAction = (typeof TESTER_ACTIONS)[number]
 // Deliberately stricter than RFC 5322: one address, no spaces or commas, a
 // dotted domain. Play Console's tester box splits on commas, so an address
 // that smuggles one in would add a stranger to the list.
-const EMAIL_RE = /^[^\s@,;<>()"]+@[^\s@,;<>()"]+\.[^\s@,;<>()".]{2,}$/
+// Control characters are excluded too: a NUL byte reaches Postgres as an error.
+const EMAIL_RE = /^[^\s@,;<>()"\x00-\x1f\x7f]+@[^\s@,;<>()"\x00-\x1f\x7f]+\.[^\s@,;<>()".\x00-\x1f\x7f]{2,}$/
 
 /** Canonical form of a tester's Google account address, or null if unusable. */
 export function normalizeTesterEmail(raw: unknown): string | null {
@@ -55,8 +56,10 @@ export function normalizeTesterEmail(raw: unknown): string | null {
 
 /**
  * A first name as typed on the public form, or null. Only letters, spaces,
- * apostrophes, hyphens and full stops survive, so the admin list can never
- * show a link, markup or a message someone typed into the name box.
+ * apostrophes and hyphens survive, so the admin list can never show a link,
+ * markup or a message someone typed into the name box. Full stops are left
+ * out on purpose: with them, "visit evil.example now" reads as a name. A
+ * name that does not fit ("J.R.") is simply not stored — it is optional.
  */
 export function normalizeTesterName(raw: unknown): string | null {
   if (typeof raw !== 'string') return null
@@ -70,9 +73,14 @@ export function normalizeTesterName(raw: unknown): string | null {
  * attached to the closed-test track, a visitor can join it and opt in at once
  * instead of waiting for an admin. Only a real groups.google.com link is ever
  * returned, so a mistyped env value cannot send visitors somewhere else.
+ *
+ * The setting is server-only (no NEXT_PUBLIC_ prefix), so it is read when a
+ * request is handled, not frozen into the build: the page and the API route
+ * read it and pass the result down. Never call this without an argument from
+ * a client component — there it is always null.
  */
 export function testerGroupUrl(
-  value: string | undefined = process.env.NEXT_PUBLIC_ANDROID_TESTER_GROUP_URL,
+  value: string | undefined = process.env.ANDROID_TESTER_GROUP_URL,
 ): string | null {
   const trimmed = value?.trim()
   if (!trimmed) return null
