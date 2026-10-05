@@ -25,7 +25,18 @@ import type { FallbackGeoJSONLayer } from './BaseMap'
 // CDX TILE SERVER CONFIGURATION
 // ============================================================================
 
-const TILE_SERVER_URL = tileServerUrl()
+// The tile server only adds optional layers, and this component already falls
+// back to GeoJSON when it is unreachable. A missing setting takes that same
+// path: it must never take down the page the map sits on.
+function resolveTileServerUrl(): string | null {
+  try {
+    return tileServerUrl()
+  } catch {
+    return null
+  }
+}
+
+const TILE_SERVER_URL = resolveTileServerUrl()
 
 /** Build tile URL template for MapLibre */
 function getTileUrlTemplate(layer: string): string {
@@ -244,6 +255,10 @@ export function BlockMap({
     if (!showTileLayers) return
 
     const checkTileServer = async () => {
+      if (!TILE_SERVER_URL) {
+        setTileServerAvailable(false)
+        return
+      }
       try {
         const response = await fetch(`${TILE_SERVER_URL}/health`, {
           method: 'GET',
