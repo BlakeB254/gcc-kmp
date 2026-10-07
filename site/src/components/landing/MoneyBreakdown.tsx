@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useRef, useSyncExternalStore } from 'react'
-import { Users, ArrowDown, CheckCircle2, DollarSign } from 'lucide-react'
+import { Users, ArrowRight, CheckCircle2, DollarSign } from 'lucide-react'
 
 const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
 
@@ -83,10 +83,12 @@ export function MoneyBreakdown() {
     return () => observer.disconnect()
   }, [])
 
+  const pop = isInView ? 'scale-100' : 'scale-95'
+
   return (
-    <div 
+    <div
       ref={containerRef}
-      className="mx-auto lg:mx-0 w-full max-w-sm bg-brand-green-950 border border-brand-green-700/80 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden"
+      className="w-full bg-brand-green-950 border border-brand-green-700/80 rounded-3xl p-5 sm:p-6 shadow-2xl relative overflow-hidden"
     >
       {/* Subtle background pattern for life */}
       {!reducedMotion && (
@@ -95,99 +97,82 @@ export function MoneyBreakdown() {
 
       <div className="relative z-10">
         {/* Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-brand-green-900 border border-brand-green-600 mb-4">
-            <div className="w-2 h-2 bg-brand-green-400 rounded-full animate-pulse" />
-            <span className="text-xs font-mono tracking-[0.125em] text-brand-green-400 font-medium">100% TRANSPARENT</span>
+        <div className="text-center md:text-left md:flex md:items-end md:justify-between md:gap-4 mb-5">
+          <div>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-green-900 border border-brand-green-600 mb-3">
+              <div className="w-2 h-2 bg-brand-green-400 rounded-full animate-pulse" />
+              <span className="text-[11px] font-mono tracking-[0.125em] text-brand-green-400 font-medium">100% TRANSPARENT</span>
+            </div>
+            <h4 className="text-2xl font-bold text-white tracking-tighter">WHERE THE $100 GOES</h4>
           </div>
-          <h4 className="text-2xl font-bold text-white tracking-tighter">WHERE THE $100 GOES</h4>
-          <p className="text-brand-green-400 text-sm mt-1">Every donation. Every time.</p>
+          <p className="text-brand-green-400 text-sm mt-1 md:mt-0 md:pb-1">Every donation. Every time.</p>
         </div>
 
-        {/* Stacked: the panel is at most max-w-sm wide, too narrow for the two cards side by side. */}
-        <div className="flex flex-col gap-3 relative">
+        {/* Side by side at every width, with the money flowing between the two cards. */}
+        <div className="grid grid-cols-[1fr_auto_1fr] items-stretch">
           {/* Sponsor Pays */}
-          <div className="relative bg-white/5 backdrop-blur-xl border border-brand-green-600 rounded-2xl p-6 text-center group">
-            <div className="flex justify-center mb-4">
-              <div className="w-11 h-11 rounded-2xl bg-brand-green-900 flex items-center justify-center border border-brand-green-700">
-                <Users className="w-6 h-6 text-brand-green-400" />
+          <div className="relative bg-white/5 backdrop-blur-xl border border-brand-green-600 rounded-2xl px-2 py-4 sm:p-5 text-center">
+            <div className="flex justify-center mb-2 sm:mb-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-brand-green-900 flex items-center justify-center border border-brand-green-700">
+                <Users className="w-5 h-5 text-brand-green-400" />
               </div>
             </div>
-            
-            <div className="text-brand-green-300 text-sm font-semibold tracking-widest mb-2">SPONSOR PAYS</div>
-            
-            <div className={`text-[3.25rem] leading-none font-bold text-white transition-all duration-300 ${isInView ? 'scale-100' : 'scale-95'}`}>
+            <div className="text-brand-green-300 text-[10px] sm:text-xs font-semibold tracking-wider sm:tracking-widest mb-1">SPONSOR PAYS</div>
+            <div className={`text-4xl sm:text-5xl leading-none font-bold text-white transition-transform duration-300 ${pop}`}>
               <AnimatedCounter target={100} prefix="$" duration={1400} instant={reducedMotion} />
             </div>
-            
-            <div className="mt-4 space-y-1 text-xs">
-              <div className="text-brand-green-400">Card · ACH · Stripe</div>
-              <div className="text-brand-green-500/80">Tax-deductible ready</div>
-            </div>
-            
-            {/* Subtle live indicator */}
+            <div className="mt-2 sm:mt-3 text-[11px] sm:text-xs text-brand-green-400">Card · ACH · Stripe</div>
+            <div className="text-[11px] sm:text-xs text-brand-green-500/80">Tax-deductible ready</div>
             {!reducedMotion && isInView && (
-              <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-400 rounded-full animate-ping" />
+              <div className="absolute top-2 right-2 w-2.5 h-2.5 bg-emerald-400 rounded-full animate-ping" />
             )}
           </div>
 
-          {/* Flow connector: money drops from the sponsor card to the neighbor card. */}
-          <div className="relative h-12 flex justify-center" aria-hidden="true">
-            <div className="h-full border-l-2 border-dashed border-brand-green-500/50" />
+          {/* Flow */}
+          <div className="relative flex w-7 sm:w-14 items-center [--money-hop:12px] sm:[--money-hop:34px]" aria-hidden="true">
+            <div className="w-full border-t-2 border-dashed border-brand-green-500/50" />
             {!reducedMotion && isInView && [0, 650, 1300].map((delay) => (
               <DollarSign
                 key={delay}
-                className="absolute top-0 left-1/2 -ml-2 w-4 h-4 text-brand-green-300 animate-money-drop"
+                className="absolute left-0 top-1/2 -mt-1.5 w-3 h-3 sm:-mt-2 sm:w-4 sm:h-4 text-brand-green-300 animate-money-slide"
                 style={{ animationDelay: `${delay}ms` }}
               />
             ))}
-            <ArrowDown className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-5 h-5 text-brand-green-400" />
+            <ArrowRight className="absolute -right-0.5 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-brand-green-400" />
           </div>
 
           {/* Neighbor Earns */}
-          <div className="bg-gradient-to-br from-brand-green-600 to-brand-green-700 border border-brand-green-400 rounded-2xl p-6 text-center text-white relative">
-            <div className="flex justify-center mb-4">
-              <div className="w-11 h-11 rounded-2xl bg-white/20 flex items-center justify-center border border-white/30">
-                <CheckCircle2 className="w-6 h-6 text-white" />
+          <div className="bg-gradient-to-br from-brand-green-600 to-brand-green-700 border border-brand-green-400 rounded-2xl px-2 py-4 sm:p-5 text-center text-white">
+            <div className="flex justify-center mb-2 sm:mb-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-white/20 flex items-center justify-center border border-white/30">
+                <CheckCircle2 className="w-5 h-5 text-white" />
               </div>
             </div>
-            
-            <div className="text-white/90 text-sm font-semibold tracking-widest mb-2">NEIGHBOR EARNS</div>
-            
-            <div className={`text-[3.25rem] leading-none font-bold text-white transition-all duration-300 ${isInView ? 'scale-100' : 'scale-95'}`}>
+            <div className="text-white/90 text-[10px] sm:text-xs font-semibold tracking-wider sm:tracking-widest mb-1">NEIGHBOR EARNS</div>
+            <div className={`text-4xl sm:text-5xl leading-none font-bold text-white transition-transform duration-300 ${pop}`}>
               <AnimatedCounter target={100} prefix="$" duration={1600} instant={reducedMotion} />
             </div>
-            
-            <div className="mt-4 space-y-1 text-xs text-white/80">
-              <div>Same-day Stripe payout</div>
-              <div className="text-white/60">Verified local resident</div>
-            </div>
+            <div className="mt-2 sm:mt-3 text-[11px] sm:text-xs text-white/80">Same-day Stripe payout</div>
+            <div className="text-[11px] sm:text-xs text-white/60">Verified local resident</div>
           </div>
         </div>
 
-        {/* 0% Overhead Banner */}
-        <div className="mt-8 bg-black/40 border border-brand-green-500/50 rounded-2xl p-5 text-center backdrop-blur">
-          <div className="flex items-center justify-center gap-4">
-            <div className={`text-6xl font-black text-brand-green-400 tabular-nums transition-all ${isInView ? '' : 'opacity-70'}`}>0</div>
-            <div>
-              <div className="text-4xl font-bold text-white -mt-2">%</div>
-              <div className="uppercase text-xs tracking-[0.1em] text-brand-green-300 font-medium -mt-1">OVERHEAD</div>
-            </div>
+        {/* 0% Overhead: one compact row */}
+        <div className="mt-4 bg-black/40 border border-brand-green-500/50 rounded-2xl px-5 py-4 backdrop-blur flex flex-col sm:flex-row items-center gap-3 sm:gap-5 text-center sm:text-left">
+          <div className="flex items-baseline gap-1 shrink-0">
+            <span className={`text-5xl font-black text-brand-green-400 tabular-nums transition-opacity ${isInView ? '' : 'opacity-70'}`}>0%</span>
+            <span className="uppercase text-xs tracking-[0.1em] text-brand-green-300 font-medium">overhead</span>
           </div>
-          <p className="text-brand-green-200 text-sm mt-3 leading-tight">
-            taken from the cleaning fee
-          </p>
-          <p className="text-[10px] text-brand-green-500 mt-4 border-t border-brand-green-700 pt-3">
-            Add-ons (vests, signage, photos) priced separately
-          </p>
+          <div className="text-sm text-brand-green-200 leading-snug">
+            taken from the cleaning fee.
+            <span className="block text-[11px] text-brand-green-500 mt-1">Add-ons (vests, signage, photos) priced separately.</span>
+          </div>
         </div>
 
-        {/* Footer note */}
-        <div className="text-center mt-6 text-[10px] text-brand-green-500/75 font-medium">
-          This is paid infrastructure.<br />Most cleanup programs are charity.
-        </div>
+        <p className="text-center mt-4 text-[11px] text-brand-green-500/80 font-medium">
+          This is paid infrastructure. Most cleanup programs are charity.
+        </p>
       </div>
-
     </div>
   )
 }

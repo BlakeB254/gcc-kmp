@@ -626,16 +626,16 @@
   animation: dash 1.8s linear infinite;
 }
 
-/* Vertical drop for the stacked MoneyBreakdown cards. */
-@keyframes moneyDrop {
-  0% { opacity: 0; transform: translateY(0) scale(0.6); }
-  20% { opacity: 0.9; transform: translateY(6px) scale(1); }
-  80% { opacity: 0.9; transform: translateY(30px) scale(1); }
-  100% { opacity: 0; transform: translateY(40px) scale(0.6); }
+/* Horizontal hop between the side-by-side MoneyBreakdown cards (md and up). */
+@keyframes moneySlide {
+  0% { opacity: 0; transform: translateX(0) scale(0.6); }
+  20% { opacity: 0.9; transform: translateX(6px) scale(1); }
+  80% { opacity: 0.9; transform: translateX(var(--money-hop, 34px)) scale(1); }
+  100% { opacity: 0; transform: translateX(calc(var(--money-hop, 34px) + 10px)) scale(0.6); }
 }
 
-.animate-money-drop {
-  animation: moneyDrop 1.9s ease-in infinite;
+.animate-money-slide {
+  animation: moneySlide 1.9s ease-in infinite;
 }
 
 .animate-money-flow {
