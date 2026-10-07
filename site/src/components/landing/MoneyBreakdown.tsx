@@ -1,66 +1,70 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
-import { Users, ArrowRight, CheckCircle2, DollarSign } from 'lucide-react'
+import React, { useState, useEffect, useRef, useSyncExternalStore } from 'react'
+import { Users, ArrowDown, CheckCircle2, DollarSign } from 'lucide-react'
 
-function AnimatedCounter({ 
-  target = 100, 
-  prefix = '$', 
-  duration = 1800 
-}: { 
+const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
+
+/** Live prefers-reduced-motion, read without setting state inside an effect. */
+function usePrefersReducedMotion(): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      const query = window.matchMedia(REDUCED_MOTION)
+      query.addEventListener('change', onChange)
+      return () => query.removeEventListener('change', onChange)
+    },
+    () => window.matchMedia(REDUCED_MOTION).matches,
+    () => false,
+  )
+}
+
+/** Counts up to `target` once, the first time it scrolls into view. */
+function AnimatedCounter({
+  target = 100,
+  prefix = '$',
+  duration = 1800,
+  instant = false,
+}: {
   target?: number
   prefix?: string
-  duration?: number 
+  duration?: number
+  instant?: boolean
 }) {
   const [displayValue, setDisplayValue] = useState(0)
-  const [hasAnimated, setHasAnimated] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  const inViewRef = useRef(false)
+  const ref = useRef<HTMLSpanElement>(null)
 
   useEffect(() => {
+    const el = ref.current
+    if (!el || instant) return
+    let frame = 0
+    let started = false
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting && !hasAnimated) {
-          inViewRef.current = true
-          startAnimation()
+        if (!entry.isIntersecting || started) return
+        started = true
+        observer.disconnect()
+        let startTime: number | null = null
+        const animate = (timestamp: number) => {
+          if (startTime === null) startTime = timestamp
+          const progress = Math.min((timestamp - startTime) / duration, 1)
+          const eased = 1 - Math.pow(1 - progress, 3) // easeOutCubic
+          setDisplayValue(progress < 1 ? Math.floor(target * eased) : target)
+          if (progress < 1) frame = requestAnimationFrame(animate)
         }
+        frame = requestAnimationFrame(animate)
       },
-      { threshold: 0.6 }
+      { threshold: 0.6 },
     )
-
-    if (ref.current) {
-      observer.observe(ref.current)
+    observer.observe(el)
+    return () => {
+      observer.disconnect()
+      cancelAnimationFrame(frame)
     }
-
-    return () => observer.disconnect()
-  }, [hasAnimated])
-
-  const startAnimation = () => {
-    if (hasAnimated) return
-
-    let startTime: number | null = null
-    const animate = (timestamp: number) => {
-      if (!startTime) startTime = timestamp
-      const progress = Math.min((timestamp - startTime) / duration, 1)
-      const eased = 1 - Math.pow(1 - progress, 3) // easeOutCubic
-      const current = Math.floor(target * eased)
-      
-      setDisplayValue(current)
-
-      if (progress < 1) {
-        requestAnimationFrame(animate)
-      } else {
-        setDisplayValue(target)
-        setHasAnimated(true)
-      }
-    }
-
-    requestAnimationFrame(animate)
-  }
+  }, [target, duration, instant])
 
   return (
     <span ref={ref} className="tabular-nums">
-      {prefix}{displayValue}
+      {prefix}{instant ? target : displayValue}
     </span>
   )
 }
@@ -68,28 +72,15 @@ function AnimatedCounter({
 export function MoneyBreakdown() {
   const containerRef = useRef<HTMLDivElement>(null)
   const [isInView, setIsInView] = useState(false)
-  const [reducedMotion, setReducedMotion] = useState(false)
+  const reducedMotion = usePrefersReducedMotion()
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
-    setReducedMotion(mediaQuery.matches)
-
-    const handleChange = (e: MediaQueryListEvent) => setReducedMotion(e.matches)
-    mediaQuery.addEventListener('change', handleChange)
-
     const observer = new IntersectionObserver(
       ([entry]) => setIsInView(entry.isIntersecting),
-      { threshold: 0.3 }
+      { threshold: 0.3 },
     )
-
-    if (containerRef.current) {
-      observer.observe(containerRef.current)
-    }
-
-    return () => {
-      mediaQuery.removeEventListener('change', handleChange)
-      observer.disconnect()
-    }
+    if (containerRef.current) observer.observe(containerRef.current)
+    return () => observer.disconnect()
   }, [])
 
   return (
@@ -126,7 +117,7 @@ export function MoneyBreakdown() {
             <div className="text-brand-green-300 text-sm font-semibold tracking-widest mb-2">SPONSOR PAYS</div>
             
             <div className={`text-[3.25rem] leading-none font-bold text-white transition-all duration-300 ${isInView ? 'scale-100' : 'scale-95'}`}>
-              <AnimatedCounter target={100} prefix="$" duration={1400} />
+              <AnimatedCounter target={100} prefix="$" duration={1400} instant={reducedMotion} />
             </div>
             
             <div className="mt-4 space-y-1 text-xs">
@@ -140,46 +131,17 @@ export function MoneyBreakdown() {
             )}
           </div>
 
-          {/* Flow connector */}
-          <div className="flex items-center justify-center gap-1 pointer-events-none" aria-hidden="true">
-            <div className="relative flex items-center justify-center w-16 h-16">
-              {/* Flowing path SVG */}
-              <svg 
-                width="64" 
-                height="64" 
-                viewBox="0 0 64 64" 
-                className="absolute text-brand-green-400/30"
-                style={{ transform: 'rotate(-12deg)' }}
-              >
-                <path 
-                  d="M12 52 Q 26 38, 38 26 Q 50 14, 52 12" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  strokeWidth="3" 
-                  strokeDasharray="8 6"
-                  className={isInView && !reducedMotion ? 'animate-dash' : ''}
-                />
-              </svg>
-              
-              {/* Flying dollars */}
-              {!reducedMotion && isInView && (
-                <>
-                  <DollarSign 
-                    className="absolute w-5 h-5 text-brand-green-300 animate-money-flow drop-shadow-sm" 
-                    style={{ animationDelay: '0ms', animationDuration: '2.2s', left: '20%', top: '30%' }} 
-                  />
-                  <DollarSign 
-                    className="absolute w-4 h-4 text-brand-green-400 animate-money-flow drop-shadow-sm" 
-                    style={{ animationDelay: '600ms', animationDuration: '2.8s', left: '45%', top: '55%' }} 
-                  />
-                  <DollarSign 
-                    className="absolute w-6 h-6 text-brand-green-200 animate-money-flow drop-shadow-sm" 
-                    style={{ animationDelay: '1200ms', animationDuration: '1.9s', left: '65%', top: '25%' }} 
-                  />
-                </>
-              )}
-            </div>
-            <ArrowRight className="w-6 h-6 text-brand-green-400 rotate-90" />
+          {/* Flow connector: money drops from the sponsor card to the neighbor card. */}
+          <div className="relative h-12 flex justify-center" aria-hidden="true">
+            <div className="h-full border-l-2 border-dashed border-brand-green-500/50" />
+            {!reducedMotion && isInView && [0, 650, 1300].map((delay) => (
+              <DollarSign
+                key={delay}
+                className="absolute top-0 left-1/2 -ml-2 w-4 h-4 text-brand-green-300 animate-money-drop"
+                style={{ animationDelay: `${delay}ms` }}
+              />
+            ))}
+            <ArrowDown className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-5 h-5 text-brand-green-400" />
           </div>
 
           {/* Neighbor Earns */}
@@ -193,7 +155,7 @@ export function MoneyBreakdown() {
             <div className="text-white/90 text-sm font-semibold tracking-widest mb-2">NEIGHBOR EARNS</div>
             
             <div className={`text-[3.25rem] leading-none font-bold text-white transition-all duration-300 ${isInView ? 'scale-100' : 'scale-95'}`}>
-              <AnimatedCounter target={100} prefix="$" duration={1600} />
+              <AnimatedCounter target={100} prefix="$" duration={1600} instant={reducedMotion} />
             </div>
             
             <div className="mt-4 space-y-1 text-xs text-white/80">
