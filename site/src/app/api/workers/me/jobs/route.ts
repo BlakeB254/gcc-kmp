@@ -4,6 +4,7 @@ import { jobs } from '@/db/schema'
 import { and, desc, eq, SQL } from 'drizzle-orm'
 import { requireMobileAuth } from '@/lib/mobile-auth'
 import { toMobileJobs } from '@/lib/mobile-job-response'
+import { notExpiredTestJobCondition } from '@/lib/stale-test-jobs'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -31,7 +32,9 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get('limit') ?? '20', 10) || 20, 100)
     const offset = parseInt(searchParams.get('offset') ?? '0', 10) || 0
 
-    const conditions: SQL[] = [eq(jobs.workerId, auth.workerId)]
+    // Expired $0 test jobs are hidden even before the route-releases cron
+    // releases them, so the app stops drawing an abandoned assignment.
+    const conditions: SQL[] = [eq(jobs.workerId, auth.workerId), notExpiredTestJobCondition()]
     if (status && allowedStatuses.has(status)) {
       conditions.push(eq(jobs.status, status as JobStatus))
     }

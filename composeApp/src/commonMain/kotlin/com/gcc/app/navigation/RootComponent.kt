@@ -11,6 +11,7 @@ import com.arkivanov.decompose.router.stack.replaceAll
 import com.arkivanov.decompose.router.stack.replaceCurrent
 import com.arkivanov.decompose.value.Value
 import com.gcc.app.platform.FirstRunStore
+import com.gcc.app.viewmodel.DashboardViewModel
 import com.gcc.app.viewmodel.LoginViewModel
 import com.gcc.shared.auth.TokenManager
 import org.koin.mp.KoinPlatform
@@ -273,6 +274,10 @@ class RootComponent(
 
     fun signOut() {
         tokenManager?.logout()
+        // DashboardViewModel is a Koin single: clear the old account's
+        // assignments (and the map guidance line drawn from them) so they
+        // can't reappear for whoever signs in next.
+        runCatching { KoinPlatform.getKoin().get<DashboardViewModel>().reset() }
         navigation.replaceAll(Screen.Login)
     }
 

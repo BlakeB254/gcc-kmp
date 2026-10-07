@@ -10,6 +10,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,6 +41,18 @@ class DashboardViewModel(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val _uiState = MutableStateFlow(DashboardUiState())
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
+
+    /**
+     * Drop everything loaded for the signed-in account. This ViewModel is a
+     * Koin `single`, so without this the previous account's assigned jobs,
+     * routes and the map's guidance line survive sign-out and show on the
+     * next account's dashboard. In-flight loads are cancelled first so a
+     * response for the old account cannot land after the reset.
+     */
+    fun reset() {
+        scope.coroutineContext.cancelChildren()
+        _uiState.value = DashboardUiState()
+    }
 
     fun loadDashboard() {
         scope.launch {
@@ -265,7 +278,7 @@ class DashboardViewModel(
         try {
             apiClient.getMyJobs(limit = 20)
                 .filter { it.status == JobStatus.CLAIMED || it.status == JobStatus.IN_PROGRESS }
-                .filter { it.isVisibleDashboardAssignment() }
+                .filter { it.isVisibleDashboardAssignment(Clock.System.now().toEpochMilliseconds()) }
         } catch (_: Exception) {
             emptyList()
         }
@@ -343,13 +356,6 @@ class DashboardViewModel(
 
 private fun Route.isWorkerAvailableRoute(): Boolean =
     status == RouteStatus.PUBLISHED && hasScannableGeometry()
-
-private fun Job.isVisibleDashboardAssignment(
-    nowMillis: Long = Clock.System.now().toEpochMilliseconds(),
-): Boolean {
-    val deadline = testAssignmentStartDeadlineMillis()
-    return deadline == null || status == JobStatus.IN_PROGRESS || deadline > nowMillis
-}
 
 private fun Route.toBlockRecord(): Block {
     val routeCenter = routeCenterCoordinates()

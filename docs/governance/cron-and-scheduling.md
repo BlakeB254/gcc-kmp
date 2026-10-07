@@ -39,6 +39,12 @@ Render Cron  ──curl + Bearer CRON_SECRET──▶  Next.js /api/cron/*  ─�
 | `gcc-cron-route-releases` | `*/15 * * * *` | `/api/cron/route-releases` |
 | `gcc-cron-building-footprints` | `23 * * * *` | `/api/cron/building-footprints` |
 
+The route-releases tick also sweeps abandoned **$0 test jobs** back off their
+worker (claimed and not started within 60 min, or in progress for over 24h),
+using `releaseJobPatch` — rules in `site/src/lib/stale-test-jobs.ts`, mirrored
+in `shared/.../model/Job.kt`. Stale **paid** jobs are left alone and only
+counted in the response (`staleJobs.paidStale`) until the owner decides a policy.
+
 The daily `vercel.json` cron is **retained as a backstop**. A double-fire is a
 no-op, not a double-issue of offers — see below.
 

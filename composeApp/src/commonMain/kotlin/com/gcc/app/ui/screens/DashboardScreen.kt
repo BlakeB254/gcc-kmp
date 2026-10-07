@@ -37,6 +37,7 @@ import com.gcc.app.platform.FirstRunStore
 import com.gcc.app.platform.LocationProvider
 import com.gcc.app.viewmodel.DashboardViewModel
 import com.gcc.shared.auth.TokenManager
+import com.gcc.shared.offline.OfflineTokenManager
 import com.gcc.shared.geo.blockPathCoordinates
 import com.gcc.shared.geo.routePathCoordinates
 import com.gcc.shared.geo.routeStartCoordinates
@@ -47,6 +48,7 @@ import com.gcc.shared.model.JobStatus
 import com.gcc.shared.model.Route
 import com.gcc.shared.model.VerificationStatus
 import com.gcc.shared.model.isTestAssignment
+import com.gcc.shared.model.isVisibleDashboardAssignment
 import com.gcc.shared.model.testAssignmentStartDeadlineMillis
 import com.gcc.app.util.padTwo
 import gcc_kmp.composeapp.generated.resources.*
@@ -78,6 +80,11 @@ fun DashboardScreen(
 ) {
     val viewModel = koinInject<DashboardViewModel>()
     val tokenManager = koinInject<TokenManager>()
+    // Demo/offline mode is decided once at Koin start (MainActivity forces it on
+    // every debuggable APK; desktop `--demo`; iOS demo entry point) by binding
+    // OfflineTokenManager + the canned SeedData engine. Everything on screen is
+    // then fake, so say so — permanently, not just once.
+    val isDemoData = tokenManager is OfflineTokenManager
     val locationProvider = koinInject<LocationProvider>()
     val firstRunStore = koinInject<FirstRunStore>()
     val isAdmin = remember { tokenManager.isAdmin() }
@@ -215,6 +222,9 @@ fun DashboardScreen(
 
     Scaffold(
         contentWindowInsets = WindowInsets(0),
+        topBar = {
+            if (isDemoData) DemoDataBanner()
+        },
         floatingActionButton = {
             FloatingActionButton(
                 onClick = onSpotClick,
@@ -275,7 +285,10 @@ fun DashboardScreen(
         ) {
             // --- Header with greeting (respects safe area) ---
             item {
-                Spacer(modifier = Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
+                // The demo banner (topBar) already pads for the status bar.
+                if (!isDemoData) {
+                    Spacer(modifier = Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
+                }
                 Spacer(modifier = Modifier.height(8.dp))
             }
             item {
@@ -1287,10 +1300,28 @@ private fun testAssignmentCountdownText(job: Job, nowMillis: Long): String? {
     return "Start test route in ${minutes}:${seconds.toString().padStart(2, '0')}"
 }
 
-private fun Job.isDashboardVisible(nowMillis: Long): Boolean {
-    val deadline = testAssignmentStartDeadlineMillis()
-    return deadline == null || status == JobStatus.IN_PROGRESS || deadline > nowMillis
+@Composable
+private fun DemoDataBanner() {
+    Surface(color = GccError, contentColor = Color.White) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(horizontal = 13.dp, vertical = 8.dp),
+        ) {
+            Text(
+                "DEMO DATA — not your account",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+            )
+            Text(
+                "This build runs offline on sample data. Jobs, routes and people shown here are not real.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
 }
+
+private fun Job.isDashboardVisible(nowMillis: Long): Boolean = isVisibleDashboardAssignment(nowMillis)
 
 private fun Route.assignedRouteMapCenter(currentLocation: Coordinates?): MapCenter {
     val routePoints = routePathCoordinates()

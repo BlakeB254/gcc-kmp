@@ -14,11 +14,18 @@
  *
  * Reminder precision and initial-offer latency track the Render cadence, not
  * this file.
+ *
+ * Also sweeps abandoned $0 test jobs (claimed and never started past the
+ * start window, or in progress past 24h) back off their worker via the
+ * canonical `releaseJobPatch` — see lib/stale-test-jobs.ts. Stale PAID jobs
+ * are only counted in `staleJobs.paidStale`; whether to release them is an
+ * open owner decision.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { processDueBatches } from '@/lib/route-queue'
 import { dispatchDueOfferNotifications } from '@/lib/route-queue-notifications'
 import { withCronLease } from '@/lib/cron-lease'
+import { sweepStaleTestJobsNow } from '@/lib/stale-job-sweep'
 import { logRouteReleaseMetrics, summarizeReleaseResults } from '@/lib/cron/metrics'
 
 export const dynamic = 'force-dynamic'
@@ -47,7 +54,23 @@ export async function GET(request: NextRequest) {
       // Drain after processing so this tick's freshly-scheduled "initial"
       // notifications go out in the same run.
       const notifications = await dispatchDueOfferNotifications()
-      return { releases, notifications }
+      // Last, so a sweep failure can't hold up offers or notifications.
+      let staleJobs
+      try {
+        staleJobs = await sweepStaleTestJobsNow()
+        if (staleJobs.released.length > 0 || staleJobs.paidStale.length > 0) {
+          console.log(
+            `[cron:route-releases] stale jobs: released ${staleJobs.released.length} $0 test job(s) ` +
+              `[${staleJobs.released.map((j) => j.id).join(',')}]; ` +
+              `${staleJobs.paidStale.length} stale paid job(s) left in place ` +
+              `[${staleJobs.paidStale.map((j) => j.id).join(',')}]`,
+          )
+        }
+      } catch (error) {
+        console.error('[cron:route-releases] stale job sweep failed:', error)
+        staleJobs = { error: 'stale job sweep failed' }
+      }
+      return { releases, notifications, staleJobs }
     })
 
     // A held lease means a previous tick is still running. That is expected at a
