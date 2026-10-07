@@ -27,11 +27,29 @@ export function verifyPassword(password: string, hash: string, salt: string): bo
   return hash === verifyHash
 }
 
+/** Current token_version for a worker (0 when the row is missing). */
+async function workerTokenVersion(id: number): Promise<number | null> {
+  const { db } = await import('@/db')
+  const { workers } = await import('@/db/schema')
+  const { eq } = await import('drizzle-orm')
+  const [row] = await db
+    .select({ tokenVersion: workers.tokenVersion })
+    .from(workers)
+    .where(eq(workers.id, id))
+    .limit(1)
+  return row ? row.tokenVersion ?? 0 : null
+}
+
 /**
- * Create a JWT token
+ * Create a JWT token. Worker cookies carry the worker's token_version (`tv`)
+ * so change-password, reset-password and logout-all end web sessions too.
  */
 export async function createToken(payload: { id: number; email: string; type: 'worker' | 'sponsor' }): Promise<string> {
-  return new SignJWT(payload)
+  const claims: Record<string, unknown> = { ...payload }
+  if (payload.type === 'worker') {
+    claims.tv = (await workerTokenVersion(payload.id)) ?? 0
+  }
+  return new SignJWT(claims)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('90d')
@@ -39,12 +57,21 @@ export async function createToken(payload: { id: number; email: string; type: 'w
 }
 
 /**
- * Verify and decode a JWT token
+ * Verify and decode a JWT token. A worker cookie is rejected when its `tv`
+ * no longer matches the worker's token_version (a token without `tv` counts
+ * as version 0, so cookies issued before versioning stay valid until the
+ * first bump) or when the worker no longer exists.
  */
 export async function verifyToken(token: string): Promise<{ id: number; email: string; type: string } | null> {
   try {
-    const { payload } = await jwtVerify(token, jwtSecret())
-    return payload as { id: number; email: string; type: string }
+    const { payload } = await jwtVerify(token, jwtSecret(), { algorithms: ['HS256'] })
+    const claims = payload as { id: number; email: string; type: string; tv?: unknown }
+    if (claims.type === 'worker') {
+      const current = await workerTokenVersion(claims.id)
+      const presented = typeof claims.tv === 'number' ? claims.tv : 0
+      if (current === null || current !== presented) return null
+    }
+    return { id: claims.id, email: claims.email, type: claims.type }
   } catch {
     return null
   }

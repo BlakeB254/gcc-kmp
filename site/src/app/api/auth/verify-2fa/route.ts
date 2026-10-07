@@ -14,9 +14,8 @@ import { db } from '@/db'
 import { workers } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { createMobileToken, verifyTwoFactorChallengeToken } from '@/lib/mobile-auth'
-import { verifyTotpCode, consumeRecoveryCode } from '@/lib/totp'
+import { verifySecondFactor } from '@/lib/two-factor'
 import { mapWorkerToMobile } from '@/lib/worker-mapper'
-import { sendSecurityAlert } from '@/lib/account-settings'
 import { clientIp, isRateLimited } from '@/lib/rate-limit'
 
 export const runtime = 'nodejs'
@@ -60,27 +59,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // A 6-digit code is checked as TOTP; anything else is tried as a
-    // recovery code (XXXX-XXXX). A used recovery code is removed so it
-    // can never be replayed.
-    let verified = verifyTotpCode(worker.totpSecret, code)
-    if (!verified) {
-      const hashes = (worker.twoFactorRecoveryCodes as string[] | null) ?? []
-      const remaining = consumeRecoveryCode(code, hashes)
-      if (remaining !== null) {
-        verified = true
-        await db
-          .update(workers)
-          .set({ twoFactorRecoveryCodes: remaining, updatedAt: new Date().toISOString() })
-          .where(eq(workers.id, worker.id))
-        await sendSecurityAlert(
-          worker.email,
-          worker.name,
-          'A recovery code was just used to sign in to your GCC account.',
-          `${remaining.length} recovery code${remaining.length === 1 ? '' : 's'} remaining.`,
-        )
-      }
-    }
+    const verified = await verifySecondFactor(worker, code)
 
     if (!verified) {
       return Response.json(
@@ -89,7 +68,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { token, exp } = await createMobileToken(worker.id, challenge.email)
+    const { token, exp } = await createMobileToken(worker)
     const mobileWorker = mapWorkerToMobile(worker as unknown as Record<string, unknown>)
 
     return Response.json({

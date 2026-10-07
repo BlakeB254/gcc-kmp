@@ -24,7 +24,7 @@ const API_ROOT = dirname(fileURLToPath(import.meta.url))
 
 /** Every way a handler in this codebase authenticates its caller. */
 const GUARD =
-  /\b(requireAdmin|requireMobileAuth|requireSponsor|verifyMobileToken|verifyWorkerToken|verifyToken\(|verifyAdmin|closeRouteHandler|CRON_SECRET|constructEvent|verifyUnsubscribeToken|verifyMagicLink|verifyPhoneRegistrationToken|verifyTwoFactorChallengeToken|verifyAppleIdToken|verifyGoogleIdToken|verifyCode\(|verifyPassword|SERVICE_TOKEN|x-service-token)\b/
+  /\b(requireAdmin|requireMobileAuth|requireSponsor|verifyMobileToken|verifyWorkerToken|verifyToken\(|verifyAdmin|closeRouteHandler|CRON_SECRET|constructEvent|verifyUnsubscribeToken|verifyMagicLink|verifyPhoneRegistrationToken|verifyTwoFactorChallengeToken|verifyAppleIdToken|verifyGoogleIdToken|verifyCode\(|verifyPassword|SERVICE_TOKEN|x-service-token|cronAuthFailure)\b/
 
 /**
  * Routes that are public on purpose. Path is relative to app/api, without

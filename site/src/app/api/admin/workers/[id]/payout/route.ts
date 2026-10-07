@@ -25,6 +25,7 @@ import { requireAdmin } from '@/lib/admin-auth'
 import { creditWallet } from '@/lib/wallet'
 import { notifyWorker, notificationTemplates } from '@/lib/notifications'
 import { MAX_PAYOUT_CENTS, MAX_NOTE_LEN } from '@/lib/payouts'
+import { payoutsPausedResponse } from '@/lib/payouts-enabled'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -33,6 +34,10 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // PAYOUTS_ENABLED master switch (lib/payouts-enabled.ts): 503 before anything else.
+  const paused = payoutsPausedResponse()
+  if (paused) return paused
+
   const auth = await requireAdmin(request)
   if (auth instanceof NextResponse) return auth
 

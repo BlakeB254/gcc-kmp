@@ -223,6 +223,11 @@ export const workers = pgTable('workers', {
   twoFactorRecoveryCodes: jsonb('two_factor_recovery_codes'),
   twoFactorEnabledAt: timestamp('two_factor_enabled_at', { mode: 'string', withTimezone: true }),
 
+  // Session revocation: every mobile session JWT carries the version it was
+  // minted at (`tv` claim); verifyMobileToken rejects a mismatch. Bumped on
+  // password change/reset and on logout-all. Migration 0047.
+  tokenVersion: integer('token_version').default(0).notNull(),
+
   // Timestamps
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),

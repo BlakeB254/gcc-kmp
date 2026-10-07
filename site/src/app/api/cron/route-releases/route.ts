@@ -25,6 +25,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { processDueBatches } from '@/lib/route-queue'
 import { dispatchDueOfferNotifications } from '@/lib/route-queue-notifications'
 import { withCronLease } from '@/lib/cron-lease'
+import { cronAuthFailure } from '@/lib/cron-auth'
 import { sweepStaleTestJobsNow } from '@/lib/stale-job-sweep'
 import { logRouteReleaseMetrics, summarizeReleaseResults } from '@/lib/cron/metrics'
 
@@ -38,15 +39,9 @@ export const maxDuration = 60
 const LEASE_TTL_SECONDS = 120
 
 export async function GET(request: NextRequest) {
-  const secret = process.env.CRON_SECRET
-  // Fail closed: without a configured secret the endpoint is disabled.
-  if (!secret) {
-    return NextResponse.json({ error: 'CRON_SECRET not configured', success: false }, { status: 503 })
-  }
-  const auth = request.headers.get('authorization')
-  if (auth !== `Bearer ${secret}`) {
-    return NextResponse.json({ error: 'Unauthorized', success: false }, { status: 401 })
-  }
+  // CRON_SECRET guard: fails closed when unset, constant-time compare.
+  const denied = cronAuthFailure(request)
+  if (denied) return denied
   try {
     const started = Date.now()
     const outcome = await withCronLease('route-releases', LEASE_TTL_SECONDS, async () => {

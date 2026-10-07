@@ -9,6 +9,7 @@ import {
   createOnboardingLink,
 } from '@/lib/stripe/connect'
 import { appUrl as resolveAppUrl } from '@/lib/env'
+import { payoutsPausedResponse } from '@/lib/payouts-enabled'
 
 export const runtime = 'nodejs'
 
@@ -16,6 +17,10 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // PAYOUTS_ENABLED master switch (lib/payouts-enabled.ts): 503 before anything else.
+  const paused = payoutsPausedResponse()
+  if (paused) return paused
+
   const auth = await requireAdmin(request)
   if (auth instanceof NextResponse) return auth
 

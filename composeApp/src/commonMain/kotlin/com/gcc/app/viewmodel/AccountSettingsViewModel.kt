@@ -2,6 +2,7 @@ package com.gcc.app.viewmodel
 
 import com.gcc.shared.api.GccApiClient
 import com.gcc.shared.auth.AccountValidation
+import com.gcc.shared.auth.TokenManager
 import com.gcc.shared.model.Worker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -49,6 +50,7 @@ data class AccountSettingsUiState(
 
 class AccountSettingsViewModel(
     private val apiClient: GccApiClient,
+    private val tokenManager: TokenManager,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val _uiState = MutableStateFlow(AccountSettingsUiState())
@@ -188,7 +190,11 @@ class AccountSettingsViewModel(
         scope.launch {
             _uiState.value = _uiState.value.copy(isSubmitting = true, error = null)
             try {
-                apiClient.changePassword(current, new)
+                val result = apiClient.changePassword(current, new)
+                // The server revoked every session on password change and
+                // returned a replacement for this device — keep it, or the
+                // next call 401s and signs the user out.
+                result.token?.let { tokenManager.saveToken(it) }
                 finishFlow("Password updated")
             } catch (e: Exception) {
                 fail(e, "Couldn't change password")

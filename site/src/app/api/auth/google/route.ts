@@ -2,7 +2,11 @@ import { NextRequest } from 'next/server'
 import { db } from '@/db'
 import { workers } from '@/db/schema'
 import { eq } from 'drizzle-orm'
-import { createMobileToken } from '@/lib/mobile-auth'
+import {
+  createMobileToken,
+  createTwoFactorChallengeToken,
+  requiresSecondFactor,
+} from '@/lib/mobile-auth'
 import { mapWorkerToMobile } from '@/lib/worker-mapper'
 import { googleAuthExpectedAudiences } from './_expected-audiences'
 
@@ -26,6 +30,20 @@ export async function POST(request: NextRequest) {
       return Response.json(
         { data: null, success: false, message: 'idToken is required' },
         { status: 400 }
+      )
+    }
+
+    // Fail closed: without a configured OAuth client id there is nothing to
+    // check `aud` against, and a Google idToken minted for ANY client would
+    // be accepted as a sign-in to this app.
+    const expectedAudiences = googleAuthExpectedAudiences(process.env)
+    if (expectedAudiences.length === 0) {
+      console.error(
+        '[google-auth] GOOGLE_IOS_CLIENT_ID / GOOGLE_WEB_CLIENT_ID not configured — refusing Google sign-in.',
+      )
+      return Response.json(
+        { data: null, success: false, message: 'Google sign-in is not configured on this server' },
+        { status: 503 }
       )
     }
 
@@ -66,30 +84,27 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate `aud` against our configured iOS OAuth client ID. Without
-    // this, a Google idToken issued for *any* OAuth client could be
-    // accepted as authentication for our app — a real cross-tenant
-    // confusion risk. Read expected client IDs from the env so a missing
-    // setting fails closed in production but stays out of the way in dev.
-    const expectedAudiences = googleAuthExpectedAudiences(process.env)
-
-    if (expectedAudiences.length === 0) {
-      // No configured audience — log loudly and proceed. In production
-      // you should always set GOOGLE_IOS_CLIENT_ID so this branch is
-      // never taken.
-      console.warn(
-        '[google-auth] GOOGLE_IOS_CLIENT_ID not configured — skipping aud validation. Set it in production.',
+    // Validate `aud`: a Google idToken issued for any other OAuth client
+    // must not authenticate here (cross-tenant confusion).
+    if (!tokenInfo.aud || !expectedAudiences.includes(tokenInfo.aud)) {
+      console.error(
+        `[google-auth] aud mismatch: token aud=${tokenInfo.aud}, expected one of ${expectedAudiences.join(',')}`,
       )
-    } else {
-      if (!tokenInfo.aud || !expectedAudiences.includes(tokenInfo.aud)) {
-        console.error(
-          `[google-auth] aud mismatch: token aud=${tokenInfo.aud}, expected one of ${expectedAudiences.join(',')}`,
-        )
-        return Response.json(
-          { data: null, success: false, message: 'Token issued for the wrong OAuth client' },
-          { status: 401 }
-        )
-      }
+      return Response.json(
+        { data: null, success: false, message: 'Token issued for the wrong OAuth client' },
+        { status: 401 }
+      )
+    }
+
+    // Only a Google-verified email may link to (or create) a worker by email.
+    // tokeninfo reports the claim as the string "true"; accept the boolean too.
+    const emailVerified =
+      (tokenInfo.email_verified as unknown) === true || tokenInfo.email_verified === 'true'
+    if (!emailVerified) {
+      return Response.json(
+        { data: null, success: false, message: 'Your Google account email is not verified' },
+        { status: 401 }
+      )
     }
 
     // ── Find or create worker ───────────────────────────────────────
@@ -120,7 +135,7 @@ export async function POST(request: NextRequest) {
           phone: '',
           salt: null,
           hash: null,
-          emailVerified: tokenInfo.email_verified === 'true',
+          emailVerified: true, // checked above
           // Address is collected during onboarding. Do NOT default to Chicago/IL —
           // OAuth signups happen worldwide and a default would mislabel everyone.
           addressStreet: '',
@@ -148,8 +163,18 @@ export async function POST(request: NextRequest) {
       worker = inserted
     }
 
+    // ── 2FA: Google proves the email, not the second factor ─────────
+    if (requiresSecondFactor(worker)) {
+      const twoFactorToken = await createTwoFactorChallengeToken(worker.id, worker.email)
+      return Response.json({
+        data: { token: null, worker: null, exp: 0, requiresTwoFactor: true, twoFactorToken },
+        success: true,
+        message: null,
+      })
+    }
+
     // ── Issue JWT ───────────────────────────────────────────────────
-    const { token, exp } = await createMobileToken(worker.id, email)
+    const { token, exp } = await createMobileToken(worker)
     const mobileWorker = mapWorkerToMobile(worker)
 
     return Response.json({

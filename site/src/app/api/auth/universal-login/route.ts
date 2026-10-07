@@ -8,15 +8,20 @@
  *   2. Try the password against whichever rows have a hash. Whichever side
  *      verifies first decides the "primary" account type for landing-page
  *      redirect.
- *   3. Once one side verifies, issue cookies + tokens for ALL roles the
- *      email matches — so a worker who's also a sponsor doesn't have to
- *      re-log-in to flip dashboards.
+ *   3. If the WORKER side verified and the worker has 2FA on, require a
+ *      TOTP/recovery code (`twoFactorCode`) before issuing anything — the
+ *      response is `code: 'TWO_FACTOR_REQUIRED'` until one is supplied.
+ *   4. Issue a session only for the side whose own password (and 2FA)
+ *      verified. A worker who is also a sponsor signs in to each side with
+ *      that side's password; one password never opens the other account.
  *
  * Response includes:
  *   - accountType: the side that verified the password ("worker" | "sponsor")
  *   - roles: every role this email has access to ("worker" | "sponsor" | "admin")
  *   - user: a profile from the verified side
- *   - token: a Bearer JWT (used by the admin panel's localStorage flow)
+ *   - token: a worker Bearer JWT (the admin panel's localStorage flow) —
+ *     ONLY when the worker password (and 2FA) verified; null otherwise. A
+ *     sponsor-only login never receives a worker token.
  *
  * The mobile app keeps using /api/auth/login (Bearer-token-based) — that
  * endpoint is untouched. The legacy /api/workers/login and
@@ -28,19 +33,11 @@ import { db } from '@/db'
 import { workers } from '@/db/schema'
 import { eq, sql } from 'drizzle-orm'
 import { verifyPassword, createToken } from '@/lib/auth'
-import { createMobileToken } from '@/lib/mobile-auth'
+import { createMobileToken, requiresSecondFactor, roleFor } from '@/lib/mobile-auth'
+import { verifySecondFactor } from '@/lib/two-factor'
 import { clientIp, isRateLimited } from '@/lib/rate-limit'
 
 export const runtime = 'nodejs'
-
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '')
-  .split(',')
-  .map((e) => e.trim().toLowerCase())
-  .filter(Boolean)
-
-function isAdminEmail(email: string): boolean {
-  return ADMIN_EMAILS.includes(email.toLowerCase())
-}
 
 function cookieOpts() {
   return {
@@ -64,6 +61,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const password: string | undefined = body?.password
     const email: string | undefined = body?.email?.replace?.(/\s/g, '').toLowerCase()
+    const twoFactorCode: string =
+      typeof body?.twoFactorCode === 'string' ? body.twoFactorCode.trim() : ''
 
     if (!email || !password || !email.includes('@') || email.length > 100) {
       return NextResponse.json(
@@ -100,8 +99,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Pre-flight blockers (email-verify, rejected). Apply to whichever side
-    // verified the password.
+    // Pre-flight blockers (email-verify, rejected, 2FA). Apply to whichever
+    // side verified the password.
+    let workerAuthenticated = false
     if (workerPasswordOk) {
       if (!worker!.emailVerified) {
         return NextResponse.json(
@@ -120,6 +120,25 @@ export async function POST(request: NextRequest) {
           { status: 403 },
         )
       }
+      if (requiresSecondFactor(worker!)) {
+        if (!twoFactorCode) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Enter the 6-digit code from your authenticator app (or a recovery code).',
+              code: 'TWO_FACTOR_REQUIRED',
+            },
+            { status: 401 },
+          )
+        }
+        if (!(await verifySecondFactor(worker!, twoFactorCode))) {
+          return NextResponse.json(
+            { success: false, error: 'Invalid verification code', code: 'TWO_FACTOR_INVALID' },
+            { status: 401 },
+          )
+        }
+      }
+      workerAuthenticated = true
     } else if (sponsorPasswordOk && !sponsor!.email_verified) {
       return NextResponse.json(
         { success: false, error: 'Please verify your email before signing in.', code: 'EMAIL_NOT_VERIFIED', sponsorId: sponsor!.id },
@@ -127,21 +146,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // ── Build the response. We set BOTH cookies if both rows exist —
-    //    one verified password proves the user owns this email, so they
-    //    get session access to every role tied to it.
-    const roles: Array<'worker' | 'sponsor' | 'admin'> = []
-    if (worker) roles.push('worker')
-    if (sponsor) roles.push('sponsor')
-    if (isAdminEmail(email)) roles.push('admin')
-
-    const accountType: 'worker' | 'sponsor' = workerPasswordOk ? 'worker' : 'sponsor'
+    // A session is issued only for the side whose own password (and, for a
+    // worker, second factor) verified. One account's password never opens the
+    // other account, even when both rows share an email.
+    const issueWorker = workerAuthenticated
+    const issueSponsor = sponsorPasswordOk
+    const accountType: 'worker' | 'sponsor' = workerAuthenticated ? 'worker' : 'sponsor'
 
     // Bearer token for the admin panel + any client preferring localStorage.
-    // Workers + sponsors share the same JWT shape via createMobileToken — the
-    // role claim differentiates. We mint it from whichever id we know.
-    const idForBearer = (worker?.id ?? sponsor?.id) as number
-    const { token: bearerToken } = await createMobileToken(idForBearer, email)
+    // It is a WORKER session (worker_id claim), so it is minted only from the
+    // worker row whose password just verified — never from a sponsor id,
+    // which would have named whatever worker shares that numeric id.
+    const bearer = workerAuthenticated ? await createMobileToken(worker!) : null
+
+    const roles: Array<'worker' | 'sponsor' | 'admin'> = []
+    if (issueWorker) roles.push('worker')
+    if (issueSponsor) roles.push('sponsor')
+    if (workerAuthenticated && roleFor(worker!) === 'admin') roles.push('admin')
 
     const userPayload =
       accountType === 'worker'
@@ -166,18 +187,16 @@ export async function POST(request: NextRequest) {
       success: true,
       accountType,
       roles,
-      token: bearerToken,
+      token: bearer?.token ?? null,
       user: userPayload,
     })
 
-    // Issue worker-token cookie if a worker row exists.
-    if (worker) {
-      const t = await createToken({ id: worker.id, email, type: 'worker' })
+    if (issueWorker) {
+      const t = await createToken({ id: worker!.id, email, type: 'worker' })
       response.cookies.set('worker-token', t, cookieOpts())
     }
-    // Issue sponsor-token cookie if a sponsor row exists.
-    if (sponsor) {
-      const t = await createToken({ id: sponsor.id, email, type: 'sponsor' })
+    if (issueSponsor) {
+      const t = await createToken({ id: sponsor!.id, email, type: 'sponsor' })
       response.cookies.set('sponsor-token', t, cookieOpts())
     }
 

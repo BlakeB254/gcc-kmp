@@ -2,7 +2,12 @@ import { NextRequest } from 'next/server'
 import { db } from '@/db'
 import { workers } from '@/db/schema'
 import { eq } from 'drizzle-orm'
-import { verifyPassword, createMobileToken, createTwoFactorChallengeToken } from '@/lib/mobile-auth'
+import {
+  verifyPassword,
+  createMobileToken,
+  createTwoFactorChallengeToken,
+  requiresSecondFactor,
+} from '@/lib/mobile-auth'
 import { mapWorkerToMobile } from '@/lib/worker-mapper'
 import { clientIp, isRateLimited } from '@/lib/rate-limit'
 
@@ -56,7 +61,7 @@ export async function POST(request: NextRequest) {
     // Password OK — if 2FA is enabled, return a challenge instead of a
     // session. The real token is only issued by /api/auth/verify-2fa after
     // a valid authenticator (or recovery) code.
-    if (worker.twoFactorEnabled && worker.totpSecret) {
+    if (requiresSecondFactor(worker)) {
       const twoFactorToken = await createTwoFactorChallengeToken(worker.id, email)
       return Response.json({
         data: {
@@ -72,7 +77,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate JWT
-    const { token, exp } = await createMobileToken(worker.id, email)
+    const { token, exp } = await createMobileToken(worker)
 
     // Map to mobile format
     const mobileWorker = mapWorkerToMobile(worker)

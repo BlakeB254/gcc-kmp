@@ -24,6 +24,7 @@ import { jobs, workers, workerWalletEntries, blocks } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin-auth'
 import { creditWallet, debitWallet } from '@/lib/wallet'
 import { notifyWorker, notificationTemplates } from '@/lib/notifications'
+import { payoutsPausedResponse } from '@/lib/payouts-enabled'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -31,6 +32,10 @@ export const dynamic = 'force-dynamic'
 type RouteContext = { params: Promise<{ id: string }> }
 
 export async function POST(request: Request, context: RouteContext) {
+  // PAYOUTS_ENABLED master switch (lib/payouts-enabled.ts): 503 before anything else.
+  const paused = payoutsPausedResponse()
+  if (paused) return paused
+
   const auth = await requireAdmin(request)
   if (auth instanceof NextResponse) return auth
 

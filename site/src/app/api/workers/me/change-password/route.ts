@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/db'
 import { workers } from '@/db/schema'
-import { eq } from 'drizzle-orm'
-import { requireMobileAuth, hashPassword } from '@/lib/mobile-auth'
+import { eq, sql } from 'drizzle-orm'
+import { requireMobileAuth, hashPassword, createMobileToken } from '@/lib/mobile-auth'
 import {
   apiEnvelope,
   apiFailure,
@@ -34,19 +34,32 @@ export async function POST(request: NextRequest) {
     return apiFailure('New password must be different from your current password', 400)
   }
 
+  // Bumping token_version signs out every other session (including any
+  // held by whoever knew the old password). This device gets a fresh token
+  // at the new version in the response, so it stays signed in.
   const { hash, salt } = hashPassword(newPassword)
-  await db
+  const [updated] = await db
     .update(workers)
     .set({
       hash,
       salt,
       resetPasswordToken: null,
       resetPasswordExpiration: null,
+      tokenVersion: sql`${workers.tokenVersion} + 1`,
       updatedAt: new Date().toISOString(),
     })
     .where(eq(workers.id, worker.id))
+    .returning({
+      id: workers.id,
+      email: workers.email,
+      emailVerified: workers.emailVerified,
+      tokenVersion: workers.tokenVersion,
+    })
 
   await sendSecurityAlert(worker.email, worker.name, 'The password on your GCC account was just changed.')
 
-  return Response.json(apiEnvelope({ ok: true }, 'Password updated'))
+  const fresh = updated ? await createMobileToken(updated) : null
+  return Response.json(
+    apiEnvelope({ ok: true, token: fresh?.token ?? null, exp: fresh?.exp ?? null }, 'Password updated'),
+  )
 }

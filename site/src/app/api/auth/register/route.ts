@@ -97,8 +97,9 @@ export async function POST(request: NextRequest) {
       })
       .returning()
 
-    // Generate JWT
-    const { token, exp } = await createMobileToken(inserted.id, email)
+    // Generate JWT. The new row is unverified, so this is always a 'worker'
+    // session — an ADMIN_EMAILS address gets admin only after verifying.
+    const { token, exp } = await createMobileToken(inserted)
 
     // Map to mobile format
     const worker = mapWorkerToMobile(inserted)

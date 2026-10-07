@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { workers } from '@/db/schema'
-import { eq, and, gt } from 'drizzle-orm'
+import { eq, and, gt, sql } from 'drizzle-orm'
 import { hashPassword } from '@/lib/auth'
 
 export const runtime = 'nodejs'
@@ -58,6 +58,8 @@ export async function POST(request: NextRequest) {
         resetPasswordExpiration: null,
         loginAttempts: '0',
         lockUntil: null,
+        // Revoke every outstanding mobile session (token_version bump).
+        tokenVersion: sql`${workers.tokenVersion} + 1`,
         updatedAt: new Date().toISOString(),
       })
       .where(eq(workers.id, worker.id))

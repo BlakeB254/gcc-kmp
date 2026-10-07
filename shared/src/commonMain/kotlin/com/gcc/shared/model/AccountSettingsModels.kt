@@ -21,10 +21,16 @@ data class ChangePasswordRequest(
     val newPassword: String,
 )
 
-/** Generic acknowledgement for endpoints whose payload is just "it worked". */
+/**
+ * Generic acknowledgement for endpoints whose payload is just "it worked".
+ * `token`/`exp` are set only by change-password: it revokes every session
+ * (token_version bump) and hands this device a fresh token to keep using.
+ */
 @Serializable
 data class AccountActionResponse(
     val ok: Boolean = true,
+    val token: String? = null,
+    val exp: Long? = null,
 )
 
 @Serializable

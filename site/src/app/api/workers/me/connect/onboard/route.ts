@@ -10,6 +10,7 @@ import {
   createOnboardingLink,
 } from '@/lib/stripe/connect'
 import { appUrl as resolveAppUrl } from '@/lib/env'
+import { payoutsPausedResponse } from '@/lib/payouts-enabled'
 
 export const runtime = 'nodejs'
 
@@ -31,6 +32,10 @@ async function getAuthenticatedWorkerId(request: NextRequest): Promise<number | 
 }
 
 export async function POST(request: NextRequest) {
+  // PAYOUTS_ENABLED master switch (lib/payouts-enabled.ts): 503 before anything else.
+  const paused = payoutsPausedResponse()
+  if (paused) return paused
+
   if (!isStripeConfigured) {
     return NextResponse.json(
       { error: 'Stripe is not configured on this server' },

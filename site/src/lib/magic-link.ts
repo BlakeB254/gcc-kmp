@@ -216,7 +216,9 @@ export function cleanupExpiredLinks(): void {
   }
 }
 
-// Auto-cleanup every minute
+// Auto-cleanup every minute. unref() so this housekeeping timer never keeps a
+// Node process alive on its own (it held the unit-test runner open forever).
 if (typeof setInterval !== 'undefined') {
-  setInterval(cleanupExpiredLinks, 60000)
+  const timer = setInterval(cleanupExpiredLinks, 60000) as unknown as { unref?: () => void }
+  timer.unref?.()
 }

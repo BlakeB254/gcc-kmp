@@ -33,3 +33,12 @@ export const db: ReturnType<typeof initDb> = new Proxy({} as ReturnType<typeof i
       : value
   },
 })
+
+/**
+ * Unit-test seam: route the `db` proxy to a fake client (or back to the real
+ * lazy client with `null`). Only `*.test.ts` files may call this — the app
+ * never does, and the fake never leaves the test process.
+ */
+export function __setDbForTests(fake: unknown): void {
+  instance = fake as ReturnType<typeof initDb> | null
+}

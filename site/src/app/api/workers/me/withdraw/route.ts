@@ -34,6 +34,7 @@ import { processAdminPayout } from '@/lib/stripe/connect'
 import { syncConnectStatus } from '@/lib/stripe/sync-connect-status'
 import { resolveMailingAddress } from '@/lib/payouts'
 import { notifyAdmins, notificationTemplates } from '@/lib/notifications'
+import { payoutsPausedResponse } from '@/lib/payouts-enabled'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -45,6 +46,10 @@ const MIN_CHECK_WITHDRAWAL_CENTS = 2500
 const MIN_STRIPE_WITHDRAWAL_CENTS = 100
 
 export async function POST(request: NextRequest) {
+  // PAYOUTS_ENABLED master switch (lib/payouts-enabled.ts): 503 before anything else.
+  const paused = payoutsPausedResponse()
+  if (paused) return paused
+
   const authHeader = request.headers.get('authorization')
   const auth = authHeader?.startsWith('Bearer ')
     ? await verifyMobileToken(authHeader.substring(7))

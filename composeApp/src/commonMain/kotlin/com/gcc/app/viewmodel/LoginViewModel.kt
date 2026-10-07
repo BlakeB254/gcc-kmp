@@ -125,6 +125,15 @@ class LoginViewModel(
         }
     }
 
+    /** OAuth sign-in for a 2FA-enabled worker: show the code step; [verify2FA] finishes it. */
+    private fun awaitTwoFactor(authData: AuthResponse) {
+        _uiState.value = _uiState.value.copy(
+            isLoading = false,
+            requiresTwoFactor = true,
+            twoFactorToken = authData.twoFactorToken,
+        )
+    }
+
     fun clearError() {
         _uiState.value = _uiState.value.copy(error = null)
     }
@@ -152,6 +161,10 @@ class LoginViewModel(
                     email = result.email,
                     nonce = result.nonce,
                 )
+                if (authData.requiresTwoFactor) {
+                    awaitTwoFactor(authData)
+                    return@launch
+                }
                 val token = authData.token
                 if (token == null) {
                     _uiState.value = _uiState.value.copy(
@@ -219,6 +232,10 @@ class LoginViewModel(
 
     private suspend fun exchangeGoogleIdToken(idToken: String) {
         val authData = apiClient.loginWithGoogle(idToken)
+        if (authData.requiresTwoFactor) {
+            awaitTwoFactor(authData)
+            return
+        }
         val token = authData.token
         if (token == null) {
             _uiState.value = _uiState.value.copy(

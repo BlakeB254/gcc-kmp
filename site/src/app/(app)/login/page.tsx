@@ -13,7 +13,7 @@ interface UniversalLoginResponse {
   success: boolean
   accountType?: 'worker' | 'sponsor'
   roles?: Array<'worker' | 'sponsor' | 'admin'>
-  token?: string
+  token?: string | null
   user?: {
     verificationStatus?: string
     documents?: {
@@ -59,6 +59,10 @@ function LoginContent() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  // Set once the server answers TWO_FACTOR_REQUIRED: the worker has 2FA on,
+  // so the same email+password is resubmitted with an authenticator code.
+  const [needsTwoFactor, setNeedsTwoFactor] = useState(false)
+  const [twoFactorCode, setTwoFactorCode] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<LoginErrorState | null>(null)
   const oauthError = oauthErrorMessage(searchParams.get('oauthError'))
@@ -82,11 +86,18 @@ function LoginContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ email: email.trim(), password }),
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+          ...(needsTwoFactor ? { twoFactorCode: twoFactorCode.trim() } : {}),
+        }),
       })
       const data: UniversalLoginResponse = await res.json()
 
       if (!res.ok || !data.success) {
+        if (data.code === 'TWO_FACTOR_REQUIRED' || data.code === 'TWO_FACTOR_INVALID') {
+          setNeedsTwoFactor(true)
+        }
         setError({
           message: data.error || 'Sign-in failed.',
           code: data.code,
@@ -97,12 +108,13 @@ function LoginContent() {
         return
       }
 
-      if (data.token) {
-        try {
-          localStorage.setItem('adminToken', data.token)
-        } catch {
-          // localStorage unavailable (private mode) — admin panel will need a refresh.
-        }
+      try {
+        // Only a worker sign-in carries a Bearer token. Clear any previous
+        // one otherwise, so a sponsor sign-in never inherits a stale session.
+        if (data.token) localStorage.setItem('adminToken', data.token)
+        else localStorage.removeItem('adminToken')
+      } catch {
+        // localStorage unavailable (private mode) — admin panel will need a refresh.
       }
 
       router.push(landingFor(data))
@@ -114,7 +126,7 @@ function LoginContent() {
   }
 
   const errorTone =
-    displayError?.code === 'EMAIL_NOT_VERIFIED'
+    displayError?.code === 'EMAIL_NOT_VERIFIED' || displayError?.code === 'TWO_FACTOR_REQUIRED'
       ? 'bg-amber-50 border-amber-200 text-amber-800'
       : 'bg-red-50 border-red-200 text-red-700'
 
@@ -264,9 +276,30 @@ function LoginContent() {
               </div>
             </div>
 
+            {needsTwoFactor && (
+              <div>
+                <label htmlFor="twoFactorCode" className="block text-sm font-medium text-neutral-700 mb-2">
+                  Authentication code
+                </label>
+                <input
+                  type="text"
+                  id="twoFactorCode"
+                  value={twoFactorCode}
+                  onChange={(e) => setTwoFactorCode(e.target.value)}
+                  placeholder="123456 or XXXX-XXXX"
+                  required
+                  autoFocus
+                  autoComplete="one-time-code"
+                  inputMode="text"
+                  spellCheck={false}
+                  className="w-full px-4 py-3 rounded-xl border-2 border-neutral-200 bg-white tracking-widest focus:border-brand-green-400 focus:ring-4 focus:ring-brand-green-50 transition-all"
+                />
+              </div>
+            )}
+
             <button
               type="submit"
-              disabled={loading || !email || !password}
+              disabled={loading || !email || !password || (needsTwoFactor && !twoFactorCode.trim())}
               className="w-full py-3.5 px-6 rounded-xl font-semibold text-white bg-brand-green-600 hover:bg-brand-green-700 active:bg-brand-green-800 disabled:bg-neutral-300 disabled:cursor-not-allowed transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2"
             >
               {loading ? (

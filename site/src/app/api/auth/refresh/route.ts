@@ -28,7 +28,12 @@ export async function POST(request: NextRequest) {
 
     // Look up worker email for role determination in the new token
     const [worker] = await db
-      .select({ id: workers.id, email: workers.email })
+      .select({
+        id: workers.id,
+        email: workers.email,
+        emailVerified: workers.emailVerified,
+        tokenVersion: workers.tokenVersion,
+      })
       .from(workers)
       .where(eq(workers.id, auth.workerId))
       .limit(1)
@@ -40,8 +45,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Issue a fresh token
-    const { token: newToken, exp } = await createMobileToken(worker.id, worker.email)
+    // Issue a fresh token. verifyMobileToken only accepts session tokens
+    // (never a 2FA challenge) at the worker's current token_version, so this
+    // cannot upgrade a challenge or resurrect a revoked session.
+    const { token: newToken, exp } = await createMobileToken(worker)
 
     return NextResponse.json({
       data: { token: newToken, exp },

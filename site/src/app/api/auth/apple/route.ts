@@ -4,7 +4,11 @@ import { createRemoteJWKSet, jwtVerify, JWTPayload } from 'jose'
 import { db } from '@/db'
 import { workers } from '@/db/schema'
 import { eq } from 'drizzle-orm'
-import { createMobileToken } from '@/lib/mobile-auth'
+import {
+  createMobileToken,
+  createTwoFactorChallengeToken,
+  requiresSecondFactor,
+} from '@/lib/mobile-auth'
 import { mapWorkerToMobile } from '@/lib/worker-mapper'
 
 export const runtime = 'nodejs'
@@ -267,8 +271,18 @@ export async function POST(request: NextRequest) {
       throw new Error('Apple authentication did not resolve a worker')
     }
 
+    // ── 2FA: Apple proves the identity, not the second factor ───────
+    if (requiresSecondFactor(worker)) {
+      const twoFactorToken = await createTwoFactorChallengeToken(worker.id, worker.email)
+      return Response.json({
+        data: { token: null, worker: null, exp: 0, requiresTwoFactor: true, twoFactorToken },
+        success: true,
+        message: null,
+      })
+    }
+
     // ── Issue JWT ───────────────────────────────────────────────────
-    const { token, exp } = await createMobileToken(worker.id, worker.email)
+    const { token, exp } = await createMobileToken(worker)
     const mobileWorker = mapWorkerToMobile(worker)
 
     return Response.json({
