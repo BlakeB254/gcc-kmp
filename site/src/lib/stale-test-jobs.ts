@@ -10,9 +10,10 @@
  * since 2026-07-30) stayed on its worker's dashboard map, guidance line and
  * all, for over two months.
  *
- * Paid jobs are NEVER expired here. Whether an abandoned paid job goes back
- * to the pool is an owner policy call that has not been made; the sweep only
- * counts them so the cron response shows how many there are.
+ * Paid jobs are NEVER expired here; they follow their own, longer policy in
+ * lib/paid-job-ttl.ts (remind, then release only claims that were never
+ * started; in-progress paid work is reviewed or flagged, never released).
+ * This sweep still counts paid rows past the $0 TTLs in `paidStale`.
  *
  * No `@/db` import — the `tsx --test` suite loads this without a DATABASE_URL.
  */

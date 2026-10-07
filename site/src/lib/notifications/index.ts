@@ -1,5 +1,5 @@
 import webpush from 'web-push'
-import { inArray } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import { db } from '@/db'
 import { workers } from '@/db/schema'
 import { sendApns, apnsConfigured } from './apns'
@@ -21,7 +21,7 @@ interface PushSubscription {
   }
 }
 
-interface NotificationPayload {
+export interface NotificationPayload {
   title: string
   body: string
   icon?: string
@@ -180,6 +180,40 @@ export const notificationTemplates = {
     data: { jobId },
   }),
 
+  // Paid-job TTL policy (lib/paid-job-ttl.ts) — worker side
+  jobStartReminder: (jobId: number, hoursLeft: number) => ({
+    title: 'Your cleanup is waiting 🧹',
+    body: `You claimed job #${jobId} but haven't started it. Start within ${hoursLeft} hours or it goes back to other workers.`,
+    url: '/worker/dashboard',
+    tag: `job-start-reminder-${jobId}`,
+    data: { type: 'job_start_reminder', jobId, deep_link: '/dashboard' },
+  }),
+
+  jobInProgressReminder: (jobId: number) => ({
+    title: 'Finish your cleanup scan',
+    body: `Job #${jobId} has been in progress for a while. Finish the cleaning lap and submit your scan so it can be reviewed.`,
+    url: '/worker/dashboard',
+    tag: `job-progress-reminder-${jobId}`,
+    data: { type: 'job_progress_reminder', jobId, deep_link: '/dashboard' },
+  }),
+
+  // Paid-job TTL policy — admin side
+  jobAutoSubmittedForReview: (jobId: number) => ({
+    title: 'Job moved to review',
+    body: `Job #${jobId} was in progress 24h with a verified completed scan, so it was moved to review automatically.`,
+    url: '/admin',
+    tag: `payout-approval-${jobId}`,
+    data: { jobId },
+  }),
+
+  jobStalled: (jobId: number, workerLabel: string) => ({
+    title: 'Paid job stalled ⚠️',
+    body: `Job #${jobId} (${workerLabel}) has been in progress 24h with no verified scan. It was NOT released — check on it in Operations.`,
+    url: '/admin',
+    tag: `job-stalled-${jobId}`,
+    data: { jobId, type: 'job_stalled' },
+  }),
+
   checkToMail: (workerName: string, amountDollars: string, payoutId: number) => ({
     title: 'New check to mail 📬',
     body: `$${amountDollars} payout to ${workerName} is waiting in the checks-to-mail queue.`,
@@ -213,32 +247,59 @@ export async function notifyAdmins(notification: NotificationPayload): Promise<v
 
     const sends = adminWorkers
       .filter((w) => w.pushEnabled && w.pushSubscription)
-      .map((w) => {
-        const sub = w.pushSubscription as Record<string, unknown>
-        if (
-          typeof sub.endpoint === 'string' &&
-          sub.keys &&
-          typeof (sub.keys as Record<string, unknown>).p256dh === 'string' &&
-          typeof (sub.keys as Record<string, unknown>).auth === 'string'
-        ) {
-          return sendPushNotification(
-            sub as unknown as PushSubscription,
-            notification
-          )
-        }
-        if (typeof sub.token === 'string' && sub.token && apnsConfigured()) {
-          return sendApns(sub.token, {
-            title: notification.title,
-            body: notification.body,
-            data: notification.data as Record<string, string | number | boolean> | undefined,
-          }).then((r) => r.success)
-        }
-        return Promise.resolve(false)
-      })
+      .map((w) => sendToStoredSubscription(w.pushSubscription, notification))
 
     await Promise.allSettled(sends)
   } catch (err) {
     console.error('[notifications] notifyAdmins failed:', err)
+  }
+}
+
+/**
+ * Push to one stored `workers.notifications_push_subscription`, whichever
+ * shape it has: a VAPID web-push subscription ({ endpoint, keys }) or a
+ * native mobile token ({ token, platform } → APNs).
+ */
+function sendToStoredSubscription(stored: unknown, notification: NotificationPayload): Promise<boolean> {
+  const sub = (stored ?? {}) as Record<string, unknown>
+  if (
+    typeof sub.endpoint === 'string' &&
+    sub.keys &&
+    typeof (sub.keys as Record<string, unknown>).p256dh === 'string' &&
+    typeof (sub.keys as Record<string, unknown>).auth === 'string'
+  ) {
+    return sendPushNotification(sub as unknown as PushSubscription, notification)
+  }
+  if (typeof sub.token === 'string' && sub.token && apnsConfigured()) {
+    return sendApns(sub.token, {
+      title: notification.title,
+      body: notification.body,
+      data: notification.data as Record<string, string | number | boolean> | undefined,
+    }).then((r) => r.success)
+  }
+  return Promise.resolve(false)
+}
+
+/**
+ * Best-effort push to one worker by id (web-push or APNs). `notifyWorker`
+ * below only handles the web-push shape, which mobile workers don't have.
+ * Never throws; returns whether a push was handed to a provider.
+ */
+export async function pushToWorker(workerId: number, notification: NotificationPayload): Promise<boolean> {
+  try {
+    const [worker] = await db
+      .select({
+        pushEnabled: workers.notificationsPushEnabled,
+        pushSubscription: workers.notificationsPushSubscription,
+      })
+      .from(workers)
+      .where(eq(workers.id, workerId))
+      .limit(1)
+    if (!worker?.pushEnabled || !worker.pushSubscription) return false
+    return await sendToStoredSubscription(worker.pushSubscription, notification)
+  } catch (err) {
+    console.error(`[notifications] pushToWorker(${workerId}) failed:`, err)
+    return false
   }
 }
 

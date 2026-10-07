@@ -4,6 +4,7 @@ import { jobs } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { requireMobileAuth } from '@/lib/mobile-auth'
 import { routeIdsByBlockId, toMobileJob } from '@/lib/mobile-job-response'
+import { reopenReleaseSlotSafely } from '@/lib/route-release-slot'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -50,6 +51,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       })
       .where(eq(jobs.id, jobId))
       .returning()
+
+    // A route-queue job goes back on offer: reopen its release slot.
+    await reopenReleaseSlotSafely(db, jobId, now)
 
     const routeMap = await routeIdsByBlockId([updated.blockId])
     return NextResponse.json({

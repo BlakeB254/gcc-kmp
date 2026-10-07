@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
-import { routeScans } from '@/db/schema'
-import { eq } from 'drizzle-orm'
 import { requireMobileAuth } from '@/lib/mobile-auth'
 import {
   canAccessRouteScan,
@@ -10,6 +8,13 @@ import {
   toMobileRouteScan,
 } from '@/lib/mobile-route-scan-response'
 import { gridCell, parseCoveredCellIds, resolveByCoveredCells } from '@/lib/world-observations'
+import {
+  coverageRefusal,
+  isScanAlreadyComplete,
+  scanCompletionRefusal,
+  supersedableCells,
+} from '@/lib/scan-verification'
+import { loadScanRouteCoverage, markScanComplete } from '@/lib/scan-completion'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -43,18 +48,47 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ data: null, success: false, message: 'Scan belongs to a different worker' }, { status: 403 })
     }
 
+    // A retried submit (the first response was lost) must not error the
+    // worker's finished scan, and must not re-run the supersede sweep.
+    if (isScanAlreadyComplete(scan)) {
+      return NextResponse.json({
+        data: {
+          scan: toMobileRouteScan(scan, await hotspotsForScan(scanId, 'complete')),
+          pointsAwarded: scan.pointsAwarded,
+        },
+        success: true,
+      })
+    }
+
+    // Server-verified completion (finding H2): state machine first — only from
+    // the cleaning lap, only with lap-one proof on record — then coverage the
+    // SERVER computes from the coverage events attributed to this scan at ingest
+    // (scan_coverage_events.route_scan_id) against the route.
+    // Nothing the client sends in the body can satisfy either check.
+    const stateRefusal = scanCompletionRefusal(scan)
+    if (stateRefusal) {
+      return NextResponse.json({ data: null, success: false, message: stateRefusal.message }, { status: stateRefusal.status })
+    }
+
+    const now = new Date().toISOString()
+    // Only coverage events the server attributed to THIS scan at ingest count.
+    const { requiredCells, workedCells, coverage } = await loadScanRouteCoverage(db, scan)
+    const coverageProblem = coverageRefusal(coverage)
+    if (coverageProblem) {
+      return NextResponse.json(
+        { data: { coverage }, success: false, message: coverageProblem.message },
+        { status: coverageProblem.status },
+      )
+    }
+
     const body = await request.json().catch(() => null)
     const hotspots = await hotspotsForScan(scanId, 'complete')
     const pointsAwarded = calculatePoints(hotspots)
-    const now = new Date().toISOString()
-    const coveredCellIds = parseCoveredCellIds(body?.coveredCellIds)
 
-    const [updated] = await db
-      .update(routeScans)
-      .set({
-        phase: 'complete',
-        status: 'completed',
-        cleanCompletedAt: now,
+    const updated = await markScanComplete(
+      db,
+      scanId,
+      {
         cleanPathGeoJson: typeof body?.cleanPathGeoJson === 'string' ? body.cleanPathGeoJson : scan.cleanPathGeoJson,
         totalTrashVolumeLiters: Number.isFinite(Number(body?.totalTrashVolumeLiters))
           ? Number(body.totalTrashVolumeLiters)
@@ -63,14 +97,24 @@ export async function POST(request: NextRequest, context: RouteContext) {
           ? Number(body.totalTrashWeightLbs)
           : scan.totalTrashWeightLbs,
         pointsAwarded,
-        updatedAt: now,
-      })
-      .where(eq(routeScans.id, scanId))
-      .returning()
+        verifiedCoverageRatio: coverage.ratio,
+      },
+      now,
+    )
+    if (!updated) {
+      return NextResponse.json(
+        { data: null, success: false, message: 'Scan changed while it was being submitted — reload and try again' },
+        { status: 409 },
+      )
+    }
 
-    if (coveredCellIds.length > 0) {
+    // The client's coveredCellIds are only a hint: narrowed to cells the
+    // server recorded THIS scan working on THIS route, so a submission can
+    // never resolve community reports somewhere the worker did not scan.
+    const sweepCells = supersedableCells(parseCoveredCellIds(body?.coveredCellIds), workedCells, requiredCells)
+    if (sweepCells.length > 0) {
       const confirmedCells = new Set(hotspots.map((hotspot) => gridCell(hotspot.lat, hotspot.lng)))
-      const staleCells = [...new Set(coveredCellIds)].filter((cellId) => !confirmedCells.has(cellId))
+      const staleCells = sweepCells.filter((cellId) => !confirmedCells.has(cellId))
       if (staleCells.length > 0) {
         const { resolvedReportIds, invalidatedObservationCount } = await resolveByCoveredCells(
           staleCells,

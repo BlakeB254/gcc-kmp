@@ -1,6 +1,8 @@
 /**
- * DB side of the stale $0 test-job sweep (rules in lib/stale-test-jobs.ts).
- * Called from `/api/cron/route-releases` inside its `withCronLease`.
+ * DB side of the stale-job sweeps run by `/api/cron/route-releases` inside its
+ * `withCronLease`: the $0 test-job sweep (rules in lib/stale-test-jobs.ts), the
+ * paid-job TTL policy (rules in lib/paid-job-ttl.ts, statements in
+ * lib/paid-job-sweep-db.ts), and the stale scan / sighting expiries.
  */
 import { db } from '@/db'
 import { blocks, jobs, routes } from '@/db/schema'
@@ -12,6 +14,20 @@ import {
   type StaleJobRelease,
   type StaleJobSweepResult,
 } from '@/lib/stale-test-jobs'
+import { sweepPaidJobs, type PaidJobSweepResult } from '@/lib/paid-job-ttl'
+import {
+  claimProgressReminder,
+  claimStartReminder,
+  expireAbandonedScans,
+  expireStaleSightings,
+  findPaidJobCandidates,
+  findQualifyingScanIdForJob,
+  flagStalled,
+  moveToReview,
+  releasePaidClaim,
+} from '@/lib/paid-job-sweep-db'
+import { notifyAdmins, notificationTemplates, pushToWorker } from '@/lib/notifications'
+import { generateBlockCompletionReport } from '@/lib/block-completion-report'
 
 /** Bounds one tick; anything left over is picked up 15 minutes later. */
 const SWEEP_LIMIT = 100
@@ -83,4 +99,49 @@ async function applyReleases(releases: StaleJobRelease[]): Promise<number[]> {
 
 export function sweepStaleTestJobsNow(): Promise<StaleJobSweepResult> {
   return sweepStaleTestJobs({ findCandidates, applyReleases }, Date.now())
+}
+
+// ── Paid jobs (rules: lib/paid-job-ttl.ts) ──────────────────────────────────
+
+/** The paid-job TTL policy against the real db + notifications. */
+export function sweepPaidJobsNow(): Promise<PaidJobSweepResult> {
+  return sweepPaidJobs(
+    {
+      findCandidates: () => findPaidJobCandidates(db),
+      claimStartReminder: (job, now) => claimStartReminder(db, job, now),
+      claimProgressReminder: (job, now) => claimProgressReminder(db, job, now),
+      releaseClaim: (job, now) => releasePaidClaim(db, job, now),
+      findQualifyingScanId: (job) => findQualifyingScanIdForJob(db, job),
+      moveToReview: async (job, scanId, now) => {
+        const moved = await moveToReview(db, job, scanId, now)
+        if (moved) {
+          // Same as a worker-submitted completion; non-fatal by design.
+          await generateBlockCompletionReport(job.id).catch((error) =>
+            console.error(`[stale-job-sweep] completion report for job ${job.id} failed:`, error),
+          )
+        }
+        return moved
+      },
+      flagStalled: (job, now) => flagStalled(db, job, now),
+      pushWorker: (workerId, payload) => pushToWorker(workerId, payload),
+      notifyAdmins: (payload) => notifyAdmins(payload),
+      templates: {
+        startReminder: notificationTemplates.jobStartReminder,
+        progressReminder: notificationTemplates.jobInProgressReminder,
+        autoReview: notificationTemplates.jobAutoSubmittedForReview,
+        stalled: notificationTemplates.jobStalled,
+      },
+    },
+    Date.now(),
+  )
+}
+
+export type StaleRecordExpiryResult = { abandonedScans: number[]; expiredSightings: number[] }
+
+export async function expireStaleRecordsNow(): Promise<StaleRecordExpiryResult> {
+  const now = new Date().toISOString()
+  return {
+    abandonedScans: await expireAbandonedScans(db, now),
+    expiredSightings: await expireStaleSightings(db, now),
+  }
 }

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { recordCoverageEvent, RecordCoverageEventInput } from '@/lib/scan-coverage'
 import { requireMobileAuth } from '@/lib/mobile-auth'
 import { MAX_DISTANCE_METERS_PER_EVENT } from '@/lib/points-config'
+import { db } from '@/db'
+import { findCoverageAttributionScan } from '@/lib/scan-completion'
+import { attributeCoverageEvent } from '@/lib/scan-verification'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,6 +27,11 @@ export async function POST(request: NextRequest) {
     if (events.length > MAX_BATCH_SIZE) {
       return NextResponse.json({ inserted: 0, success: false, error: 'events array too large (max 500)' }, { status: 400 })
     }
+
+    // Server-side attribution: route-mode events are tied to the caller's
+    // single active route scan (route_scans with performed_by_admin_id =
+    // caller, or the caller's own). Nothing in the payload can choose it.
+    const activeScan = await findCoverageAttributionScan(db, auth.workerId, new Date().toISOString())
 
     let inserted = 0
     for (const event of events) {
@@ -49,7 +57,12 @@ export async function POST(request: NextRequest) {
       // anyway; or a corrupt payload) coerces to 'grazed', same as before.
       const quality: 'seen' | 'grazed' | 'close' =
         event.quality === 'close' ? 'close' : event.quality === 'seen' ? 'seen' : 'grazed'
-      await recordCoverageEvent({ ...event, quality, workerId: auth.workerId })
+      await recordCoverageEvent({
+        ...event,
+        quality,
+        workerId: auth.workerId,
+        routeScanId: attributeCoverageEvent(event, activeScan),
+      })
       inserted++
     }
 

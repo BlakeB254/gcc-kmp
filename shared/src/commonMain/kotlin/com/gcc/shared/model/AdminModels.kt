@@ -209,6 +209,12 @@ data class AdminJobSummary(
     val claimedAt: Instant? = null,
     val startedAt: Instant? = null,
     val completedAt: Instant? = null,
+    /**
+     * Set by the server's paid-job TTL sweep (site/src/lib/paid-job-ttl.ts):
+     * a paid job in progress 24h with no verified scan. The job is NOT
+     * released; an admin decides. Null when the current run isn't stalled.
+     */
+    val stalledAt: Instant? = null,
 )
 
 // ─── Admin Response Models ──────────────────────────────────────────

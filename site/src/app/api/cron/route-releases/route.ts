@@ -17,16 +17,25 @@
  *
  * Also sweeps abandoned $0 test jobs (claimed and never started past the
  * start window, or in progress past 24h) back off their worker via the
- * canonical `releaseJobPatch` — see lib/stale-test-jobs.ts. Stale PAID jobs
- * are only counted in `staleJobs.paidStale`; whether to release them is an
- * open owner decision.
+ * canonical `releaseJobPatch` — see lib/stale-test-jobs.ts.
+ *
+ * Paid jobs follow lib/paid-job-ttl.ts (`paidJobs` in the response, ids per
+ * action): claimed-not-started → push at 4h, release + reopen the queue slot
+ * at 24h; in progress → push at 12h, at 24h moved to review when a verified
+ * scan exists, otherwise flagged `stalled_at` for an admin. A paid job in
+ * progress is never released automatically. (`staleJobs.paidStale` still
+ * lists paid rows past the $0 TTLs, as before — informational only.)
+ *
+ * Finally expires stale records (`staleRecords`): route scans `in_progress`
+ * over 7 days → `abandoned`; pending sightings over 30 days → hidden from the
+ * public map via `map_expires_at` (nothing deleted).
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { processDueBatches } from '@/lib/route-queue'
 import { dispatchDueOfferNotifications } from '@/lib/route-queue-notifications'
 import { withCronLease } from '@/lib/cron-lease'
 import { cronAuthFailure } from '@/lib/cron-auth'
-import { sweepStaleTestJobsNow } from '@/lib/stale-job-sweep'
+import { expireStaleRecordsNow, sweepPaidJobsNow, sweepStaleTestJobsNow } from '@/lib/stale-job-sweep'
 import { logRouteReleaseMetrics, summarizeReleaseResults } from '@/lib/cron/metrics'
 
 export const dynamic = 'force-dynamic'
@@ -65,7 +74,52 @@ export async function GET(request: NextRequest) {
         console.error('[cron:route-releases] stale job sweep failed:', error)
         staleJobs = { error: 'stale job sweep failed' }
       }
-      return { releases, notifications, staleJobs }
+      let paidJobs
+      try {
+        paidJobs = await sweepPaidJobsNow()
+        const acted =
+          paidJobs.startReminders.length + paidJobs.released.length + paidJobs.progressReminders.length +
+          paidJobs.movedToReview.length + paidJobs.flagged.length + paidJobs.failed.length
+        if (acted > 0) {
+          console.log(
+            `[cron:route-releases] paid jobs: ${paidJobs.startReminders.length} start reminder(s), ` +
+              `${paidJobs.released.length} released [${paidJobs.released.join(',')}] ` +
+              `(${paidJobs.slotsReopened.length} queue slot(s) reopened), ` +
+              `${paidJobs.progressReminders.length} progress reminder(s), ` +
+              `${paidJobs.movedToReview.length} moved to review [${paidJobs.movedToReview.join(',')}], ` +
+              `${paidJobs.flagged.length} flagged stalled [${paidJobs.flagged.join(',')}], ` +
+              `${paidJobs.failed.length} failed`,
+          )
+        }
+      } catch (error) {
+        console.error('[cron:route-releases] paid job sweep failed:', error)
+        paidJobs = { error: 'paid job sweep failed' }
+      }
+      let staleRecords
+      try {
+        staleRecords = await expireStaleRecordsNow()
+        if (staleRecords.abandonedScans.length > 0 || staleRecords.expiredSightings.length > 0) {
+          console.log(
+            `[cron:route-releases] stale records: ${staleRecords.abandonedScans.length} scan(s) abandoned, ` +
+              `${staleRecords.expiredSightings.length} sighting(s) hidden from the map`,
+          )
+        }
+      } catch (error) {
+        console.error('[cron:route-releases] stale record expiry failed:', error)
+        staleRecords = { error: 'stale record expiry failed' }
+      }
+      const counts = {
+        testJobsReleased: 'released' in staleJobs ? staleJobs.released.length : null,
+        paidStartReminders: 'startReminders' in paidJobs ? paidJobs.startReminders.length : null,
+        paidReleased: 'released' in paidJobs ? paidJobs.released.length : null,
+        queueSlotsReopened: 'slotsReopened' in paidJobs ? paidJobs.slotsReopened.length : null,
+        paidProgressReminders: 'progressReminders' in paidJobs ? paidJobs.progressReminders.length : null,
+        paidMovedToReview: 'movedToReview' in paidJobs ? paidJobs.movedToReview.length : null,
+        paidFlaggedStalled: 'flagged' in paidJobs ? paidJobs.flagged.length : null,
+        scansAbandoned: 'abandonedScans' in staleRecords ? staleRecords.abandonedScans.length : null,
+        sightingsHidden: 'expiredSightings' in staleRecords ? staleRecords.expiredSightings.length : null,
+      }
+      return { releases, notifications, staleJobs, paidJobs, staleRecords, counts }
     })
 
     // A held lease means a previous tick is still running. That is expected at a

@@ -12,6 +12,8 @@ import {
   toMobileRouteScan,
   validateLapOneProof,
 } from '@/lib/mobile-route-scan-response'
+import { lapOneCoverageMessage, lapOneGate } from '@/lib/scan-verification'
+import { loadScanRouteCoverage } from '@/lib/scan-completion'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -53,20 +55,31 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
     const now = new Date().toISOString()
 
-    // Guided-route builds send the same quality proof their hard client gate
-    // uses. Keep older TestFlight builds wire-compatible, but reject
-    // internally inconsistent proof whenever either additive field appears.
-    if (
-      scan.phase === 'scouting' &&
-      phase === 'scout_review' &&
-      validateLapOneProof(body, String(scan.deviceType).toLowerCase() === 'ar') === false
-    ) {
+    // Lap-one gate at scouting → scout_review (finding H2 + review follow-up).
+    // The client's proof (coveragePercent/loopClosed/closeCoveragePercent) is
+    // still REQUIRED, but it is only a consistency check — those are numbers
+    // the client chose. The stamp depends on the route coverage the SERVER
+    // computes from the coverage events attributed to this scan at ingest
+    // (same definition completion uses — lib/scan-completion.ts).
+    const fromPhase = normalizeScanPhase(scan.phase)
+    const isLapOneBoundary = fromPhase === 'scouting' && phase === 'scout_review'
+    const proof = validateLapOneProof(body, String(scan.deviceType).toLowerCase() === 'ar')
+    const lapOneCoverage =
+      isLapOneBoundary && proof === true ? (await loadScanRouteCoverage(db, scan)).coverage : null
+    const lapOne = lapOneGate(fromPhase, phase, proof, lapOneCoverage)
+    if (lapOne === 'refused-proof') {
       return NextResponse.json(
         {
           data: null,
           success: false,
           message: 'Lap 1 is incomplete: 95% corridor coverage, a closed loop, and 80% AR close-detail are required',
         },
+        { status: 409 },
+      )
+    }
+    if (lapOne === 'refused-coverage') {
+      return NextResponse.json(
+        { data: { coverage: lapOneCoverage }, success: false, message: lapOneCoverageMessage(lapOneCoverage) },
         { status: 409 },
       )
     }
@@ -82,6 +95,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         cleanPathGeoJson: typeof body?.cleanPathGeoJson === 'string' ? body.cleanPathGeoJson : scan.cleanPathGeoJson,
         scoutCompletedAt: phase === 'scout_review' && !scan.scoutCompletedAt ? now : scan.scoutCompletedAt,
         cleanStartedAt: phase === 'cleaning' && !scan.cleanStartedAt ? now : scan.cleanStartedAt,
+        lapOneVerifiedAt: lapOne === 'verified' && !scan.lapOneVerifiedAt ? now : scan.lapOneVerifiedAt,
+        lapOneCoverageRatio:
+          lapOne === 'verified' && !scan.lapOneVerifiedAt && lapOneCoverage
+            ? lapOneCoverage.ratio
+            : scan.lapOneCoverageRatio,
         updatedAt: now,
       })
       .where(eq(routeScans.id, scanId))

@@ -56,6 +56,7 @@ export function createFakeDb(respond: (q: FakeQuery) => unknown) {
 
   const db = {
     select: root('select'),
+    selectDistinct: root('select'),
     insert: root('insert'),
     update: root('update'),
     delete: root('delete'),

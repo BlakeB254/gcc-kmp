@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
-import { jobs, routeScans, workers } from '@/db/schema'
-import { and, eq, or } from 'drizzle-orm'
+import { jobs, workers } from '@/db/schema'
+import { eq } from 'drizzle-orm'
 import { requireMobileAuth } from '@/lib/mobile-auth'
 import { routeIdsByBlockId, toMobileJob } from '@/lib/mobile-job-response'
 import { generateBlockCompletionReport } from '@/lib/block-completion-report'
 import { completeJob, payoutCents } from '@/lib/job-lifecycle'
 import { notifyAdmins, notificationTemplates } from '@/lib/notifications'
+import { findQualifyingScanForJob, isUniqueViolation } from '@/lib/scan-completion'
 import {
   commitPublicDataMutation,
   type PublicDataInvalidator,
@@ -49,35 +50,38 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Job must be in progress to complete', success: false }, { status: 409 })
     }
 
-    // The 2-lap invariant, server side: a worker's job only completes once
-    // their scan session for the block's route reached COMPLETE (scout lap +
-    // cleanup lap submitted). Previously this was enforced only by client
-    // navigation, so a bare PATCH could complete a job with no scan at all —
-    // which also left completion-report generation permanently unable to run.
-    // Admin completion stays ungated (manual recovery path). Blocks without
-    // a linked route can't be scanned, so they skip the check.
+    // Server-verified completion (finding H2). A worker's job completes only
+    // on a scan that the server itself verified (cleaning lap, lap-one proof,
+    // server-computed route coverage — POST /api/scans/{id}/complete), on
+    // this job's route, by this worker, started at/after they claimed the
+    // job, and not already used to complete another job. "Some completed scan
+    // by this worker on the route, ever" is no longer enough. $0 test jobs go
+    // through the same check: they exercise the same flow, and a test that
+    // skips the gate tests nothing.
+    //
+    // Admin completion stays ungated (manual recovery path). Blocks without a
+    // linked route can't be scanned, so they skip the check.
     const blockRouteMap = await routeIdsByBlockId([existing.blockId])
     const blockRouteId = blockRouteMap.get(existing.blockId) ?? null
+    let completionScanId: number | null = null
     if (auth.role !== 'admin' && blockRouteId != null) {
-      const [completedScan] = await db
-        .select({ id: routeScans.id })
-        .from(routeScans)
-        .where(
-          and(
-            eq(routeScans.routeId, blockRouteId),
-            // Ownership was already enforced above, so on this (non-admin)
-            // path the job's worker IS the caller.
-            eq(routeScans.workerId, auth.workerId),
-            or(eq(routeScans.status, 'completed'), eq(routeScans.phase, 'complete')),
-          ),
-        )
-        .limit(1)
-      if (!completedScan) {
+      const scan = await findQualifyingScanForJob(
+        db,
+        // Ownership was already enforced above, so on this (non-admin) path
+        // the job's worker IS the caller.
+        { id: existing.id, workerId: auth.workerId, claimedAt: existing.claimedAt, startedAt: existing.startedAt },
+        blockRouteId,
+      )
+      if (!scan) {
         return NextResponse.json(
-          { error: 'Complete the block scan (both laps) before completing the job', success: false },
+          {
+            error: 'Complete a verified block scan (both laps) after claiming this job before completing it',
+            success: false,
+          },
           { status: 409 },
         )
       }
+      completionScanId = scan.id
     }
 
     // Paid job → pending_review (an admin approves it, which is the ONLY
@@ -85,9 +89,24 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     // re-checks the status so two completes, or a complete racing a
     // decline/release, can't both apply.
     const now = new Date().toISOString()
-    const updated = await commitJobCompletion(() =>
-      completeJob(db, existing, { workerId: auth.workerId, isAdmin: auth.role === 'admin' }, now),
-    )
+    let updated
+    try {
+      updated = await commitJobCompletion(() =>
+        completeJob(db, existing, { workerId: auth.workerId, isAdmin: auth.role === 'admin' }, now, {
+          completionScanId,
+        }),
+      )
+    } catch (error) {
+      // jobs_completion_scan_id_unique: another job claimed this scan between
+      // our read and this UPDATE.
+      if (isUniqueViolation(error)) {
+        return NextResponse.json(
+          { error: 'That scan was already used to complete another job', success: false },
+          { status: 409 },
+        )
+      }
+      throw error
+    }
     if (!updated) {
       return NextResponse.json(
         { error: 'Job is no longer in progress', success: false },

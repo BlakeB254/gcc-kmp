@@ -210,6 +210,10 @@ private fun AdminJobRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             JobStatusChip(job.status)
+            if (job.stalledAt != null) {
+                Spacer(modifier = Modifier.width(spacing.xs))
+                StalledChip()
+            }
             Spacer(modifier = Modifier.weight(1f))
             job.payoutAmount?.let { amount ->
                 Text(
@@ -276,6 +280,23 @@ private fun JobStatusChip(status: JobStatus) {
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.SemiBold,
             color = color,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+        )
+    }
+}
+
+/** Paid job in progress 24h with no verified scan (server `stalledAt`). */
+@Composable
+private fun StalledChip() {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = GccError.copy(alpha = 0.12f),
+    ) {
+        Text(
+            "Stalled",
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = GccError,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
         )
     }

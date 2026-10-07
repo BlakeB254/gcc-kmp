@@ -15,6 +15,12 @@ export interface RecordCoverageEventInput {
   deviceTier: 'basic' | 'scanner' | 'pro_scanner'
   quality: 'seen' | 'grazed' | 'close'
   capturedAt: string
+  /**
+   * The route scan this event belongs to — set by the SERVER (POST
+   * /api/scans/coverage via attributeCoverageEvent), never from the client
+   * payload. Null/undefined = unattributed.
+   */
+  routeScanId?: number | null
 }
 
 type CoverageCategory =
@@ -106,6 +112,7 @@ export async function recordCoverageEvent(input: RecordCoverageEventInput) {
       deviceTier: input.deviceTier,
       quality: input.quality,
       capturedAt: input.capturedAt,
+      routeScanId: input.routeScanId ?? null,
     })
     .returning()
 

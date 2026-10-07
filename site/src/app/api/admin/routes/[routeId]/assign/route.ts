@@ -13,6 +13,7 @@ import { toMobileJob } from '@/lib/mobile-job-response'
 import { ensureJobForRouteWorker } from '@/lib/ensure-job-for-route-worker'
 import { eligibleBlockStatusForRoute } from '@/lib/admin-route-status'
 import { isReleasableJobStatus, releaseJobPatch } from '@/lib/release-route-jobs'
+import { reopenReleaseSlotSafely } from '@/lib/route-release-slot'
 import {
   commitPublicDataMutation,
   type PublicDataInvalidator,
@@ -211,6 +212,9 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       ]),
     )
     const updated = updatedRows[0]
+
+    // A route-queue job goes back on offer: reopen its release slot.
+    await reopenReleaseSlotSafely(db, jobId, now)
 
     return NextResponse.json({
       data: toMobileJob(updated, routeId),

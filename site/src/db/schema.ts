@@ -581,6 +581,19 @@ export const jobs = pgTable('jobs', {
   // Timestamps
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+
+  // Server-verified completion (migration 0050). The route scan that proved
+  // this job's work; unique, so one scan can never complete two jobs.
+  completionScanId: integer('completion_scan_id').references(() => routeScans.id),
+  // Paid-job TTL policy (lib/paid-job-ttl.ts). Each stamp counts for the
+  // current claim/run only — "already sent" means stamp >= claimed_at (start
+  // reminder) or >= coalesce(started_at, claimed_at) (progress reminder,
+  // stalled flag) — so a released-then-reclaimed job reminds its next worker.
+  startReminderSentAt: timestamp('start_reminder_sent_at', { mode: 'string', withTimezone: true }),
+  progressReminderSentAt: timestamp('progress_reminder_sent_at', { mode: 'string', withTimezone: true }),
+  // Paid job in progress past 24h with no qualifying scan: flagged for an
+  // admin (GET /api/admin/jobs shows it). Never auto-released.
+  stalledAt: timestamp('stalled_at', { mode: 'string', withTimezone: true }),
 }, (table) => ({
   // Hot-path indexes — added during the M-6 audit pass.
   // Postgres does NOT auto-index foreign-key columns; these are queried
@@ -588,6 +601,7 @@ export const jobs = pgTable('jobs', {
   workerIdx: index('jobs_worker_id_idx').on(table.workerId),
   blockIdx: index('jobs_block_id_idx').on(table.blockId),
   statusIdx: index('jobs_status_idx').on(table.status),
+  completionScanUnique: uniqueIndex('jobs_completion_scan_id_unique').on(table.completionScanId),
 }))
 
 // Route release queues turn a set of funded routes into timed offer waves.
@@ -1623,6 +1637,19 @@ export const routeScans = pgTable('route_scans', {
 
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+
+  // Server-verified completion (migration 0050, lib/scan-verification.ts).
+  // Stamped at scouting → scout_review only when the server-computed route
+  // coverage reached LAP_ONE_MIN_ROUTE_COVERAGE (and the client proof agreed);
+  // a scan without it cannot be completed.
+  lapOneVerifiedAt: timestamp('lap_one_verified_at', { mode: 'string', withTimezone: true }),
+  // Route coverage the SERVER computed from this scan's coverage events when
+  // it completed (0..1). Null on scans completed before verification existed;
+  // those can never complete a job.
+  verifiedCoverageRatio: doublePrecision('verified_coverage_ratio'),
+  // Route coverage the SERVER computed from this scan's attributed coverage
+  // events at scouting → scout_review, when lap one was stamped (0..1).
+  lapOneCoverageRatio: doublePrecision('lap_one_coverage_ratio'),
 })
 
 // Hotspots recorded during route scan sessions
@@ -1807,8 +1834,16 @@ export const scanCoverageEvents = pgTable('scan_coverage_events', {
   // because the upload extension isn't otherwise recorded.
   rawR2Key: varchar('raw_r2_key', { length: 500 }),
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  // The route scan this event was walked under (migration 0050). Stamped by
+  // the SERVER at ingest (POST /api/scans/coverage) from the caller's single
+  // active route scan — never taken from the client. Null for spot-mode
+  // events, events with no active scan, and every event before 0050. Scan
+  // verification (lib/scan-completion.ts) counts only events carrying it.
+  routeScanId: integer('route_scan_id').references(() => routeScans.id),
 }, (table) => ({
   cellCapturedIdx: index('scan_coverage_events_cell_captured_idx').on(table.locationCellId, table.capturedAt),
+  // Scan verification reads "this scan's route events" (lib/scan-completion.ts).
+  routeScanIdx: index('scan_coverage_events_route_scan_id_idx').on(table.routeScanId),
 }))
 
 export type ScanCoverageEventRow = typeof scanCoverageEvents.$inferSelect

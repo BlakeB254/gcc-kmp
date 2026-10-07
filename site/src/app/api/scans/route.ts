@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm'
 import { requireMobileAuth } from '@/lib/mobile-auth'
 import { normalizeDeviceType, toMobileRouteScan } from '@/lib/mobile-route-scan-response'
 import { ensureJobForRouteWorker } from '@/lib/ensure-job-for-route-worker'
+import { findActiveScanConflict } from '@/lib/scan-completion'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -52,6 +53,32 @@ export async function POST(request: NextRequest) {
 
     if (!route) {
       return NextResponse.json({ data: null, success: false, message: 'Route not found' }, { status: 404 })
+    }
+
+    // One active route scan per worker, and per person walking it (an admin
+    // performing on someone's behalf). Coverage events are attributed to the
+    // caller's single active scan at ingest (POST /api/scans/coverage), so a
+    // second concurrent scan would make that attribution ambiguous.
+    const conflict = await findActiveScanConflict(
+      db,
+      { workerId: effectiveWorkerId, callerId: auth.workerId },
+      new Date().toISOString(),
+    )
+    if (conflict) {
+      const whose =
+        conflict.workerId === effectiveWorkerId
+          ? effectiveWorkerId === auth.workerId
+            ? 'You already have'
+            : 'This worker already has'
+          : 'You are already performing'
+      return NextResponse.json(
+        {
+          data: { activeScanId: conflict.id },
+          success: false,
+          message: `${whose} a route scan in progress (scan ${conflict.id}). Finish it before starting another.`,
+        },
+        { status: 409 },
+      )
     }
 
     // Ensure a Job exists for (route, effectiveWorker) when acting on behalf

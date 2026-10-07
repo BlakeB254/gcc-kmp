@@ -31,6 +31,7 @@ function jobRow(overrides: { id?: number; status?: string; workerId?: number | n
     null, // performedByAdminId
     null, null, null, null, null, // review fields
     NOW, NOW,
+    null, null, null, null, // completionScanId, startReminderSentAt, progressReminderSentAt, stalledAt (0050)
   ]
 }
 

@@ -98,6 +98,7 @@ export async function completeJob(
   existing: Pick<JobRow, 'id' | 'payoutAmount' | 'payoutStatus'>,
   actor: { workerId: number; isAdmin: boolean },
   now: string,
+  opts: { completionScanId?: number | null } = {},
 ): Promise<JobRow | null> {
   const nextStatus = completionStatusFor(existing.payoutAmount)
   const [row] = await exec
@@ -109,6 +110,9 @@ export async function completeJob(
       // show up as owed. Paid jobs keep whatever they had (normally NULL);
       // approve is what settles them.
       payoutStatus: nextStatus === 'completed' ? 'completed' : existing.payoutStatus,
+      // The verified scan that proved the work (lib/scan-completion.ts). The
+      // unique index on this column makes a second job using it fail.
+      ...(opts.completionScanId != null ? { completionScanId: opts.completionScanId } : {}),
       updatedAt: now,
     })
     .where(

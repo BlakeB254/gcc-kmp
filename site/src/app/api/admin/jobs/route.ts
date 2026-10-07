@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { desc, eq } from 'drizzle-orm'
+import { and, desc, eq, isNotNull, sql, type SQL } from 'drizzle-orm'
 import { db } from '@/db'
 import { blocks, jobs, jobStatusEnum, routes, workers } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin-auth'
@@ -14,7 +14,22 @@ const MAX_LIMIT = 100
 const toIso = (value: string | null) => (value ? new Date(value).toISOString() : null)
 
 /**
- * GET /api/admin/jobs?status=<enum_jobs_status>&page=1&limit=50
+ * The stall flag counts only for the job's current run: in progress, and
+ * stamped at/after it started (a stamp from an earlier worker's run, or a
+ * job that has since been completed, is history, not a live flag).
+ */
+function currentStall(row: { status: string | null; stalledAt: string | null; startedAt: string | null; claimedAt: string | null }) {
+  if (row.status !== 'in_progress' || !row.stalledAt) return null
+  const since = row.startedAt ?? row.claimedAt
+  if (since && Date.parse(row.stalledAt) < Date.parse(since)) return null
+  return toIso(row.stalledAt)
+}
+
+/**
+ * GET /api/admin/jobs?status=<enum_jobs_status>&stalled=true&page=1&limit=50
+ *
+ * `stalledAt` is set by the paid-job TTL sweep (lib/paid-job-ttl.ts) on a paid
+ * job in progress 24h with no verified scan; `stalled=true` lists only those.
  *
  * Backs the Operations drill-in list in the mobile admin panel. Jobs carry no
  * route reference, so the route has to be reached through blocks.
@@ -57,6 +72,7 @@ export async function GET(request: Request) {
       claimedAt: jobs.claimedAt,
       startedAt: jobs.startedAt,
       completedAt: jobs.completedAt,
+      stalledAt: jobs.stalledAt,
     }
 
     // createdAt alone is not a total order — ties let LIMIT/OFFSET pages
@@ -70,8 +86,17 @@ export async function GET(request: Request) {
       .leftJoin(routes, eq(blocks.routeId, routes.id))
       .leftJoin(workers, eq(jobs.workerId, workers.id))
 
-    const rows = status
-      ? await base.where(eq(jobs.status, status)).orderBy(...ordering).limit(limit).offset(offset)
+    const filters: SQL[] = []
+    if (status) filters.push(eq(jobs.status, status))
+    if (searchParams.get('stalled') === 'true') {
+      filters.push(
+        eq(jobs.status, 'in_progress'),
+        isNotNull(jobs.stalledAt),
+        sql`${jobs.stalledAt} >= coalesce(${jobs.startedAt}, ${jobs.claimedAt})`,
+      )
+    }
+    const rows = filters.length > 0
+      ? await base.where(and(...filters)).orderBy(...ordering).limit(limit).offset(offset)
       : await base.orderBy(...ordering).limit(limit).offset(offset)
 
     const data = rows.map((row) => ({
@@ -89,6 +114,7 @@ export async function GET(request: Request) {
       claimedAt: toIso(row.claimedAt),
       startedAt: toIso(row.startedAt),
       completedAt: toIso(row.completedAt),
+      stalledAt: currentStall(row),
     }))
 
     return NextResponse.json({ data })

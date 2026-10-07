@@ -42,10 +42,10 @@ export function isValidScanPhaseTransition(from: unknown, to: unknown): boolean 
 }
 
 /**
- * Validates the additive proof emitted by guided-route clients at the
- * scouting → review boundary. `null` means this is an older client that did
- * not send either proof field; the phase endpoint keeps that deploy-order
- * path compatible until the new TestFlight build has rolled out.
+ * Validates the proof guided-route clients emit at the scouting → review
+ * boundary. `null` means the client sent neither proof field; the phase
+ * endpoint now refuses that like a failing proof (it used to let it through
+ * for older TestFlight builds — finding H2).
  */
 export function validateLapOneProof(
   body: Record<string, unknown> | null,
