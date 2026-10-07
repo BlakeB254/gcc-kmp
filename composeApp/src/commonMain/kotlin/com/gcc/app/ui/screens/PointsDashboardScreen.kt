@@ -331,6 +331,9 @@ private fun ActivityRow(entry: PointsLedgerEntry, spacing: GccSpacing) {
         PointsAction.SCAN_COVERAGE_NEW_AREA -> "\uD83D\uDDFA\uFE0F" to "New Area Scanned"
         PointsAction.SCAN_COVERAGE_STALE -> "\u23F0" to "Stale Area Rescanned"
         PointsAction.SCAN_COVERAGE_RECTIFICATION -> "\uD83D\uDD27" to "Coverage Rectified"
+        PointsAction.SCAN_COVERAGE_CLOSE_UPGRADE -> "\uD83D\uDD0E" to "Close-up Scan"
+        PointsAction.OBSERVATION_LOGGED -> "\uD83D\uDCF7" to "Scan Logged"
+        PointsAction.CIVIC_CAPTURE -> "\uD83C\uDFDB\uFE0F" to "311 Evidence"
     }
 
     val localDate = entry.createdAt.toLocalDateTime(TimeZone.currentSystemDefault())

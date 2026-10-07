@@ -335,7 +335,6 @@ fun SpotScreen(
                     isCreatingBounty = uiState.isCreatingBounty,
                     bountyCreateError = uiState.bountyCreateError,
                     error = uiState.error,
-                    onAcceptBounty = { viewModel.acceptBounty(it) },
                     onPlaceBounty = { dollars -> viewModel.createBountyForSubmittedSpot(dollars) },
                     onVolunteerCleanup = {
                         uiState.submittedReport?.let { report ->
@@ -2873,7 +2872,6 @@ private fun ResultPhase(
     isCreatingBounty: Boolean,
     bountyCreateError: String?,
     error: String?,
-    onAcceptBounty: (Int) -> Unit,
     onPlaceBounty: (Int) -> Unit,
     onVolunteerCleanup: () -> Unit,
     onNewReport: () -> Unit,
@@ -3043,10 +3041,7 @@ private fun ResultPhase(
             }
 
             items(matchingBounties, key = { it.id }) { bounty ->
-                BountyMatchCard(
-                    bounty = bounty,
-                    onAccept = { onAcceptBounty(bounty.id) },
-                )
+                BountyMatchCard(bounty = bounty)
             }
         }
 
@@ -3291,7 +3286,6 @@ private fun formatLng(lng: Double): String {
 @Composable
 private fun BountyMatchCard(
     bounty: Bounty,
-    onAccept: () -> Unit,
 ) {
     GccCard(accentColor = CardAccentSky) {
         Row(
@@ -3329,9 +3323,13 @@ private fun BountyMatchCard(
                     color = GccSky,
                 )
                 Spacer(modifier = Modifier.height(4.dp))
-                TextButton(onClick = onAccept) {
-                    Text("Accept", color = GccGreen, fontWeight = FontWeight.Bold)
-                }
+                // Paid bounty acceptance is a 501 stub on the server
+                // (POST /api/bounties/{id}/accept) — say so, don't fail on tap.
+                Text(
+                    "Accepting: coming soon",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextMuted,
+                )
             }
         }
     }

@@ -12,10 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 data class WalletUiState(
-    val wallet: SponsorWallet? = null,
     val transactions: List<WalletTransaction> = emptyList(),
-    val isLoading: Boolean = true,
-    val error: String? = null,
     // Worker earnings / Stripe Connect payout status
     val connectStatus: ConnectStatus? = null,
     val connectStatusLoading: Boolean = false,
@@ -41,11 +38,6 @@ data class WalletUiState(
     val cashOutInFlight: Boolean = false,
     val cashOutError: String? = null,
     val cashOutSuccess: String? = null,
-    val depositAmount: String = "",
-    val isDepositing: Boolean = false,
-    val depositError: String? = null,
-    val isAllocating: Boolean = false,
-    val allocateError: String? = null,
     // Poster identity (shared across flows)
     val isAnonymous: Boolean = false,
     val posterName: String = "",
@@ -308,63 +300,10 @@ class WalletViewModel(
         }
     }
 
-    fun loadWallet(silent: Boolean = false) {
-        scope.launch {
-            if (!silent) _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-            try {
-                val wallet = apiClient.getWallet()
-                _uiState.value = _uiState.value.copy(
-                    wallet = wallet,
-                    isLoading = false,
-                )
-            } catch (e: Exception) {
-                if (!silent) {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        error = e.message ?: "Failed to load wallet",
-                    )
-                }
-            }
-        }
-    }
-
-    fun deposit(amountCents: Int, fundType: String = "general") {
-        scope.launch {
-            _uiState.value = _uiState.value.copy(isDepositing = true, depositError = null)
-            try {
-                val wallet = apiClient.depositToWallet(amountCents, fundType)
-                _uiState.value = _uiState.value.copy(
-                    wallet = wallet,
-                    isDepositing = false,
-                    depositAmount = "",
-                )
-                loadTransactions()
-            } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isDepositing = false,
-                    depositError = e.message ?: "Failed to deposit",
-                )
-            }
-        }
-    }
-
-    fun allocateFunds(general: Int, route: Int, bounty: Int) {
-        scope.launch {
-            _uiState.value = _uiState.value.copy(isAllocating = true, allocateError = null)
-            try {
-                val wallet = apiClient.allocateWalletFunds(general, route, bounty)
-                _uiState.value = _uiState.value.copy(
-                    wallet = wallet,
-                    isAllocating = false,
-                )
-            } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isAllocating = false,
-                    allocateError = e.message ?: "Failed to allocate funds",
-                )
-            }
-        }
-    }
+    // No sponsor-wallet calls: GET /api/wallet is a stub that always returns a
+    // zeroed wallet, and /api/wallet/deposit + /allocate return 501. The real
+    // balance is the worker wallet (GET /api/workers/me/wallet, loadWorkerWallet).
+    // Adding/allocating sponsor funds shows "Coming soon" in WalletScreen.
 
     fun loadTransactions(limit: Int = 50, offset: Int = 0) {
         scope.launch {
@@ -375,10 +314,6 @@ class WalletViewModel(
                 // Transaction loading is non-critical; silently fail
             }
         }
-    }
-
-    fun updateDepositAmount(amount: String) {
-        _uiState.value = _uiState.value.copy(depositAmount = amount)
     }
 
     // ── Poster Identity ──────────────────────────────────────────────
@@ -610,7 +545,6 @@ class WalletViewModel(
                     isPostingBounty = false,
                     bountySuccess = true,
                 )
-                loadWallet(silent = true)
                 loadTransactions()
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(

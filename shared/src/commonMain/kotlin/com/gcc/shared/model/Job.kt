@@ -26,10 +26,16 @@ data class Job(
     val workerId: Int? = null,
     val status: JobStatus = JobStatus.AVAILABLE,
     val timing: JobTiming = JobTiming(),
+    /** Legacy combined evidence (before + after). Prefer [beforePhotos]/[afterPhotos]. */
     val photos: JsonArray? = null,
+    /** `{url, capturedAt}` evidence objects, as PATCH /api/jobs/{id}/evidence stores them. */
+    val beforePhotos: JsonArray? = null,
+    val afterPhotos: JsonArray? = null,
     val gpsPath: JsonArray? = null,
     val payoutAmount: Int? = null,
     val payoutStatus: TransactionStatus? = null,
+    /** Admin review of a paid completion: null (not reviewed), "approved" or "denied".
+     *  A denied job stays PENDING_REVIEW; [denyReason] says why. */
     val reviewStatus: String? = null,
     val approvedByAdminId: Int? = null,
     val deniedByAdminId: Int? = null,
@@ -91,6 +97,9 @@ fun Job.isExpiredTestAssignment(nowMillis: Long): Boolean {
         else -> false
     }
 }
+
+/** True once an admin has denied this job's payout (the job stays PENDING_REVIEW). */
+fun Job.isPayoutDenied(): Boolean = reviewStatus == "denied"
 
 /** Whether the dashboard should draw this assignment (map route, guidance line, card). */
 fun Job.isVisibleDashboardAssignment(nowMillis: Long): Boolean =

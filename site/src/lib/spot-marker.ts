@@ -40,7 +40,7 @@ export type SpotMarker = {
 }
 
 /** Normalise either storage shape — `[lng, lat]` or `{lat, lng}` — to `[lng, lat]`. */
-function toLngLat(raw: unknown): [number, number] {
+export function toLngLat(raw: unknown): [number, number] {
   if (Array.isArray(raw)) return [raw[0], raw[1]]
   if (raw && typeof raw === 'object') {
     const o = raw as Record<string, number | undefined>

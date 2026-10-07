@@ -16,6 +16,9 @@ enum class JobStatus {
 @Serializable
 enum class TransactionStatus {
     @SerialName("pending") PENDING,
+    /** jobs.payout_status while an approved payout's transfer is in flight
+     *  (site/src/lib/job-lifecycle.ts). Without it the value decoded to null. */
+    @SerialName("processing") PROCESSING,
     @SerialName("completed") COMPLETED,
     @SerialName("failed") FAILED,
     @SerialName("refunded") REFUNDED

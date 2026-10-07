@@ -25,9 +25,6 @@ data class FeedUiState(
     val comments: List<FeedComment> = emptyList(),
     val isLoadingComments: Boolean = false,
     val isPostingComment: Boolean = false,
-    // Caption state
-    val captionItemId: String? = null,
-    val isSavingCaption: Boolean = false,
 )
 
 class FeedViewModel(private val apiClient: GccApiClient) {
@@ -150,36 +147,6 @@ class FeedViewModel(private val apiClient: GccApiClient) {
                 )
             } catch (_: Exception) {
                 _uiState.value = _uiState.value.copy(isPostingComment = false)
-            }
-        }
-    }
-
-    // ── Captions ──────────────────────────────────────────────────────
-
-    fun startAddCaption(feedItemId: String) {
-        _uiState.value = _uiState.value.copy(captionItemId = feedItemId)
-    }
-
-    fun cancelCaption() {
-        _uiState.value = _uiState.value.copy(captionItemId = null)
-    }
-
-    fun saveCaption(text: String) {
-        val itemId = _uiState.value.captionItemId ?: return
-        scope.launch {
-            _uiState.value = _uiState.value.copy(isSavingCaption = true)
-            try {
-                val updated = apiClient.addFeedCaption(itemId, text)
-                _uiState.value = _uiState.value.copy(
-                    items = _uiState.value.items.map {
-                        if (it.id == itemId) it.copy(caption = updated.caption)
-                        else it
-                    },
-                    captionItemId = null,
-                    isSavingCaption = false,
-                )
-            } catch (_: Exception) {
-                _uiState.value = _uiState.value.copy(isSavingCaption = false)
             }
         }
     }

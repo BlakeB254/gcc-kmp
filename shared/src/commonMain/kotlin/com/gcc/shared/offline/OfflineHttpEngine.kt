@@ -64,7 +64,6 @@ private val adminBountyActionPattern = Regex("^/api/admin/bounties/(\\d+)/(close
 private val adminDisputeActionPattern = Regex("^/api/admin/disputes/(\\d+)/resolve$")
 private val adminJobStatusPattern = Regex("^/api/admin/jobs/(\\d+)/status$")
 private val bountyAcceptPattern = Regex("^/api/bounties/(\\d+)/accept$")
-private val spotVolunteerCompletePattern = Regex("^/api/spots/(\\d+)/volunteer/(\\d+)/complete$")
 private val adminSponsorIdPattern = Regex("^/api/admin/sponsors/(\\d+)$")
 
 /**
@@ -190,8 +189,6 @@ fun createOfflineHttpEngine(): MockEngine = MockEngine { request ->
             respondApi(json.encodeToString(SeedData.badges))
 
         // ── Spots / Volunteer ──────────────────────────────────
-        spotVolunteerCompletePattern.matches(path) ->
-            respondApi(json.encodeToString(SeedData.volunteerCleanup))
 
         spotVolunteerPattern.matches(path) ->
             respondApi(json.encodeToString(SeedData.volunteerCleanup))

@@ -342,7 +342,9 @@ class GccApiClient(
 
     // ── Worker Profile ────────────────────────────────────────────────
 
-    suspend fun updateDisplayHandle(handle: String): Worker =
+    /** The server returns only `{displayHandle}` (workers/me/handle/route.ts),
+     *  not a Worker — decoding a Worker failed after a successful save. */
+    suspend fun updateDisplayHandle(handle: String): DisplayHandleResponse =
         patchJson("/api/workers/me/handle", mapOf("handle" to handle))
 
     // ── Account Settings ──────────────────────────────────────────────
@@ -401,19 +403,11 @@ class GccApiClient(
     suspend fun createBounty(request: CreateBountyRequest): Bounty =
         postJson("/api/bounties", request)
 
-    suspend fun acceptBounty(bountyId: Int): Bounty =
-        postJson("/api/bounties/$bountyId/accept")
-
     // ── Wallet ────────────────────────────────────────────────────────
-
-    suspend fun getWallet(): SponsorWallet =
-        get("/api/wallet")
-
-    suspend fun depositToWallet(amountCents: Int, fundType: String = "general"): SponsorWallet =
-        postJson("/api/wallet/deposit", mapOf("amount" to amountCents.toString(), "fundType" to fundType))
-
-    suspend fun allocateWalletFunds(general: Int, route: Int, bounty: Int): SponsorWallet =
-        postJson("/api/wallet/allocate", mapOf("general" to general.toString(), "route" to route.toString(), "bounty" to bounty.toString()))
+    // No sponsor-wallet balance/deposit/allocate calls: /api/wallet is a
+    // zeroed stub and /deposit, /allocate return 501. The worker's real
+    // balance is getWorkerWallet() (/api/workers/me/wallet). Bounty
+    // accept/claim (501 stubs) are likewise not called.
 
     suspend fun getWalletTransactions(limit: Int = 50, offset: Int = 0): List<WalletTransaction> =
         get("/api/wallet/transactions") {
@@ -443,12 +437,6 @@ class GccApiClient(
 
     suspend fun addFeedComment(feedItemId: String, text: String): FeedComment =
         postJson("/api/feed/$feedItemId/comments", mapOf("text" to text))
-
-    suspend fun addFeedCaption(feedItemId: String, caption: String): FeedItem =
-        patchJson<Map<String, String>, FeedItem>(
-            "/api/feed/$feedItemId/caption",
-            mapOf("caption" to caption),
-        )
 
     suspend fun optInFeedProfile(feedItemId: String): FeedItem =
         postJson("/api/feed/$feedItemId/opt-in-profile")
@@ -1044,9 +1032,6 @@ class GccApiClient(
     suspend fun getAdminBounties(): List<Bounty> =
         get("/api/admin/bounties")
 
-    suspend fun claimBounty(bountyId: Int): Bounty =
-        postJson("/api/bounties/$bountyId/claim")
-
     // Community Spot Reports
     suspend fun getAdminSpotReports(): List<CommunityReport> =
         get("/api/admin/spots")
@@ -1157,16 +1142,22 @@ class GccApiClient(
     suspend fun startVolunteerCleanup(reportId: Int, request: StartVolunteerRequest): VolunteerCleanup =
         postJson("/api/spots/$reportId/volunteer", request)
 
+    /** Completion is the same route with a `complete` query flag
+     *  (site/src/app/api/spots/[id]/volunteer/route.ts). There is no
+     *  `/volunteer/complete` path — posting there 404'd every completion. */
     suspend fun completeVolunteerCleanup(reportId: Int, request: CompleteVolunteerRequest): VolunteerCleanup =
-        postJson("/api/spots/$reportId/volunteer/complete", request)
+        postJson("/api/spots/$reportId/volunteer", request) { parameter("complete", "") }
 
     // Admin: Create spot report
     suspend fun createAdminSpot(request: CreateSpotRequest): SpotResponse =
         postJson("/api/admin/spots", request)
 
     // Admin: Update spot report status (resolve, verify, reject)
-    suspend fun updateSpotStatus(spotId: Int, status: String) =
-        patchJson<Map<String, String>, Map<String, Any>>(
+    /** PATCH /api/spots/{id} returns `{data: {id, status}}` (spots/[id]/route.ts).
+     *  The old `Map<String, Any>` result has no serializer and threw after the
+     *  status had already changed. */
+    suspend fun updateSpotStatus(spotId: Int, status: String): SpotUpdateResponse =
+        patchJson<Map<String, String>, SpotUpdateResponse>(
             "/api/spots/$spotId",
             mapOf("status" to status),
         )
@@ -1209,10 +1200,10 @@ class GccApiClient(
         postJson("/api/crashes/diagnostics", diagnostic)
 
     // Admin: Add photos to an existing spot report
-    suspend fun addSpotPhotos(spotId: Int, newUrls: List<String>): CommunityReport =
-        patchJson<Map<String, Any>, CommunityReport>(
+    suspend fun addSpotPhotos(spotId: Int, newUrls: List<String>): SpotUpdateResponse =
+        patchJson<AddSpotMediaRequest, SpotUpdateResponse>(
             "/api/spots/$spotId",
-            mapOf("addMediaUrls" to newUrls),
+            AddSpotMediaRequest(addMediaUrls = newUrls),
         )
 
     // ── Spot Verification Lifecycle ──────────────────────────────────
@@ -1431,9 +1422,15 @@ class GccApiClient(
         governmentIdUrl: String,
         proofOfAddressUrl: String,
     ) {
-        postUnit("/api/workers/me/verification") {
+        // Not postUnit: that swallows every non-2xx except 401, so a 400
+        // ("Invalid document reference") used to read as a successful submit.
+        val response = httpClient.post("$baseUrl/api/workers/me/verification") {
             contentType(ContentType.Application.Json)
             setBody(VerificationDocumentSubmission(governmentIdUrl, proofOfAddressUrl))
+        }
+        if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
+            throw Exception(httpErrorMessage(response.status.value, response.bodyAsText()))
         }
     }
 
@@ -1492,6 +1489,16 @@ data class PendingReview(
     val scanDepthAvailable: Boolean = false,
     val completedAt: String?,
 )
+
+@Serializable
+data class DisplayHandleResponse(val displayHandle: String? = null)
+
+/** `{data: {id, status}}` from PATCH /api/spots/{id}. */
+@Serializable
+data class SpotUpdateResponse(val id: Int, val status: String? = null)
+
+@Serializable
+data class AddSpotMediaRequest(val addMediaUrls: List<String>)
 
 @Serializable
 data class ApproveJobResponse(

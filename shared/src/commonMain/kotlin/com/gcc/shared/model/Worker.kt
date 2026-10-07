@@ -47,10 +47,12 @@ data class Worker(
 
 @Serializable
 data class WorkerAddress(
-    val street: String,
-    val city: String = "",
-    val state: String = "",
-    val zip: String,
+    val street: String = "",
+    /** Null when the worker has not given one — the server no longer
+     *  substitutes Chicago/IL (lib/worker-mapper.ts). */
+    val city: String? = null,
+    val state: String? = null,
+    val zip: String = "",
     val neighborhood: String? = null,
     val isNorthLawndale: Boolean? = null,
     val latitude: Double? = null,

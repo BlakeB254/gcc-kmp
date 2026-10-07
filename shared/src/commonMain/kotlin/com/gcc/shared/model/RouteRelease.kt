@@ -6,6 +6,7 @@ import com.gcc.shared.serialization.LenientInstantSerializer
 import kotlinx.serialization.UseSerializers
 
 import kotlinx.datetime.Instant
+import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -99,10 +100,17 @@ data class AdminReleaseBatchDetailDto(
 /** Body of PATCH /api/admin/route-releases/{id} — edit fields, or action=cancel. */
 @Serializable
 data class UpdateReleaseBatchRequest(
+    // Omit unset fields: GccJson encodes defaults, and the PATCH handler treats
+    // any present key as supplied — `"offerWindowMinutes": null` became
+    // Number(null) = 0 and every non-cancel edit failed with 400.
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
     val name: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
     val releaseAt: Instant? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
     val offerWindowMinutes: Int? = null,
     /** Set to "cancel" to cancel the batch (cancels open slots + pending offers). */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
     val action: String? = null,
 )
 

@@ -30,6 +30,8 @@ export async function GET(request: Request) {
         unpublishAt: routes.unpublishAt,
         payoutAmount: routes.payoutAmount,
         imageUrl: routes.imageUrl,
+        imageLocationLat: routes.imageLocationLat,
+        imageLocationLng: routes.imageLocationLng,
         description: routes.description,
         createdAt: routes.createdAt,
         updatedAt: routes.updatedAt,
@@ -73,6 +75,10 @@ export async function GET(request: Request) {
       estimatedDurationMinutes: route.estimatedMinutes ? Math.round(parseFloat(route.estimatedMinutes)) : null,
       payoutAmount: Math.round(parseFloat(route.payoutAmount || '10000')),
       imageUrl: route.imageUrl || null,
+      // The route-detail screen reads these from this list; without them a
+      // saved photo location vanished on reload.
+      imageLocationLat: route.imageLocationLat ?? null,
+      imageLocationLng: route.imageLocationLng ?? null,
       description: route.description || null,
       blockId: blockIdMap.get(route.id) ?? null,
       // The list rows show boundary status — without this the mobile

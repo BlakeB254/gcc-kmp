@@ -554,8 +554,8 @@ export const jobs = pgTable('jobs', {
   completedAt: timestamp('completed_at', { mode: 'string', withTimezone: true }),
 
   // Photos and evidence
-  beforePhotos: jsonb('before_photos'), // Array of media IDs
-  afterPhotos: jsonb('after_photos'), // Array of media IDs
+  beforePhotos: jsonb('before_photos'), // Array of {url, capturedAt} (PATCH /api/jobs/:id/evidence); legacy rows: media ids — read via lib/job-evidence.ts
+  afterPhotos: jsonb('after_photos'), // same shape as beforePhotos
   gpsPath: jsonb('gps_path'), // GeoJSON LineString
 
   // Payout

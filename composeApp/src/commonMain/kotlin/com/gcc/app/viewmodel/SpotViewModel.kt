@@ -1586,23 +1586,6 @@ class SpotViewModel(
         }
     }
 
-    fun acceptBounty(bountyId: Int) {
-        scope.launch {
-            _uiState.value = _uiState.value.copy(error = null)
-            try {
-                apiClient.acceptBounty(bountyId)
-                // Remove accepted bounty from list
-                _uiState.value = _uiState.value.copy(
-                    matchingBounties = _uiState.value.matchingBounties.filter { it.id != bountyId },
-                )
-            } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    error = e.message ?: "Failed to accept bounty",
-                )
-            }
-        }
-    }
-
     fun createBountyForSubmittedSpot(amountDollars: Int) {
         scope.launch {
             val report = _uiState.value.submittedReport ?: return@launch

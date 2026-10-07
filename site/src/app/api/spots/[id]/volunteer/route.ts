@@ -1,7 +1,9 @@
 /**
  * Volunteer Cleanup API
  * POST /api/spots/:id/volunteer          - Start cleanup (before photos, sets status to acknowledged)
- * POST /api/spots/:id/volunteer?complete  - Complete cleanup (after photos, resolves)
+ * POST /api/spots/:id/volunteer?complete  - Complete cleanup (after photos, resolves).
+ *   This is the completion route the app calls (GccApiClient.completeVolunteerCleanup);
+ *   there is no /volunteer/complete path.
  * POST /api/spots/:id/volunteer?already-clean - Report spot already cleaned (awards report bonus)
  */
 import { NextRequest, NextResponse } from 'next/server'
@@ -10,6 +12,7 @@ import { communityReports, pointsLedger, workers } from '@/db/schema'
 import { eq, sql } from 'drizzle-orm'
 import { verifyMobileToken } from '@/lib/mobile-auth'
 import { recordWorldObservation } from '@/lib/world-observations'
+import { toLngLat } from '@/lib/spot-marker'
 
 export const dynamic = 'force-dynamic'
 
@@ -179,8 +182,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
         })
       }
 
-      // Fetch coordinates from original report
-      const coords = report.coordinates as [number, number] | null
+      // Either storage shape ([lng, lat] or {lat, lng}). Indexing an object
+      // row as a tuple left locationLat/locationLng undefined, so they were
+      // dropped from the JSON and the app failed to decode the response.
+      const [lng, lat] = toLngLat(report.coordinates)
 
       return NextResponse.json({
         data: {
@@ -191,8 +196,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
           afterMediaUrls: afterMediaUrls || [],
           trashHeapMediaUrl: trashHeapMediaUrl || null,
           aiTrashAnalysis: null,
-          locationLat: coords ? coords[1] : 0,
-          locationLng: coords ? coords[0] : 0,
+          locationLat: lat,
+          locationLng: lng,
           locationVerified: true,
           startedAt: report.updatedAt,
           completedAt: new Date().toISOString(),
@@ -244,7 +249,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       })
       .where(eq(communityReports.id, spotId))
 
-    const coords = report.coordinates as [number, number] | null
+    const [lng, lat] = toLngLat(report.coordinates)
 
     return NextResponse.json({
       data: {
@@ -255,8 +260,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
         afterMediaUrls: [],
         trashHeapMediaUrl: null,
         aiTrashAnalysis: null,
-        locationLat: coords ? coords[1] : 0,
-        locationLng: coords ? coords[0] : 0,
+        locationLat: lat,
+        locationLng: lng,
         locationVerified: false,
         startedAt: new Date().toISOString(),
         completedAt: null,
@@ -268,6 +273,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
         createdAt: report.createdAt,
         updatedAt: new Date().toISOString(),
       },
+      success: true,
+      message: null,
     })
   } catch (error) {
     console.error('Volunteer cleanup error:', error)

@@ -741,11 +741,17 @@ private fun WorkerInfoCard(worker: Worker) {
             Text(worker.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             InfoRow("Email", worker.email)
             InfoRow("Phone", worker.phone)
-            InfoRow("Address", buildString {
-                if (worker.address.street.isNotBlank()) append("${worker.address.street}, ")
-                append("${worker.address.city}, ${worker.address.state}")
-                if (worker.address.zip.isNotBlank()) append(" ${worker.address.zip}")
-            })
+            InfoRow(
+                "Address",
+                listOfNotNull(
+                    worker.address.street.takeIf { it.isNotBlank() },
+                    listOfNotNull(worker.address.city, worker.address.state)
+                        .filter { it.isNotBlank() }
+                        .joinToString(", ")
+                        .takeIf { it.isNotBlank() },
+                    worker.address.zip.takeIf { it.isNotBlank() },
+                ).joinToString(", ").ifBlank { "—" },
+            )
             InfoRow("Role", worker.role)
             InfoRow("Tier", worker.earlyAdopterTier.name.lowercase().replaceFirstChar { it.uppercase() })
             InfoRow("Jobs Completed", worker.stats.jobsCompleted.toString())
@@ -790,6 +796,9 @@ private fun PointsHistoryRow(entry: PointsLedgerEntry) {
         PointsAction.SCAN_COVERAGE_NEW_AREA -> "New area scanned"
         PointsAction.SCAN_COVERAGE_STALE -> "Stale area rescanned"
         PointsAction.SCAN_COVERAGE_RECTIFICATION -> "Coverage rectified"
+        PointsAction.SCAN_COVERAGE_CLOSE_UPGRADE -> "Close-up scan"
+        PointsAction.OBSERVATION_LOGGED -> "Scan logged"
+        PointsAction.CIVIC_CAPTURE -> "311 evidence"
     }
     Row(
         modifier = Modifier

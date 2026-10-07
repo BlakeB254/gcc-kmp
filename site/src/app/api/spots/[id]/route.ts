@@ -1,5 +1,7 @@
 /**
  * Spot Report Management API
+ * GET    /api/spots/:id - One spot report (CommunityReport shape; the app's
+ *                         verification + volunteer-cleanup screens load it)
  * PATCH  /api/spots/:id - Update spot status (resolve, verify, reject)
  * DELETE /api/spots/:id - Delete a spot report (admin only)
  */
@@ -8,6 +10,7 @@ import { db } from '@/db'
 import { communityReports } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { verifyMobileToken } from '@/lib/mobile-auth'
+import { toCommunityReport } from '@/lib/spot-utils'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,6 +20,53 @@ async function requireAuth(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
   if (!authHeader?.startsWith('Bearer ')) return null
   return verifyMobileToken(authHeader.substring(7))
+}
+
+const PUBLIC_SPOT_STATUSES = new Set(['pending', 'verified', 'acknowledged'])
+
+/** Mirrors the map list's WHERE in GET /api/spots. */
+export function isPubliclyVisibleSpot(
+  row: { showOnMap: boolean | null; status: string | null; mapExpiresAt: string | Date | null },
+  now: Date,
+): boolean {
+  if (row.showOnMap === false) return false
+  if (!row.status || !PUBLIC_SPOT_STATUSES.has(row.status)) return false
+  if (row.mapExpiresAt && new Date(row.mapExpiresAt) <= now) return false
+  return true
+}
+
+export async function GET(request: NextRequest, context: RouteContext) {
+  try {
+    const auth = await requireAuth(request)
+    if (!auth) {
+      return NextResponse.json({ data: null, success: false, message: 'Authorization required' }, { status: 401 })
+    }
+
+    const { id } = await context.params
+    const spotId = parseInt(id, 10)
+    if (isNaN(spotId)) {
+      return NextResponse.json({ data: null, success: false, message: 'Invalid spot ID' }, { status: 400 })
+    }
+
+    const [row] = await db
+      .select()
+      .from(communityReports)
+      .where(eq(communityReports.id, spotId))
+      .limit(1)
+    // Same visibility as the public list (GET /api/spots): a hidden, rejected,
+    // resolved or expired report is only readable by its reporter or an admin.
+    // Anyone else gets the same 404 as a missing id, so ids can't be probed.
+    const visible = row ? isPubliclyVisibleSpot(row, new Date()) : false
+    const ownReport = !!row && row.reporterType === 'worker' && row.reporterId === auth.workerId
+    if (!row || !(visible || ownReport || auth.role === 'admin')) {
+      return NextResponse.json({ data: null, success: false, message: 'Spot report not found' }, { status: 404 })
+    }
+
+    return NextResponse.json({ data: toCommunityReport(row), success: true, message: null })
+  } catch (error) {
+    console.error('GET /api/spots/[id] error:', error)
+    return NextResponse.json({ data: null, success: false, message: 'Failed to load spot' }, { status: 500 })
+  }
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext) {

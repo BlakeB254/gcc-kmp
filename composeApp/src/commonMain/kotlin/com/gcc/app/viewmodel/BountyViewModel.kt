@@ -16,8 +16,6 @@ data class BountyListUiState(
     val isRefreshing: Boolean = false,
     val error: String? = null,
     val selectedBounty: Bounty? = null,
-    val isClaimingBounty: Boolean = false,
-    val claimError: String? = null,
     val isCreating: Boolean = false,
     val createError: String? = null,
 )
@@ -72,34 +70,6 @@ class BountyViewModel(
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     error = e.message ?: "Failed to load bounty",
-                )
-            }
-        }
-    }
-
-    fun claimBounty(bountyId: Int) {
-        scope.launch {
-            _uiState.value = _uiState.value.copy(isClaimingBounty = true, claimError = null)
-            try {
-                val bounty = apiClient.claimBounty(bountyId)
-                _uiState.value = _uiState.value.copy(
-                    selectedBounty = bounty,
-                    isClaimingBounty = false,
-                )
-                // Refresh the bounties list so claimed bounty disappears from open list
-                refresh()
-            } catch (e: Exception) {
-                val message = e.message ?: "Failed to claim bounty"
-                val claimError = if (message.contains("409") || message.contains("Conflict")) {
-                    "Someone else got there first!"
-                } else if (message.contains("403") || message.contains("Forbidden")) {
-                    "You're not authorized to claim this bounty"
-                } else {
-                    message
-                }
-                _uiState.value = _uiState.value.copy(
-                    isClaimingBounty = false,
-                    claimError = claimError,
                 )
             }
         }

@@ -42,7 +42,6 @@ fun WalletScreen(
     val uiState by viewModel.uiState.collectAsState()
 
     LaunchedEffect(Unit) {
-        viewModel.loadWallet()
         viewModel.loadTransactions()
         viewModel.loadConnectStatus()
         viewModel.loadPayoutMethod()
@@ -115,26 +114,7 @@ fun WalletScreen(
             )
         },
     ) { padding ->
-        if (uiState.isLoading) {
-            Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center,
-            ) {
-                CircularProgressIndicator(color = GccGreen)
-            }
-        } else if (uiState.wallet == null && uiState.error != null) {
-            Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Could not load wallet", color = TextMuted)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(uiState.error!!, style = MaterialTheme.typography.bodySmall, color = GccError)
-                }
-            }
-        } else {
-            val wallet = uiState.wallet
+        run {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -273,80 +253,6 @@ fun WalletScreen(
                     }
                 }
 
-                // ── Sponsor funds ──
-                // Total balance
-                if (wallet != null) {
-                    item {
-                        val totalDollars = wallet.totalBalance / 100
-                        val totalCents = wallet.totalBalance % 100
-                        GccCard(accentColor = CardAccentGreen, elevation = 4.dp) {
-                            Text(
-                                "Sponsor Balance",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = TextMuted,
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                "$$totalDollars.${totalCents.padTwo()}",
-                                style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
-                                color = GccGreen,
-                            )
-                        }
-                    }
-
-                    // Fund breakdown
-                    item {
-                        SectionHeader(title = "Sponsor Funds")
-                    }
-
-                    item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            StatCard(
-                                value = formatCents(wallet.generalFundBalance),
-                                label = "General",
-                                accentColor = CardAccentGreen,
-                                modifier = Modifier.weight(1f),
-                            )
-                            StatCard(
-                                value = formatCents(wallet.routeFundBalance),
-                                label = "Route",
-                                accentColor = CardAccentBlue,
-                                modifier = Modifier.weight(1f),
-                            )
-                            StatCard(
-                                value = formatCents(wallet.bountyFundBalance),
-                                label = "Bounty",
-                                accentColor = CardAccentSky,
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-                    }
-
-                    // Lifetime stats
-                    item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            StatCard(
-                                value = formatCents(wallet.totalDeposited),
-                                label = "Deposited",
-                                accentColor = CardAccentGreen,
-                                modifier = Modifier.weight(1f),
-                            )
-                            StatCard(
-                                value = formatCents(wallet.totalSpent),
-                                label = "Spent",
-                                accentColor = CardAccentRed,
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-                    }
-                }
-
                 // Sponsor actions
                 item {
                     SectionHeader(title = "Sponsor Cleaning")
@@ -414,67 +320,25 @@ fun WalletScreen(
                     }
                 }
 
-                // Deposit section
+                // Adding / allocating sponsor funds from the app is not built
+                // on the server yet (/api/wallet/deposit and /allocate are 501
+                // stubs) — say so instead of failing on tap.
                 item {
                     SectionHeader(title = "Add Funds")
                 }
 
                 item {
                     GccCard {
-                        OutlinedTextField(
-                            value = uiState.depositAmount,
-                            onValueChange = { value ->
-                                if (value.matches(DECIMAL_INPUT_REGEX)) {
-                                    viewModel.updateDepositAmount(value)
-                                }
-                            },
-                            label = { Text("Amount") },
-                            placeholder = { Text("Enter amount") },
-                            prefix = { Text("$ ") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = GccGreen,
-                                cursorColor = GccGreen,
-                            ),
+                        Text(
+                            "Coming soon",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                         )
-
-                        uiState.depositError?.let { error ->
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(error, style = MaterialTheme.typography.bodySmall, color = GccError)
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        GccButton(
-                            text = "Deposit",
-                            onClick = {
-                                parseDollarsToCents(uiState.depositAmount)?.let { cents ->
-                                    if (cents > 0) viewModel.deposit(cents)
-                                }
-                            },
-                            variant = GccButtonVariant.PRIMARY,
-                            enabled = !uiState.isDepositing && (parseDollarsToCents(uiState.depositAmount) ?: 0) > 0,
-                            isLoading = uiState.isDepositing,
-                        )
-                    }
-                }
-
-                // Allocate section
-                if (wallet != null && wallet.generalFundBalance > 0) {
-                    item {
-                        SectionHeader(title = "Allocate Funds")
-                    }
-
-                    item {
-                        AllocateFundsSection(
-                            generalBalance = wallet.generalFundBalance,
-                            isAllocating = uiState.isAllocating,
-                            allocateError = uiState.allocateError,
-                            onAllocate = { general, route, bounty ->
-                                viewModel.allocateFunds(general, route, bounty)
-                            },
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "Adding sponsor funds from the app isn't available yet. " +
+                                "Use Sponsor Block or Post Bounty above to fund cleanups today.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted,
                         )
                     }
                 }
@@ -1353,85 +1217,6 @@ private fun TimePreferencePicker(
 }
 
 // ── Existing Composables ──────────────────────────────────────────────
-
-@Composable
-private fun AllocateFundsSection(
-    generalBalance: Int,
-    isAllocating: Boolean,
-    allocateError: String?,
-    onAllocate: (general: Int, route: Int, bounty: Int) -> Unit,
-) {
-    var routeAmount by remember { mutableStateOf("") }
-    var bountyAmount by remember { mutableStateOf("") }
-
-    GccCard {
-        Text(
-            "Move funds from General to Route or Bounty",
-            style = MaterialTheme.typography.bodySmall,
-            color = TextMuted,
-        )
-        Text(
-            "Available: ${formatCents(generalBalance)}",
-            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-            color = GccGreen,
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            OutlinedTextField(
-                value = routeAmount,
-                onValueChange = { if (it.matches(DECIMAL_INPUT_REGEX)) routeAmount = it },
-                label = { Text("Route") },
-                prefix = { Text("$ ") },
-                placeholder = { Text("0.00") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                modifier = Modifier.weight(1f),
-                singleLine = true,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = GccBlue,
-                    cursorColor = GccBlue,
-                ),
-            )
-            OutlinedTextField(
-                value = bountyAmount,
-                onValueChange = { if (it.matches(DECIMAL_INPUT_REGEX)) bountyAmount = it },
-                label = { Text("Bounty") },
-                prefix = { Text("$ ") },
-                placeholder = { Text("0.00") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                modifier = Modifier.weight(1f),
-                singleLine = true,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = GccSky,
-                    cursorColor = GccSky,
-                ),
-            )
-        }
-
-        allocateError?.let { error ->
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(error, style = MaterialTheme.typography.bodySmall, color = GccError)
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        val routeVal = parseDollarsToCents(routeAmount) ?: 0
-        val bountyVal = parseDollarsToCents(bountyAmount) ?: 0
-        val totalAllocate = routeVal + bountyVal
-        val remaining = generalBalance - totalAllocate
-
-        GccButton(
-            text = "Allocate",
-            onClick = { onAllocate(remaining.coerceAtLeast(0), routeVal, bountyVal) },
-            variant = GccButtonVariant.SECONDARY,
-            enabled = !isAllocating && totalAllocate > 0 && totalAllocate <= generalBalance,
-            isLoading = isAllocating,
-        )
-    }
-}
 
 @Composable
 private fun TransactionListItem(

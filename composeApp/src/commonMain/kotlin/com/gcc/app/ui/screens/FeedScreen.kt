@@ -97,15 +97,6 @@ fun FeedScreen(
         }
     }
 
-    // Caption input dialog
-    if (uiState.captionItemId != null) {
-        CaptionDialog(
-            isSaving = uiState.isSavingCaption,
-            onSave = { viewModel.saveCaption(it) },
-            onDismiss = { viewModel.cancelCaption() },
-        )
-    }
-
     Scaffold(
         contentWindowInsets = WindowInsets(0),
         topBar = {
@@ -291,7 +282,6 @@ fun FeedScreen(
                         FeedCard(
                             item = item,
                             onCommentTap = { viewModel.openComments(item.id) },
-                            onCaptionTap = { viewModel.startAddCaption(item.id) },
                             onOptInProfile = { viewModel.optInProfile(item.id) },
                             modifier = Modifier.padding(horizontal = 13.dp),
                         )
@@ -377,7 +367,6 @@ private fun FilterChipsRow(
 private fun FeedCard(
     item: FeedItem,
     onCommentTap: () -> Unit = {},
-    onCaptionTap: () -> Unit = {},
     onOptInProfile: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -604,21 +593,9 @@ private fun FeedCard(
                 }
             }
 
-            // Caption prompt for user's own events
-            if (item.caption == null && item.actorId != null) {
-                Surface(
-                    onClick = onCaptionTap,
-                    shape = RoundedCornerShape(6.dp),
-                    color = Color.Transparent,
-                ) {
-                    Text(
-                        "\u270F\uFE0F Add a caption...",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = GccGreen,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    )
-                }
-            }
+            // No "Add a caption" prompt: the server has no caption endpoint
+            // (PATCH /api/feed/{id}/caption never existed — every save 404'd).
+            // Captions already on an item still render above.
 
             // Profile opt-in prompt (1-click)
             if (!item.actorProfileVisible && item.actorId != null) {
@@ -1189,64 +1166,6 @@ private fun CommentSheet(
             }
         }
     }
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Caption Dialog
-// ─────────────────────────────────────────────────────────────────────
-
-@Composable
-private fun CaptionDialog(
-    isSaving: Boolean,
-    onSave: (String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var captionText by remember { mutableStateOf("") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add Your Caption") },
-        text = {
-            Column {
-                Text(
-                    "Share what this moment meant to you.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextMuted,
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = captionText,
-                    onValueChange = { captionText = it },
-                    placeholder = { Text("Your story...") },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 2,
-                    maxLines = 4,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = GccGreen,
-                        cursorColor = GccGreen,
-                    ),
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { if (captionText.isNotBlank()) onSave(captionText.trim()) },
-                enabled = captionText.isNotBlank() && !isSaving,
-                colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
-            ) {
-                if (isSaving) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
-                } else {
-                    Text("Save")
-                }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = TextMuted)
-            }
-        },
-    )
 }
 
 // ─────────────────────────────────────────────────────────────────────

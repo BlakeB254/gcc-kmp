@@ -3,6 +3,7 @@ import { asc, eq } from 'drizzle-orm'
 import { db } from '@/db'
 import { workers, verificationStatusEnum } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin-auth'
+import { roleFor } from '@/lib/mobile-auth'
 
 export async function GET(request: Request) {
   const auth = await requireAdmin(request)
@@ -55,7 +56,8 @@ export async function GET(request: Request) {
         lastJobAt: w.statsLastJobAt ? new Date(w.statsLastJobAt).toISOString() : null,
       },
       earlyAdopterTier: w.earlyAdopterTier || 'standard',
-      role: 'worker',
+      // Same rule as the session token — the admin badge never showed when hard-coded.
+      role: roleFor({ email: w.email, emailVerified: w.emailVerified }),
       referralCode: w.referralCode,
       notifications: {
         pushEnabled: w.notificationsPushEnabled ?? false,

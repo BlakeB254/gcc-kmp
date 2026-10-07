@@ -13,6 +13,12 @@ function toIso(value: string | Date | null | undefined): string | null {
   return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString()
 }
 
+function combinedPhotos(before: unknown, after: unknown): unknown[] | null {
+  const b = Array.isArray(before) ? before : []
+  const a = Array.isArray(after) ? after : []
+  return b.length + a.length > 0 ? [...b, ...a] : null
+}
+
 export function toMobileJob(job: JobRow, routeId: number | null = null) {
   const createdAt = toIso(job.createdAt) ?? new Date().toISOString()
   const updatedAt = toIso(job.updatedAt) ?? createdAt
@@ -29,10 +35,24 @@ export function toMobileJob(job: JobRow, routeId: number | null = null) {
       completedAt: toIso(job.completedAt),
       durationMinutes: null,
     },
-    photos: job.beforePhotos ?? job.afterPhotos ?? null,
+    // Evidence entries are `{url, capturedAt}` objects (PATCH
+    // /api/jobs/:id/evidence). Before and after travel separately; the old
+    // single `photos` field sent `beforePhotos ?? afterPhotos`, so after-photos
+    // vanished whenever before-photos existed. `photos` stays (before + after)
+    // for app builds that still read it.
+    beforePhotos: Array.isArray(job.beforePhotos) ? job.beforePhotos : null,
+    afterPhotos: Array.isArray(job.afterPhotos) ? job.afterPhotos : null,
+    photos: combinedPhotos(job.beforePhotos, job.afterPhotos),
     gpsPath: job.gpsPath ?? null,
     payoutAmount: job.payoutAmount ? Math.round(parseFloat(job.payoutAmount)) : null,
     payoutStatus: job.payoutStatus ?? null,
+    // Admin review of a paid completion (pending_review → approve/deny).
+    // A denied job stays pending_review with reviewStatus 'denied'.
+    reviewStatus: job.reviewStatus ?? null,
+    approvedByAdminId: job.approvedByAdminId ?? null,
+    deniedByAdminId: job.deniedByAdminId ?? null,
+    denyReason: job.denyReason ?? null,
+    reviewedAt: toIso(job.reviewedAt),
     rating: job.rating ? parseFloat(job.rating) : null,
     reviewNotes: job.ratingNotes ?? null,
     fundingSource: null,

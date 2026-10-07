@@ -25,6 +25,7 @@ import com.gcc.shared.geo.routePathCoordinates
 import com.gcc.shared.geo.routeStartCoordinates
 import com.gcc.shared.model.Job
 import com.gcc.shared.model.JobStatus
+import com.gcc.shared.model.isPayoutDenied
 import com.gcc.shared.model.TEST_ASSIGNMENT_START_WINDOW_MINUTES
 import com.gcc.shared.model.isTestAssignment
 import com.gcc.shared.model.testAssignmentStartDeadlineMillis
@@ -230,17 +231,28 @@ fun ActiveJobScreen(
                         // Job completed — show success. A paid job lands in
                         // PENDING_REVIEW until an admin approves the payout.
                         val inReview = uiState.job?.status == JobStatus.PENDING_REVIEW
-                        SectionHeader(title = if (inReview) "Submitted for review" else "Route Complete!")
+                        // An admin denial leaves the job PENDING_REVIEW with
+                        // reviewStatus "denied" and a reason the worker should see.
+                        val denied = inReview && uiState.job?.isPayoutDenied() == true
+                        SectionHeader(
+                            title = when {
+                                denied -> "Payout denied"
+                                inReview -> "Submitted for review"
+                                else -> "Route Complete!"
+                            },
+                        )
                         Spacer(modifier = Modifier.height(12.dp))
 
                         Text(
-                            if (inReview) {
-                                "Both laps submitted. Your payout lands in your wallet once an admin approves the job."
-                            } else {
-                                "Both laps submitted. Great work!"
+                            when {
+                                denied -> uiState.job?.denyReason?.takeIf { it.isNotBlank() }
+                                    ?.let { "An admin denied this job's payout: $it" }
+                                    ?: "An admin denied this job's payout."
+                                inReview -> "Both laps submitted. Your payout lands in your wallet once an admin approves the job."
+                                else -> "Both laps submitted. Great work!"
                             },
                             style = MaterialTheme.typography.bodyMedium,
-                            color = GccGreen,
+                            color = if (denied) GccError else GccGreen,
                         )
                         Spacer(modifier = Modifier.weight(1f))
 

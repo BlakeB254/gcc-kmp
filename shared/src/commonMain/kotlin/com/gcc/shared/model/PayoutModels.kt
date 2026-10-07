@@ -84,7 +84,9 @@ data class AdminPayout(
     val method: String,
     val status: String,
     val stripeTransferId: String? = null,
-    val initiatedByAdminId: Int = 0,
+    /** Null for worker-initiated cash-outs (no admin). GET /api/admin/payouts
+     *  still coalesces it to 0 for old builds; mark-mailed returns the raw row. */
+    val initiatedByAdminId: Int? = null,
     /** Set on worker-initiated cash-outs (wallet withdrawals). */
     val initiatedByWorkerId: Int? = null,
     val mailingAddress: MailingAddress? = null,

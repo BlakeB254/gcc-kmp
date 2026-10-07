@@ -3,6 +3,7 @@ import { and, eq, isNull, inArray } from 'drizzle-orm'
 import { db } from '@/db'
 import { jobs, workers, blocks, media, routeScans, scanHotspots } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin-auth'
+import { evidenceMediaIds, evidenceUrls } from '@/lib/job-evidence'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -42,13 +43,12 @@ export async function GET(request: Request) {
       return NextResponse.json({ data: [] })
     }
 
-    // 2. Collect all unique media IDs referenced by before/after photo arrays.
-    //    submit/route.ts stores these as integer arrays in jsonb columns.
+    // 2. Collect legacy integer media ids. Evidence written by
+    //    PATCH /api/jobs/:id/evidence is `{url, capturedAt}` objects and needs
+    //    no lookup — only old integer-id rows go through the media table.
     const allMediaIds: number[] = []
     for (const job of pendingJobs) {
-      const beforeIds = Array.isArray(job.beforePhotos) ? (job.beforePhotos as number[]) : []
-      const afterIds = Array.isArray(job.afterPhotos) ? (job.afterPhotos as number[]) : []
-      allMediaIds.push(...beforeIds, ...afterIds)
+      allMediaIds.push(...evidenceMediaIds(job.beforePhotos), ...evidenceMediaIds(job.afterPhotos))
     }
 
     // 3. Batch-resolve media IDs → URLs via the media table
@@ -118,9 +118,6 @@ export async function GET(request: Request) {
 
     // 5. Build the response payload
     const data = pendingJobs.map(job => {
-      const beforeIds = Array.isArray(job.beforePhotos) ? (job.beforePhotos as number[]) : []
-      const afterIds = Array.isArray(job.afterPhotos) ? (job.afterPhotos as number[]) : []
-
       const scanInfo =
         job.routeId !== null && job.routeId !== undefined
           ? (routeScanInfo.get(job.routeId) ?? { hasScan: false, scanDepthAvailable: false })
@@ -131,12 +128,8 @@ export async function GET(request: Request) {
         workerId: job.workerId ?? null,
         workerName: job.workerName ?? null,
         payoutAmount: job.payoutAmount !== null ? parseFloat(job.payoutAmount) : null,
-        beforePhotos: beforeIds
-          .map(id => mediaUrlMap.get(id))
-          .filter((url): url is string => url !== undefined),
-        afterPhotos: afterIds
-          .map(id => mediaUrlMap.get(id))
-          .filter((url): url is string => url !== undefined),
+        beforePhotos: evidenceUrls(job.beforePhotos, mediaUrlMap),
+        afterPhotos: evidenceUrls(job.afterPhotos, mediaUrlMap),
         hasScan: scanInfo.hasScan,
         scanDepthAvailable: scanInfo.scanDepthAvailable,
         completedAt: job.completedAt ?? null,

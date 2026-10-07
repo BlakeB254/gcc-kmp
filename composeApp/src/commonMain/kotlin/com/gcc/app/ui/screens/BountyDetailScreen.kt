@@ -309,30 +309,19 @@ fun BountyDetailScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                     }
-                    if (!hasSourceSpot) uiState.claimError?.let { error ->
-                        Text(
-                            error,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = GccError,
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                    }
 
+                    // A bounty with a source spot is worked through the volunteer
+                    // cleanup flow. Claiming one without a spot is a 501 stub on
+                    // the server (POST /api/bounties/{id}/claim), so the button is
+                    // disabled with "Coming soon" instead of failing on tap.
                     GccButton(
-                        text = if (hasSourceSpot) "Start Cleanup" else "Accept Bounty",
+                        text = if (hasSourceSpot) "Start Cleanup" else "Accept Bounty — coming soon",
                         onClick = {
-                            val reportId = bounty.triggerReportId
-                            if (reportId != null) {
-                                onVolunteerCleanup(reportId)
-                            } else {
-                                viewModel.claimBounty(bountyId)
-                            }
+                            bounty.triggerReportId?.let { onVolunteerCleanup(it) }
                         },
                         variant = GccButtonVariant.PRIMARY,
                         trailingText = if (hasSourceSpot && bounty.amount > 0) payoutString else null,
-                        enabled = !uiState.isClaimingBounty,
-                        isLoading = uiState.isClaimingBounty,
+                        enabled = hasSourceSpot,
                         modifier = Modifier.padding(horizontal = 16.dp),
                     )
                     if (hasSourceSpot) {

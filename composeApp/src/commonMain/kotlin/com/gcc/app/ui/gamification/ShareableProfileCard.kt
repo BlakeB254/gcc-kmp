@@ -95,8 +95,10 @@ fun ShareableProfileCard(
     // Member ranks text
     val ranksText = buildString {
         append("#${worker.signupRankings.global} nationally")
-        append(" \u00B7 ") // middle dot
-        append("#${worker.signupRankings.state} in ${worker.address.state}")
+        worker.address.state?.takeIf { it.isNotBlank() }?.let { state ->
+            append(" \u00B7 ") // middle dot
+            append("#${worker.signupRankings.state} in $state")
+        }
         worker.address.neighborhood?.let { neighborhood ->
             append(" \u00B7 ")
             append("#${worker.signupRankings.neighborhood} in $neighborhood")

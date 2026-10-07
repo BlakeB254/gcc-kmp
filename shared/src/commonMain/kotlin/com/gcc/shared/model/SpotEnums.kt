@@ -61,7 +61,12 @@ enum class PointsAction {
     @SerialName("bug_report") BUG_REPORT,
     @SerialName("scan_coverage_new_area") SCAN_COVERAGE_NEW_AREA,
     @SerialName("scan_coverage_stale") SCAN_COVERAGE_STALE,
+    @SerialName("scan_coverage_close_upgrade") SCAN_COVERAGE_CLOSE_UPGRADE,
     @SerialName("scan_coverage_rectification") SCAN_COVERAGE_RECTIFICATION,
+    // Written by lib/spot-utils.ts (scan submissions) and civic/evidence. Missing
+    // here, a single such ledger row failed the whole points summary decode.
+    @SerialName("observation_logged") OBSERVATION_LOGGED,
+    @SerialName("civic_capture") CIVIC_CAPTURE,
 }
 
 @Serializable
