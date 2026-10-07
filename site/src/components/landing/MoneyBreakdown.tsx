@@ -95,8 +95,7 @@ export function MoneyBreakdown() {
   return (
     <div 
       ref={containerRef}
-      className="mx-auto lg:mx-0 max-w-xs lg:max-w-sm bg-brand-green-950 border border-brand-green-700/80 rounded-3xl p-8 shadow-2xl relative overflow-hidden"
-      style={{ height: '420px' }} // reserve height to prevent layout shift
+      className="mx-auto lg:mx-0 w-full max-w-sm bg-brand-green-950 border border-brand-green-700/80 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden"
     >
       {/* Subtle background pattern for life */}
       {!reducedMotion && (
@@ -114,9 +113,10 @@ export function MoneyBreakdown() {
           <p className="text-brand-green-400 text-sm mt-1">Every donation. Every time.</p>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-6 relative">
+        {/* Stacked: the panel is at most max-w-sm wide, too narrow for the two cards side by side. */}
+        <div className="flex flex-col gap-3 relative">
           {/* Sponsor Pays */}
-          <div className="flex-1 bg-white/5 backdrop-blur-xl border border-brand-green-600 rounded-2xl p-6 text-center group">
+          <div className="relative bg-white/5 backdrop-blur-xl border border-brand-green-600 rounded-2xl p-6 text-center group">
             <div className="flex justify-center mb-4">
               <div className="w-11 h-11 rounded-2xl bg-brand-green-900 flex items-center justify-center border border-brand-green-700">
                 <Users className="w-6 h-6 text-brand-green-400" />
@@ -141,7 +141,7 @@ export function MoneyBreakdown() {
           </div>
 
           {/* Flow connector */}
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 flex flex-col items-center pointer-events-none sm:relative sm:left-auto sm:top-auto sm:translate-x-0 sm:translate-y-0 sm:flex-row sm:gap-2">
+          <div className="flex items-center justify-center gap-1 pointer-events-none" aria-hidden="true">
             <div className="relative flex items-center justify-center w-16 h-16">
               {/* Flowing path SVG */}
               <svg 
@@ -179,11 +179,11 @@ export function MoneyBreakdown() {
                 </>
               )}
             </div>
-            <ArrowRight className="w-6 h-6 text-brand-green-400 -rotate-12 sm:rotate-0 transition-transform" />
+            <ArrowRight className="w-6 h-6 text-brand-green-400 rotate-90" />
           </div>
 
           {/* Neighbor Earns */}
-          <div className="flex-1 bg-gradient-to-br from-brand-green-600 to-brand-green-700 border border-brand-green-400 rounded-2xl p-6 text-center text-white relative">
+          <div className="bg-gradient-to-br from-brand-green-600 to-brand-green-700 border border-brand-green-400 rounded-2xl p-6 text-center text-white relative">
             <div className="flex justify-center mb-4">
               <div className="w-11 h-11 rounded-2xl bg-white/20 flex items-center justify-center border border-white/30">
                 <CheckCircle2 className="w-6 h-6 text-white" />
@@ -226,10 +226,6 @@ export function MoneyBreakdown() {
         </div>
       </div>
 
-      {/* Continuous life indicator - pulsing ring around the flow */}
-      {!reducedMotion && isInView && (
-        <div className="absolute left-1/2 top-[38%] w-5 h-5 border border-brand-green-400/30 rounded-full -translate-x-1/2 animate-ping" style={{animationDuration: '3s'}} />
-      )}
     </div>
   )
 }
