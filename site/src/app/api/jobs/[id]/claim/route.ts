@@ -4,6 +4,7 @@ import { jobs } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { requireMobileAuth } from '@/lib/mobile-auth'
 import { routeIdsByBlockId, toMobileJob } from '@/lib/mobile-job-response'
+import { claimAvailableJob } from '@/lib/job-lifecycle'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -27,21 +28,18 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (!existing) {
       return NextResponse.json({ error: 'Job not found', success: false }, { status: 404 })
     }
-    if (existing.status !== 'available' && auth.role !== 'admin') {
+    if (existing.status !== 'available') {
       return NextResponse.json({ error: 'Job is not available', success: false }, { status: 409 })
     }
 
-    const now = new Date().toISOString()
-    const [updated] = await db
-      .update(jobs)
-      .set({
-        workerId: auth.workerId,
-        status: 'claimed',
-        claimedAt: now,
-        updatedAt: now,
-      })
-      .where(eq(jobs.id, jobId))
-      .returning()
+    // Conditional on status='available' so two concurrent claims can't both
+    // win (the read above is only for the 404/clear message). Admins no
+    // longer bypass availability: reassigning a taken job is
+    // /api/admin/jobs/[id]/reassign.
+    const updated = await claimAvailableJob(db, jobId, auth.workerId, new Date().toISOString())
+    if (!updated) {
+      return NextResponse.json({ error: 'Job was just claimed by someone else', success: false }, { status: 409 })
+    }
 
     const routeMap = await routeIdsByBlockId([updated.blockId])
     return NextResponse.json({

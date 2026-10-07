@@ -79,9 +79,11 @@ class ActiveJobViewModel(
                 val job = apiClient.getJob(jobId)
 
                 // The scan flow completes the job server-side; when we come
-                // back to a COMPLETED job, make sure background tracking from
-                // startJob is stopped.
-                if (job.status == JobStatus.COMPLETED) {
+                // back to a finished job (COMPLETED, or PENDING_REVIEW for a
+                // paid job awaiting admin approval), make sure background
+                // tracking from startJob is stopped.
+                val finished = job.status == JobStatus.COMPLETED || job.status == JobStatus.PENDING_REVIEW
+                if (finished) {
                     locationTrackingController.stopTracking()
                 }
 
@@ -90,7 +92,7 @@ class ActiveJobViewModel(
                     route = route,
                     isLoading = false,
                     jobStarted = job.status == JobStatus.IN_PROGRESS,
-                    jobCompleted = job.status == JobStatus.COMPLETED,
+                    jobCompleted = finished,
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(

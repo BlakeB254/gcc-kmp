@@ -1312,7 +1312,8 @@ class RouteScanViewModel(
                 uploadLapSession(lapKind = "clean")
 
                 // Assignment path: the submitted scan IS the job's work —
-                // flip the job to COMPLETED. Non-fatal on failure: the scan
+                // complete the job (COMPLETED for a $0 test job,
+                // PENDING_REVIEW for a paid one until an admin approves). Non-fatal on failure: the scan
                 // stays COMPLETE and an admin can complete the job manually.
                 completeJobId?.let { jobId ->
                     try {

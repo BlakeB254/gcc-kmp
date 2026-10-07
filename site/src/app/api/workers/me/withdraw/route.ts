@@ -12,19 +12,31 @@
  *  - 'check': requires a complete mailing address; lands in the payouts table
  *    as 'check_pending' (the admin "checks to mail" queue) and alerts admins.
  *
+ * Who may cash out (both methods; lib/withdraw-guards.ts):
+ *  - verificationStatus 'approved' AND a verified email          → else 403
+ *  - no payout-destination change in the last 24h                → else 409
+ *    (the worker is notified when the change is made; this hold is the
+ *    chosen alternative to re-auth on withdraw)
+ *  - wallet column == SUM(ledger) for this worker                → else 409
+ *    "Your balance is being reviewed" (lib/wallet-reconcile.ts)
+ *
  * Ordering / atomicity (neon-http, no interactive transactions):
  *  1. INSERT payouts row (unique idempotency key = atomic claim; retries get
- *     the original row back and never move money twice)
+ *     the original row back and never move money twice). The stored key is
+ *     namespaced per worker, so one worker's key can never match — or return
+ *     — another worker's payout row.
  *  2. Conditional balance debit (single UPDATE ... WHERE balance >= amount —
  *     concurrent withdrawals cannot overdraw). Insufficient → payout row
  *     marked 'failed', 409.
  *  3. Ledger debit entry
- *  4. Stripe transfer+payout (stripe method only). On failure the row stays
- *     'processing' and the debit stays held — the payout.failed webhook (or
- *     manual reconciliation) refunds the wallet via a 'withdrawal_reversal'.
+ *  4. Stripe transfer+payout (stripe method only), with deterministic
+ *     idempotency keys per payouts row. On failure the row stays
+ *     'processing' and the debit stays held for manual reconciliation. A
+ *     later payout.failed does NOT refund the wallet (the money is in the
+ *     worker's connected account); only a full transfer reversal does.
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { db } from '@/db'
 import { payouts, workers } from '@/db/schema'
 import { verifyMobileToken } from '@/lib/mobile-auth'
@@ -34,6 +46,8 @@ import { processAdminPayout } from '@/lib/stripe/connect'
 import { syncConnectStatus } from '@/lib/stripe/sync-connect-status'
 import { resolveMailingAddress } from '@/lib/payouts'
 import { notifyAdmins, notificationTemplates } from '@/lib/notifications'
+import { scopedWithdrawIdempotencyKey, withdrawRefusal } from '@/lib/withdraw-guards'
+import { walletIsReconciled } from '@/lib/wallet-reconcile'
 import { payoutsPausedResponse } from '@/lib/payouts-enabled'
 
 export const runtime = 'nodejs'
@@ -92,9 +106,9 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const idempotencyKey =
+  const clientIdempotencyKey =
     typeof body.idempotencyKey === 'string' ? body.idempotencyKey.trim() : ''
-  if (idempotencyKey.length < 8 || idempotencyKey.length > 128) {
+  if (clientIdempotencyKey.length < 8 || clientIdempotencyKey.length > 128) {
     return NextResponse.json(
       { data: null, success: false, message: 'idempotencyKey must be 8–128 chars' },
       { status: 400 }
@@ -112,6 +126,10 @@ export async function POST(request: NextRequest) {
       addressZip: workers.addressZip,
       stripeAccountId: workers.stripeAccountId,
       walletBalanceCents: workers.walletBalanceCents,
+      verificationStatus: workers.verificationStatus,
+      emailVerified: workers.emailVerified,
+      payoutMethodChangedAt: workers.payoutMethodChangedAt,
+      lastAddressChangeAt: workers.lastAddressChangeAt,
     })
     .from(workers)
     .where(eq(workers.id, auth.workerId))
@@ -120,6 +138,26 @@ export async function POST(request: NextRequest) {
   if (!worker) {
     return NextResponse.json({ data: null, message: 'Worker not found' }, { status: 404 })
   }
+
+  // ── Account guards (both methods), BEFORE any write or Stripe call ──────
+  const refusal = withdrawRefusal(worker, method)
+  if (refusal) {
+    return NextResponse.json(
+      { data: null, success: false, message: refusal.message },
+      { status: refusal.status }
+    )
+  }
+
+  // Money must not leave while the balance column and the ledger disagree.
+  if (!(await walletIsReconciled(worker.id))) {
+    console.error(`[withdraw] wallet/ledger mismatch for worker ${worker.id} — cash out refused`)
+    return NextResponse.json(
+      { data: null, success: false, message: 'Your balance is being reviewed. Please contact support.' },
+      { status: 409 }
+    )
+  }
+
+  const idempotencyKey = scopedWithdrawIdempotencyKey(worker.id, clientIdempotencyKey)
 
   // ── Method-specific read-only guards, BEFORE any write or Stripe call ────
   let mailingAddress: ReturnType<typeof resolveMailingAddress> = null
@@ -190,7 +228,7 @@ export async function POST(request: NextRequest) {
     const [existing] = await db
       .select()
       .from(payouts)
-      .where(eq(payouts.idempotencyKey, idempotencyKey))
+      .where(and(eq(payouts.idempotencyKey, idempotencyKey), eq(payouts.workerId, worker.id)))
       .limit(1)
     return NextResponse.json({
       data: {
@@ -267,8 +305,9 @@ export async function POST(request: NextRequest) {
     stripePayoutId = result.payout.id
   } catch (err) {
     // CRITICAL: do NOT mark 'failed' or refund here — the transfer may have
-    // partially completed. 'processing' blocks retries; the payout.failed
-    // webhook (or manual reconciliation) refunds the held funds.
+    // partially completed. 'processing' blocks retries; manual
+    // reconciliation (or a full transfer reversal webhook) refunds the
+    // held funds.
     console.error(
       '[withdraw] CRITICAL: Stripe payout failed for payout ' + payoutRow.id +
         ' — transfer may have partially completed; manual reconciliation required',

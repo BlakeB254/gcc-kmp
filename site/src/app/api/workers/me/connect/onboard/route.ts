@@ -10,6 +10,7 @@ import {
   createOnboardingLink,
 } from '@/lib/stripe/connect'
 import { appUrl as resolveAppUrl } from '@/lib/env'
+import { notifyPayoutDestinationChanged } from '@/lib/payout-destination'
 import { payoutsPausedResponse } from '@/lib/payouts-enabled'
 
 export const runtime = 'nodejs'
@@ -64,10 +65,14 @@ export async function POST(request: NextRequest) {
     if (!accountId) {
       const account = await createConnectAccount(String(worker.id), worker.email)
       accountId = account.id
+      const changedAt = new Date().toISOString()
       await db
         .update(workers)
-        .set({ stripeAccountId: accountId })
+        // A new Connect account is a new payout destination: cash outs are
+        // held 24h after it (lib/withdraw-guards.ts).
+        .set({ stripeAccountId: accountId, payoutMethodChangedAt: changedAt })
         .where(eq(workers.id, workerId))
+      await notifyPayoutDestinationChanged(workerId)
     }
 
     const appUrl = resolveAppUrl()

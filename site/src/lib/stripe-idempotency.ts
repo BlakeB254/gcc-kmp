@@ -15,3 +15,23 @@ export function stripeIdempotencyKey(cart: Record<string, unknown>): string {
   const payload = JSON.stringify({ cart, bucket })
   return crypto.createHash('sha256').update(payload).digest('hex')
 }
+
+export type PayoutIdempotencyStep = 'transfer' | 'payout' | 'payout-instant'
+
+/**
+ * Deterministic idempotency key for a cash-out's Stripe calls, keyed on OUR
+ * row id: `payout-{payoutId}-transfer` / `payout-{payoutId}-payout`. A retried
+ * request (or a crashed-and-replayed handler) for the same payouts row gets
+ * Stripe's original object back instead of moving money a second time.
+ *
+ * The instant attempt gets its own key: when it fails we fall back to a
+ * standard payout with different params, and Stripe rejects a reused key
+ * whose params differ.
+ */
+export function payoutIdempotencyKey(
+  ref: { kind: 'admin_payout'; payoutId: string } | { kind: 'job'; jobId: string },
+  step: PayoutIdempotencyStep,
+): string {
+  const owner = ref.kind === 'admin_payout' ? `payout-${ref.payoutId}` : `job-${ref.jobId}`
+  return `${owner}-${step}`
+}

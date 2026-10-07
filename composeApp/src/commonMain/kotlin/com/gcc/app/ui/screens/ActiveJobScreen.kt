@@ -227,12 +227,18 @@ fun ActiveJobScreen(
                             }
                         }
                     } else if (uiState.jobCompleted) {
-                        // Job completed — show success
-                        SectionHeader(title = "Route Complete!")
+                        // Job completed — show success. A paid job lands in
+                        // PENDING_REVIEW until an admin approves the payout.
+                        val inReview = uiState.job?.status == JobStatus.PENDING_REVIEW
+                        SectionHeader(title = if (inReview) "Submitted for review" else "Route Complete!")
                         Spacer(modifier = Modifier.height(12.dp))
 
                         Text(
-                            "Both laps submitted. Great work!",
+                            if (inReview) {
+                                "Both laps submitted. Your payout lands in your wallet once an admin approves the job."
+                            } else {
+                                "Both laps submitted. Great work!"
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             color = GccGreen,
                         )

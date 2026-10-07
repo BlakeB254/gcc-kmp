@@ -9,6 +9,10 @@
  * PUT body: { method: 'stripe' | 'check', mailingAddress?: { name?, street,
  * city, state, zip } }. Switching to 'check' requires a usable address
  * (provided override, existing override, or complete home address).
+ *
+ * An actual change (method or mailing override) stamps
+ * payout_method_changed_at — cash outs are held 24h after it — and notifies
+ * the worker (lib/payout-destination.ts).
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
@@ -16,6 +20,7 @@ import { db } from '@/db'
 import { workers } from '@/db/schema'
 import { verifyMobileToken } from '@/lib/mobile-auth'
 import { parseMailingAddress, resolveMailingAddress } from '@/lib/payouts'
+import { notifyPayoutDestinationChanged } from '@/lib/payout-destination'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -142,15 +147,25 @@ export async function PUT(request: NextRequest) {
     }
   }
 
+  const destinationChanged =
+    (worker.payoutMethod ?? 'stripe') !== method ||
+    JSON.stringify(worker.payoutMailingAddress ?? null) !== JSON.stringify(nextOverride ?? null)
+
+  const now = new Date().toISOString()
   const [updated] = await db
     .update(workers)
     .set({
       payoutMethod: method,
       payoutMailingAddress: nextOverride ?? null,
-      updatedAt: new Date().toISOString(),
+      ...(destinationChanged ? { payoutMethodChangedAt: now } : {}),
+      updatedAt: now,
     })
     .where(eq(workers.id, auth.workerId))
     .returning(WORKER_COLUMNS)
+
+  if (destinationChanged) {
+    await notifyPayoutDestinationChanged(auth.workerId)
+  }
 
   return NextResponse.json({ data: responseBody(updated), success: true, message: null })
 }

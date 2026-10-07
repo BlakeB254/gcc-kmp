@@ -20,6 +20,7 @@
 import { eq, sql, and } from 'drizzle-orm'
 import { db } from '@/db'
 import { workers, workerWalletEntries } from '@/db/schema'
+import type { DbExecutor } from '@/lib/job-lifecycle'
 
 export type WalletEntryKind =
   | 'job_earning'
@@ -52,12 +53,12 @@ export interface CreditResult {
  * kind='withdrawal_reversal' per payout) a duplicate call inserts nothing and
  * the balance is not bumped twice.
  */
-export async function creditWallet(args: CreditArgs): Promise<CreditResult> {
+export async function creditWallet(args: CreditArgs, exec: DbExecutor = db): Promise<CreditResult> {
   if (!Number.isInteger(args.amountCents) || args.amountCents <= 0) {
     throw new Error(`creditWallet: amountCents must be a positive integer, got ${args.amountCents}`)
   }
 
-  const inserted = await db
+  const inserted = await exec
     .insert(workerWalletEntries)
     .values({
       workerId: args.workerId,
@@ -73,11 +74,11 @@ export async function creditWallet(args: CreditArgs): Promise<CreditResult> {
     .returning({ id: workerWalletEntries.id })
 
   if (inserted.length === 0) {
-    const balanceCents = await getWalletBalance(args.workerId)
+    const balanceCents = await getWalletBalance(args.workerId, exec)
     return { credited: false, entryId: null, balanceCents }
   }
 
-  const [updated] = await db
+  const [updated] = await exec
     .update(workers)
     .set({
       walletBalanceCents: sql`${workers.walletBalanceCents} + ${args.amountCents}`,
@@ -89,7 +90,7 @@ export async function creditWallet(args: CreditArgs): Promise<CreditResult> {
   return {
     credited: true,
     entryId: inserted[0].id,
-    balanceCents: updated?.balanceCents ?? (await getWalletBalance(args.workerId)),
+    balanceCents: updated?.balanceCents ?? (await getWalletBalance(args.workerId, exec)),
   }
 }
 
@@ -158,8 +159,8 @@ export async function debitWallet(args: DebitArgs): Promise<DebitResult> {
   return { debited: true, balanceCents: updated[0].balanceCents }
 }
 
-export async function getWalletBalance(workerId: number): Promise<number> {
-  const [row] = await db
+export async function getWalletBalance(workerId: number, exec: DbExecutor = db): Promise<number> {
+  const [row] = await exec
     .select({ balanceCents: workers.walletBalanceCents })
     .from(workers)
     .where(eq(workers.id, workerId))

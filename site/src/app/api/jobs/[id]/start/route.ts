@@ -4,6 +4,7 @@ import { jobs } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { requireMobileAuth } from '@/lib/mobile-auth'
 import { routeIdsByBlockId, toMobileJob } from '@/lib/mobile-job-response'
+import { startClaimedJob } from '@/lib/job-lifecycle'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -30,21 +31,21 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (auth.role !== 'admin' && existing.workerId !== auth.workerId) {
       return NextResponse.json({ error: 'Job belongs to a different worker', success: false }, { status: 403 })
     }
-    if (auth.role !== 'admin' && existing.status !== 'claimed') {
+    if (existing.status !== 'claimed') {
       return NextResponse.json({ error: 'Job must be claimed before starting', success: false }, { status: 409 })
     }
 
-    const now = new Date().toISOString()
-    const [updated] = await db
-      .update(jobs)
-      .set({
-        workerId: existing.workerId ?? auth.workerId,
-        status: 'in_progress',
-        startedAt: now,
-        updatedAt: now,
-      })
-      .where(eq(jobs.id, jobId))
-      .returning()
+    // Conditional on status='claimed' (and, for workers, ownership) so a
+    // start racing a decline/release/second start can't apply.
+    const updated = await startClaimedJob(
+      db,
+      jobId,
+      { workerId: auth.workerId, isAdmin: auth.role === 'admin' },
+      new Date().toISOString(),
+    )
+    if (!updated) {
+      return NextResponse.json({ error: 'Job is no longer claimed', success: false }, { status: 409 })
+    }
 
     const routeMap = await routeIdsByBlockId([updated.blockId])
     return NextResponse.json({

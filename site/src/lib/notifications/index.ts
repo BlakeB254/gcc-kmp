@@ -146,6 +146,18 @@ export const notificationTemplates = {
     url: '/worker/dashboard',
   }),
 
+  withdrawalBankFailed: (amount: string) => ({
+    title: 'Cash out did not reach your bank ⚠️',
+    body: `Your ${amount} cash out could not be deposited. The money is safe in your Stripe account — check your bank details in Stripe, and our team will retry it.`,
+    url: '/worker/dashboard',
+  }),
+
+  payoutMethodChanged: () => ({
+    title: 'Your payout details changed',
+    body: 'How you get paid on GCC was just changed. For your security, cash outs are paused for 24 hours. If this was not you, contact support right away.',
+    url: '/worker/dashboard',
+  }),
+
   // Sponsor notifications
   blockCleaned: (blockCode: string) => ({
     title: 'Your Block is Clean! ✨',

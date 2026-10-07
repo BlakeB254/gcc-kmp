@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server'
-import { and, eq, isNull, ne, notInArray, or, sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { db } from '@/db'
 import { jobs, workers, blocks } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin-auth'
 import { creditWallet } from '@/lib/wallet'
+import { approvalGuard, claimJobForApproval, payoutCents } from '@/lib/job-lifecycle'
+import { commitPublicDataMutation } from '@/lib/public-data/invalidation'
 import { notifyWorker, notificationTemplates } from '@/lib/notifications'
 import { payoutsPausedResponse } from '@/lib/payouts-enabled'
 
@@ -16,7 +18,9 @@ type RouteContext = { params: Promise<{ id: string }> }
  * POST /api/admin/jobs/[id]/approve
  *
  * Approve a pending_review job and credit the payout to the worker's in-app
- * wallet. Since the wallet-ledger rework this NEVER calls Stripe and does NOT
+ * wallet. This is the ONLY path that credits a job earning: worker
+ * completion of a paid job lands in pending_review, and manual admin credits
+ * refuse job money. Since the wallet-ledger rework this NEVER calls Stripe and does NOT
  * require the worker to have set up Stripe Connect — the money is earmarked
  * in the wallet immediately and leaves our Stripe balance only when the
  * worker cashes out.
@@ -25,12 +29,14 @@ type RouteContext = { params: Promise<{ id: string }> }
  *  1. Job exists and status === 'pending_review'            → 404 / 409
  *  2. reviewStatus !== 'denied' (denied is terminal)        → 409
  *  3. Job has an assigned worker                            → 409
- *  4. amountCents is finite and > 0                         → 409
+ *  4. The approving admin is not the job's worker           → 403
+ *  5. amountCents is finite and > 0                         → 409
  *
- * Atomic claim (TOCTOU-safe):
- *  - Single conditional UPDATE with .returning():
- *    payoutStatus NOT IN ('completed','processing') AND payoutStripeTransferId IS NULL
- *  - claimed.length === 0 → 409 (already credited or being paid)
+ * Atomic claim (TOCTOU-safe), see claimJobForApproval():
+ *  - Single conditional UPDATE with .returning(): status = 'pending_review'
+ *    AND (payoutStatus IS NULL OR NOT IN ('completed','processing'))
+ *    AND payoutStripeTransferId IS NULL AND not denied AND worker <> admin
+ *  - no row → 409 (already approved, credited or being paid)
  *
  * On successful claim:
  *  - creditWallet(kind='job_earning') — double-credit is additionally blocked
@@ -75,65 +81,27 @@ export async function POST(request: Request, context: RouteContext) {
     .where(eq(jobs.id, jobId))
     .limit(1)
 
-  // ── Guard 1: job must exist and be pending_review ─────────────────────────
   if (!row) {
     return NextResponse.json({ error: 'Job not found' }, { status: 404 })
   }
-  if (row.jobStatus !== 'pending_review') {
-    return NextResponse.json(
-      { error: `Job is not pending review (status: ${row.jobStatus})` },
-      { status: 409 }
-    )
-  }
 
-  // ── Guard 2: denied is terminal for payment ───────────────────────────────
-  if (row.reviewStatus === 'denied') {
-    return NextResponse.json({ error: 'Job was denied' }, { status: 409 })
+  // ── Guards 2–5 (read-only; the atomic UPDATE re-checks the money-critical ones)
+  const refusal = approvalGuard(row, auth.workerId)
+  if (refusal) {
+    return NextResponse.json({ error: refusal.error }, { status: refusal.status })
   }
-
-  // ── Guard 3: job must have a worker to pay ────────────────────────────────
-  if (!row.workerId) {
-    return NextResponse.json({ error: 'Job has no assigned worker' }, { status: 409 })
-  }
-
-  // ── Guard 4: payout amount must be finite and positive ────────────────────
-  // payoutAmount is stored in cents as a numeric string (e.g. '10000' = $100)
-  const amountCents = row.payoutAmount ? Math.round(parseFloat(row.payoutAmount)) : 0
-  if (!Number.isFinite(amountCents) || amountCents <= 0) {
-    return NextResponse.json(
-      { error: 'Job has no payout amount configured' },
-      { status: 409 }
-    )
-  }
+  const amountCents = payoutCents(row.payoutAmount)
+  const workerId = row.workerId!
 
   // ── Atomic claim: single conditional UPDATE to prevent TOCTOU race ────────
-  // Only succeeds if payoutStatus is not already 'completed'/'processing' AND
-  // no legacy Stripe transfer exists. Concurrent approve calls see claimed.length === 0.
-  const claimed = await db
-    .update(jobs)
-    .set({
-      status: 'completed',
-      reviewStatus: 'approved',
-      approvedByAdminId: auth.workerId,
-      reviewedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      payoutStatus: 'processing',
-    })
-    .where(
-      and(
-        eq(jobs.id, jobId),
-        notInArray(jobs.payoutStatus, ['completed', 'processing']),
-        isNull(jobs.payoutStripeTransferId),
-        // Atomic denied-guard (NULL reviewStatus counts as not-denied): a
-        // concurrent deny cannot be overwritten and paid.
-        or(isNull(jobs.reviewStatus), ne(jobs.reviewStatus, 'denied')),
-      )
-    )
-    .returning({ id: jobs.id })
+  // Impact stats count jobs by status, so this flip to 'completed' refreshes them.
+  const claimed = await commitPublicDataMutation('impact-stats', () =>
+    claimJobForApproval(db, jobId, auth.workerId, new Date().toISOString())
+  )
 
-  if (claimed.length === 0) {
+  if (!claimed) {
     return NextResponse.json(
-      { error: 'Job already credited or being paid' },
+      { error: 'Job already approved, credited or being paid' },
       { status: 409 }
     )
   }
@@ -142,7 +110,7 @@ export async function POST(request: Request, context: RouteContext) {
   // The partial unique index (job_id WHERE kind='job_earning') makes this
   // idempotent even if the claim above were somehow re-run.
   const credit = await creditWallet({
-    workerId: row.workerId,
+    workerId,
     amountCents,
     kind: 'job_earning',
     jobId,
@@ -172,7 +140,7 @@ export async function POST(request: Request, context: RouteContext) {
         statsLastJobAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       })
-      .where(eq(workers.id, row.workerId))
+      .where(eq(workers.id, workerId))
   }
 
   // ── Notify worker: job approved, money in wallet ─────────────────────────

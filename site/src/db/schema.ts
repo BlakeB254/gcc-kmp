@@ -163,6 +163,9 @@ export const workers = pgTable('workers', {
   // address fields above.
   payoutMethod: payoutMethodEnum('payout_method').default('stripe'),
   payoutMailingAddress: jsonb('payout_mailing_address'), // { name, street, city, state, zip }
+  // Last change to where cash outs go (method, mailing override, new Connect
+  // account). Cash outs are held for 24h after it — see lib/withdraw-guards.ts.
+  payoutMethodChangedAt: timestamp('payout_method_changed_at', { mode: 'string', withTimezone: true }),
 
   // In-app wallet: the worker's available balance. Authoritative for spend
   // checks — every mutation is a single conditional UPDATE (neon-http has no
@@ -758,6 +761,9 @@ export const transactions = pgTable('transactions', {
   stripePaymentIntentId: varchar('stripe_payment_intent_id'),
   stripeCheckoutSessionId: varchar('stripe_checkout_session_id'),
   stripeSubscriptionId: varchar('stripe_subscription_id'),
+  // invoice.paid renewals: one row per Stripe invoice (unique index below), so
+  // a webhook retry cannot record the same renewal twice. Null on every other row.
+  stripeInvoiceId: varchar('stripe_invoice_id'),
 
   // Amount
   amount: numeric('amount').notNull(), // In cents
@@ -802,6 +808,17 @@ export const transactions = pgTable('transactions', {
   sponsorIdx: index('transactions_sponsor_id_idx').on(table.sponsorId),
   blockIdx: index('transactions_block_id_idx').on(table.blockId),
   statusIdx: index('transactions_status_idx').on(table.status),
+  // Webhook retry guards (migration 0049): the Stripe webhook inserts with ON
+  // CONFLICT DO NOTHING and only counts stats / funds blocks for rows it
+  // actually created (lib/stripe/sponsor-payment-events.ts). One row per
+  // checkout session per block (block_id NULL = the session's general row) …
+  checkoutSessionBlockUnique: uniqueIndex('transactions_checkout_session_block_unique')
+    .on(table.stripeCheckoutSessionId, sql`coalesce(block_id, 0)`)
+    .where(sql`stripe_checkout_session_id IS NOT NULL`),
+  // … and one row per renewal invoice.
+  stripeInvoiceUnique: uniqueIndex('transactions_stripe_invoice_id_unique')
+    .on(table.stripeInvoiceId)
+    .where(sql`stripe_invoice_id IS NOT NULL`),
 }))
 
 // Stripe webhook event ledger — one row per Stripe event id we have accepted

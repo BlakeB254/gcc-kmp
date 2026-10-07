@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { jobs } from '@/db/schema'
-import { eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { requireMobileAuth } from '@/lib/mobile-auth'
 import { routeIdsByBlockId, toMobileJob } from '@/lib/mobile-job-response'
+import { EVIDENCE_ALLOWED_STATUSES, evidenceAllowedForStatus, isOwnEvidenceUrl } from '@/lib/job-lifecycle'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -45,6 +46,26 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (auth.role !== 'admin' && existing.workerId !== auth.workerId) {
       return NextResponse.json({ error: 'Job belongs to a different worker', success: false }, { status: 403 })
     }
+    // Evidence is part of doing the work — once a job is submitted for
+    // review (or completed/released) its evidence is frozen.
+    if (!evidenceAllowedForStatus(existing.status)) {
+      return NextResponse.json(
+        { error: `Evidence can only be added while the job is claimed or in progress (status: ${existing.status})`, success: false },
+        { status: 409 },
+      )
+    }
+    // Only photos the job's worker uploaded through /api/spots/upload (our
+    // blob store, under spots/{workerId}/) — never an arbitrary URL.
+    if (
+      existing.workerId == null ||
+      !isOwnEvidenceUrl(beforePhotoUrl, existing.workerId) ||
+      !isOwnEvidenceUrl(afterPhotoUrl, existing.workerId)
+    ) {
+      return NextResponse.json(
+        { error: 'Evidence photos must be uploaded through the app', success: false },
+        { status: 400 },
+      )
+    }
 
     const now = new Date().toISOString()
     const common = { capturedAt: now }
@@ -58,8 +79,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         afterPhotos,
         updatedAt: now,
       })
-      .where(eq(jobs.id, jobId))
+      .where(and(eq(jobs.id, jobId), inArray(jobs.status, [...EVIDENCE_ALLOWED_STATUSES])))
       .returning()
+    if (!updated) {
+      return NextResponse.json({ error: 'Job is no longer in progress', success: false }, { status: 409 })
+    }
 
     const routeMap = await routeIdsByBlockId([updated.blockId])
     return NextResponse.json({

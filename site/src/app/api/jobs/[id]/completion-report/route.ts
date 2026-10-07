@@ -48,11 +48,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
   // Self-heal: generation at job-completion time is best-effort, so a failure
   // there used to strand the client on "still generating" forever (the row
-  // never appears and nothing retries). If the job is completed and the report
+  // never appears and nothing retries). If the job is completed (or submitted
+  // for review — paid jobs land in pending_review on completion) and the report
   // is missing, try generating it right here — the generator upserts on jobId,
   // so a concurrent attempt is harmless. A throw (e.g. no completed scan
   // session yet) falls through to the same 404 the client already handles.
-  if (!report && job.status === 'completed') {
+  if (!report && (job.status === 'completed' || job.status === 'pending_review')) {
     try {
       await generateBlockCompletionReport(jobId)
       ;[report] = await db

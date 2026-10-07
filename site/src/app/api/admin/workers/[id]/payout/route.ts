@@ -1,13 +1,18 @@
 /**
  * POST /api/admin/workers/[id]/payout
  *
- * Admin credits a worker's in-app wallet (bonus / correction / manual job
- * payment). Since the wallet-ledger rework this NEVER touches Stripe and has
+ * Admin credits a worker's in-app wallet (bonus / correction). NOT for job
+ * money: a job earning is credited only by approving the job
+ * (POST /api/admin/jobs/[id]/approve). Refused (see lib/admin-credit.ts):
+ * crediting your own wallet, a body carrying jobId, a reason naming a job,
+ * and a missing reason. Since the wallet-ledger rework this NEVER touches Stripe and has
  * no Stripe-Connect or mailing-address prerequisites: the credit lands in the
  * worker's wallet balance immediately, and the worker cashes out on their own
  * schedule (Stripe direct deposit or mailed check) from the app.
  *
- * Body: { amountCents: number, note?: string, idempotencyKey: string }
+ * Body: { amountCents: number, reason: string, idempotencyKey: string }
+ * (`note` is accepted as the reason for older admin builds.) The ledger row
+ * records the reason and the initiating admin (createdByAdminId).
  *
  * Idempotency: the unique index on workerWalletEntries.idempotency_key makes
  * the ledger INSERT the atomic claim. A retried request with the same key
@@ -24,7 +29,7 @@ import { workers } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin-auth'
 import { creditWallet } from '@/lib/wallet'
 import { notifyWorker, notificationTemplates } from '@/lib/notifications'
-import { MAX_PAYOUT_CENTS, MAX_NOTE_LEN } from '@/lib/payouts'
+import { validateAdminCredit, type AdminCreditBody } from '@/lib/admin-credit'
 import { payoutsPausedResponse } from '@/lib/payouts-enabled'
 
 export const runtime = 'nodejs'
@@ -50,7 +55,7 @@ export async function POST(
     )
   }
 
-  let body: { amountCents?: unknown; note?: unknown; idempotencyKey?: unknown }
+  let body: AdminCreditBody
   try {
     body = await request.json()
   } catch {
@@ -59,35 +64,21 @@ export async function POST(
       { status: 400 }
     )
   }
-
-  const amountCents = typeof body.amountCents === 'number' ? body.amountCents : NaN
-  if (!Number.isInteger(amountCents) || amountCents <= 0 || amountCents > MAX_PAYOUT_CENTS) {
+  if (!body || typeof body !== 'object') {
     return NextResponse.json(
-      {
-        data: null,
-        success: false,
-        message: `amountCents must be an integer between 1 and ${MAX_PAYOUT_CENTS} ($${MAX_PAYOUT_CENTS / 100})`,
-      },
+      { data: null, success: false, message: 'Body must be a JSON object' },
       { status: 400 }
     )
   }
 
-  const note = typeof body.note === 'string' ? body.note.trim() : ''
-  if (note.length > MAX_NOTE_LEN) {
+  const decision = validateAdminCredit({ adminWorkerId: auth.workerId, targetWorkerId, body })
+  if (!decision.ok) {
     return NextResponse.json(
-      { data: null, success: false, message: `note must be ≤ ${MAX_NOTE_LEN} chars` },
-      { status: 400 }
+      { data: null, success: false, message: decision.message },
+      { status: decision.status }
     )
   }
-
-  const idempotencyKey =
-    typeof body.idempotencyKey === 'string' ? body.idempotencyKey.trim() : ''
-  if (idempotencyKey.length < 8 || idempotencyKey.length > 128) {
-    return NextResponse.json(
-      { data: null, success: false, message: 'idempotencyKey must be 8–128 chars' },
-      { status: 400 }
-    )
-  }
+  const { amountCents, reason: note, idempotencyKey } = decision
 
   const [worker] = await db
     .select({
@@ -113,7 +104,7 @@ export async function POST(
     workerId: targetWorkerId,
     amountCents,
     kind: 'admin_credit',
-    note: note || null,
+    note,
     createdByAdminId: auth.workerId,
     idempotencyKey,
   })
@@ -123,7 +114,7 @@ export async function POST(
     id: result.entryId ?? 0,
     workerId: targetWorkerId,
     amountCents,
-    note: note || null,
+    note,
     method: 'wallet',
     status: 'completed',
     initiatedByAdminId: auth.workerId,
@@ -152,7 +143,7 @@ export async function POST(
       },
       notificationTemplates.walletCredited(
         `$${(amountCents / 100).toFixed(2)}`,
-        note || 'your work'
+        note
       )
     )
   } catch (notifyErr) {

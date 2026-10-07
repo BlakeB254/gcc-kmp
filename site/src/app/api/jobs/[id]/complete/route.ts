@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
-import { jobs, routeScans } from '@/db/schema'
+import { jobs, routeScans, workers } from '@/db/schema'
 import { and, eq, or } from 'drizzle-orm'
 import { requireMobileAuth } from '@/lib/mobile-auth'
 import { routeIdsByBlockId, toMobileJob } from '@/lib/mobile-job-response'
 import { generateBlockCompletionReport } from '@/lib/block-completion-report'
+import { completeJob, payoutCents } from '@/lib/job-lifecycle'
+import { notifyAdmins, notificationTemplates } from '@/lib/notifications'
 import {
   commitPublicDataMutation,
   type PublicDataInvalidator,
@@ -78,20 +80,39 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       }
     }
 
+    // Paid job → pending_review (an admin approves it, which is the ONLY
+    // place its earning is credited). $0 test job → completed. The UPDATE
+    // re-checks the status so two completes, or a complete racing a
+    // decline/release, can't both apply.
     const now = new Date().toISOString()
-    const isTestAssignment = Number(existing.payoutAmount ?? 0) === 0
-    const [updated] = await commitJobCompletion(() =>
-      db
-        .update(jobs)
-        .set({
-          status: 'completed',
-          completedAt: now,
-          payoutStatus: isTestAssignment ? 'completed' : existing.payoutStatus,
-          updatedAt: now,
-        })
-        .where(eq(jobs.id, jobId))
-        .returning(),
+    const updated = await commitJobCompletion(() =>
+      completeJob(db, existing, { workerId: auth.workerId, isAdmin: auth.role === 'admin' }, now),
     )
+    if (!updated) {
+      return NextResponse.json(
+        { error: 'Job is no longer in progress', success: false },
+        { status: 409 },
+      )
+    }
+
+    // Tell admins there is a payout to review. Best-effort: the job is
+    // already in review; a lookup/notification failure must not fail it.
+    if (updated.status === 'pending_review') {
+      try {
+        const [worker] = updated.workerId
+          ? await db.select({ name: workers.name }).from(workers).where(eq(workers.id, updated.workerId)).limit(1)
+          : []
+        await notifyAdmins(
+          notificationTemplates.payoutNeedsApproval(
+            worker?.name ?? `Worker #${updated.workerId}`,
+            jobId,
+            (payoutCents(updated.payoutAmount) / 100).toFixed(2),
+          ),
+        )
+      } catch (notifyErr) {
+        console.error(`PATCH /api/jobs/[id]/complete: review notification failed for job ${jobId}:`, notifyErr)
+      }
+    }
 
     // Pillar 9 — auto-generate the block completion report from the job's
     // linked route_scans session. Non-fatal by design: report generation

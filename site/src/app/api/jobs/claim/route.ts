@@ -4,6 +4,7 @@ import { blocks, workers, jobs } from '@/db/schema'
 import { eq, and, inArray } from 'drizzle-orm'
 import { requireMobileAuth } from '@/lib/mobile-auth'
 import { verifyToken } from '@/lib/auth'
+import { claimAvailableBlock, releaseBlockClaim, routePayoutCentsForBlock } from '@/lib/job-lifecycle'
 
 export const runtime = 'nodejs'
 
@@ -11,8 +12,11 @@ export const runtime = 'nodejs'
  * POST /api/jobs/claim
  * Claim an available block - first come, first served
  *
- * Uses optimistic locking to prevent race conditions when multiple
- * workers try to claim the same block simultaneously.
+ * The block flip available → in_progress is a single conditional UPDATE, so
+ * when two workers race only one gets a row back; the other gets 409. The
+ * job's payout comes from the block's route (routes.payout_amount, cents) —
+ * the same source the route-offer accept flow uses — never from
+ * blocks.funding_goal, which holds dollars on some legacy rows.
  *
  * Auth: the worker is ALWAYS the authenticated caller — Bearer mobile JWT
  * (same helper as /api/jobs/[id]/claim) or the web `worker-token` cookie
@@ -111,26 +115,41 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create the job
-    const [job] = await db
-      .insert(jobs)
-      .values({
-        blockId: Number(blockId),
-        workerId,
-        status: 'claimed',
-        claimedAt: new Date().toISOString(),
-        payoutAmount: block.fundingGoal || '10000',
-      })
-      .returning()
+    const payoutCents = await routePayoutCentsForBlock(db, block)
+    if (payoutCents == null) {
+      return Response.json(
+        { message: 'This block is not linked to a route yet, so its payout is not set. Ask an admin.' },
+        { status: 409 }
+      )
+    }
 
-    // Update block status atomically
-    await db
-      .update(blocks)
-      .set({
-        status: 'in_progress',
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(blocks.id, Number(blockId)))
+    // Atomic claim: only one concurrent request gets the block.
+    const now = new Date().toISOString()
+    const claimedBlock = await claimAvailableBlock(db, block.id, now)
+    if (!claimedBlock) {
+      return Response.json(
+        { message: 'This block has already been claimed by another worker' },
+        { status: 409 }
+      )
+    }
+
+    let job: typeof jobs.$inferSelect
+    try {
+      ;[job] = await db
+        .insert(jobs)
+        .values({
+          blockId: block.id,
+          workerId,
+          status: 'claimed',
+          claimedAt: now,
+          payoutAmount: String(payoutCents),
+        })
+        .returning()
+    } catch (insertError) {
+      // Don't strand the block as in_progress with no job.
+      await releaseBlockClaim(db, block.id, new Date().toISOString())
+      throw insertError
+    }
 
     // TODO: Send push notification / SMS to worker with job details
 

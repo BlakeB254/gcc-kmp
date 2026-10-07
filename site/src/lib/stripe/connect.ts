@@ -1,5 +1,6 @@
 import { stripe, STRIPE_CONFIG, isStripeConfigured } from './client'
 import { appUrl } from '@/lib/env'
+import { payoutIdempotencyKey } from '@/lib/stripe-idempotency'
 
 /**
  * Create a Stripe Connect Express account for a worker
@@ -114,19 +115,22 @@ export async function createTransferToWorker(
   amountCents: number,
   ref: PayoutReference
 ) {
-  const transfer = await stripe.transfers.create({
-    amount: amountCents,
-    currency: 'usd',
-    destination: accountId,
-    metadata: {
-      ...referenceMetadata(ref),
-      type: ref.kind === 'job' ? 'job_payment' : 'admin_payout',
+  const transfer = await stripe.transfers.create(
+    {
+      amount: amountCents,
+      currency: 'usd',
+      destination: accountId,
+      metadata: {
+        ...referenceMetadata(ref),
+        type: ref.kind === 'job' ? 'job_payment' : 'admin_payout',
+      },
+      description:
+        ref.kind === 'job'
+          ? `GCC Job Payment - ${ref.jobId}`
+          : `GCC Admin Payout - ${ref.payoutId}`,
     },
-    description:
-      ref.kind === 'job'
-        ? `GCC Job Payment - ${ref.jobId}`
-        : `GCC Admin Payout - ${ref.payoutId}`,
-  })
+    { idempotencyKey: payoutIdempotencyKey(ref, 'transfer') }
+  )
 
   return transfer
 }
@@ -160,6 +164,7 @@ export async function createInstantPayout(
     },
     {
       stripeAccount: accountId,
+      idempotencyKey: payoutIdempotencyKey(ref, 'payout-instant'),
     }
   )
 
@@ -193,6 +198,7 @@ export async function createStandardPayout(
     },
     {
       stripeAccount: accountId,
+      idempotencyKey: payoutIdempotencyKey(ref, 'payout'),
     }
   )
 

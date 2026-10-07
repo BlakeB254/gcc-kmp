@@ -10,8 +10,8 @@ Public: `apply`, `verify-email`, `register-phone`, `verify-phone`, `resend-verif
 Authed (`/api/workers/me/...`): `device-token`, `handle`, `verification` (GET/POST), plus `address-change`, `upload-document`. Worker self profile/jobs are read via workers/jobs endpoints.
 
 ## Jobs & assignment (NO queue in prod)
-- `POST /api/jobs/claim` — worker self-claims an available block (first-come; requires approved verification).
-- `POST /api/jobs/submit` — submit completed job w/ before/after photos → `pending_review`.
+- `POST /api/jobs/claim` — worker self-claims an available block (first-come via a conditional UPDATE; requires approved verification; payout = the block's route `payout_amount`, a block with no route is refused 409).
+- **Standard money flow (the only way a job is paid):** `POST /api/jobs/{id}/claim` (only from `available`) → `PATCH /api/jobs/{id}/start` (only from `claimed`) → `PATCH /api/jobs/{id}/complete` → `pending_review` for a paid job (`completed` for a $0 test job) → `POST /api/admin/jobs/{id}/approve` (a different admin; the only path that credits a `job_earning`). Every transition is a conditional UPDATE; a lost race answers 409. `POST /api/admin/workers/{id}/payout` is for non-job credits only (reason required, never your own wallet). Cash out: `POST /api/workers/me/withdraw` (approved + verified email, 24h hold after a payout-destination change, refused with 409 while the wallet column ≠ ledger sum). `GET /api/admin/wallets/reconcile` lists wallet/ledger mismatches.
 - `GET /api/workers/me/jobs` — worker's jobs.
 - `GET|POST|DELETE /api/admin/routes/{routeId}/assign` — **admin direct assign** a worker (`isTest` → unpaid), list, cancel.
 
@@ -40,7 +40,7 @@ Ordering (mirrors the Ktor `RouteQueueService`): eligibility = `verificationStat
 `GET|POST /api/bounties` (public list ≥ $10; worker posts on a report) · `GET /api/admin/bounties`.
 
 ## Sponsors & payments (Stripe)
-Sponsor auth/profile: `register`, `verify-email`, `forgot/reset-password`, `check-duplicate`, `me`, `logout`, `settings`, `sponsorships`. Checkout: `POST /api/sponsors/checkout` (single block), `POST /api/sponsor-packages/checkout` (multi-block + add-ons), `GET /api/sponsor-packages[/walkthrough]`, `POST /api/contribute/checkout` (donation). Webhook: `POST /api/stripe/webhooks` (checkout.session.completed → transactions/funding; payout.paid/failed → job payout status; Connect account.updated). Deliverables (admin): `/api/admin/sponsor-deliverables[...]` auto-triggered ≥ $2k.
+Sponsor auth/profile: `register`, `verify-email`, `forgot/reset-password`, `check-duplicate`, `me`, `logout`, `settings`, `sponsorships`. Checkout: `POST /api/sponsors/checkout` (single block), `POST /api/sponsor-packages/checkout` (multi-block + add-ons), `GET /api/sponsor-packages[/walkthrough]`, `POST /api/contribute/checkout` (donation). Webhook: `POST /api/stripe/webhooks` (checkout.session.completed → transactions/funding; payout.paid → payout completed; payout.failed → payout `failed`, funds stay in the worker's connected account, wallet NOT re-credited; transfer.reversed (full) → wallet `withdrawal_reversal`; Connect account.updated. A handler error releases the event claim so Stripe's retry is processed). Deliverables (admin): `/api/admin/sponsor-deliverables[...]` auto-triggered ≥ $2k.
 
 ## Admin (web + in-app)
 Workers: `GET /api/admin/workers`, `GET|PATCH /api/admin/workers/{id}`, `/verify`, `/documents`, `/points`. Spots/blocks: `/api/admin/spots`, `/api/admin/blocks`. Analytics: `/api/admin/analytics/stats`. Ops utilities: `/api/admin/backfill-verification`, `/api/admin/reprocess-images`, `/api/admin/newsletter/{audience,preview,send}`.
