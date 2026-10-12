@@ -19,10 +19,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import chunk_index  # noqa: E402
 
 TEST_DB = "gcc_chunk_index_test"
-TEST_DSN_ADMIN = os.environ.get(
-    "RECON_TEST_ADMIN_DSN",
-    "postgresql://cdx_admin:cdx_secure_2024@localhost:5432/cdx_platform",
-)
+# Admin DSN for the LOCAL scratch Postgres these tests create their throwaway
+# database on. Comes from the environment only — never a literal in the repo
+# (a shared password lived here until 2026-10-11 and must be rotated). Unset →
+# the DB-backed tests skip.
+TEST_DSN_ENV = "CDX_TEST_DATABASE_URL"
+TEST_DSN_ADMIN = os.environ.get(TEST_DSN_ENV)
 
 SCHEMA = """
 CREATE TABLE scan_sessions (
@@ -42,6 +44,11 @@ CREATE TABLE capture_chunks (
 
 
 def _admin_conn():
+    if not TEST_DSN_ADMIN:
+        pytest.skip(
+            f"{TEST_DSN_ENV} is not set — point it at an admin DSN on a LOCAL "
+            "scratch Postgres to run the chunk_index DB tests"
+        )
     conn = psycopg.connect(TEST_DSN_ADMIN, autocommit=True)
     return conn
 
