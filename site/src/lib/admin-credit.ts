@@ -81,3 +81,61 @@ export function validateAdminCredit(args: {
 
   return { ok: true, amountCents, reason, idempotencyKey }
 }
+
+// ── Aggregate limits ─────────────────────────────────────────────────────────
+//
+// The per-call bound above (MAX_PAYOUT_CENTS) says nothing about volume: one
+// admin could credit a worker $1,000 ten times with fresh idempotency keys, or
+// two admins could credit each other. These limits close that:
+//
+//   perAdminDailyCents            everything one admin credits, to anyone, per UTC day
+//   perTargetDailyCents           everything one worker receives, from any admin, per UTC day
+//   secondApprovalThresholdCents  a single credit above this needs a DIFFERENT
+//                                 admin's approval before it lands (lib/admin-credit-approval.ts)
+//
+// Both caps are enforced in Postgres (lib/admin-credit-caps.ts). All three are
+// env-configured in whole cents and FAIL CLOSED: an unset, empty or unparseable
+// value is the (low) default — a typo can never raise a limit.
+
+export interface AdminCreditLimits {
+  perAdminDailyCents: number
+  perTargetDailyCents: number
+  secondApprovalThresholdCents: number
+}
+
+export const DEFAULT_ADMIN_CREDIT_LIMITS: Readonly<AdminCreditLimits> = Object.freeze({
+  perAdminDailyCents: 50_000, // $500
+  perTargetDailyCents: 25_000, // $250
+  secondApprovalThresholdCents: 10_000, // $100
+})
+
+export const ADMIN_CREDIT_LIMIT_ENV = {
+  perAdminDailyCents: 'ADMIN_CREDIT_DAILY_CAP_PER_ADMIN_CENTS',
+  perTargetDailyCents: 'ADMIN_CREDIT_DAILY_CAP_PER_TARGET_CENTS',
+  secondApprovalThresholdCents: 'ADMIN_CREDIT_SECOND_APPROVAL_THRESHOLD_CENTS',
+} as const
+
+/** Whole non-negative cents only ("0" is allowed: it disables credits / requires approval for all). */
+function wholeCents(raw: string | undefined, fallback: number): number {
+  if (typeof raw !== 'string') return fallback
+  const trimmed = raw.trim()
+  if (!/^\d+$/.test(trimmed)) return fallback
+  const n = Number(trimmed)
+  return Number.isSafeInteger(n) ? n : fallback
+}
+
+export function adminCreditLimits(env: Record<string, string | undefined> = process.env): AdminCreditLimits {
+  return {
+    perAdminDailyCents: wholeCents(env[ADMIN_CREDIT_LIMIT_ENV.perAdminDailyCents], DEFAULT_ADMIN_CREDIT_LIMITS.perAdminDailyCents),
+    perTargetDailyCents: wholeCents(env[ADMIN_CREDIT_LIMIT_ENV.perTargetDailyCents], DEFAULT_ADMIN_CREDIT_LIMITS.perTargetDailyCents),
+    secondApprovalThresholdCents: wholeCents(
+      env[ADMIN_CREDIT_LIMIT_ENV.secondApprovalThresholdCents],
+      DEFAULT_ADMIN_CREDIT_LIMITS.secondApprovalThresholdCents,
+    ),
+  }
+}
+
+/** A credit strictly above the threshold waits for a second admin. */
+export function requiresSecondApproval(amountCents: number, limits: AdminCreditLimits): boolean {
+  return amountCents > limits.secondApprovalThresholdCents
+}

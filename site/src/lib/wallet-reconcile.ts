@@ -8,9 +8,9 @@
  * the withdraw route checks the caller first and refuses on mismatch, and
  * GET /api/admin/wallets/reconcile lists every mismatched worker.
  */
-import { eq, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, sql } from 'drizzle-orm'
 import { db as defaultDb } from '@/db'
-import { workers, workerWalletEntries } from '@/db/schema'
+import { pendingAdminCredits, workers, workerWalletEntries } from '@/db/schema'
 import type { DbExecutor } from '@/lib/job-lifecycle'
 
 export interface WalletMismatch {
@@ -48,6 +48,63 @@ export async function findWalletMismatches(
     const ledgerCents = Number(r.ledgerCents)
     return { workerId: r.workerId, balanceCents, ledgerCents, differenceCents: balanceCents - ledgerCents }
   })
+}
+
+// ── Admin credits ───────────────────────────────────────────────────────────
+//
+// Ad-hoc admin credits are the one wallet credit that is not tied to a job, so
+// the reconcile report lists them as their own ledger lines (who issued what to
+// whom) plus every second-approval request, so an admin can review both.
+
+export interface AdminCreditLine {
+  entryId: number
+  workerId: number
+  amountCents: number
+  note: string | null
+  createdByAdminId: number | null
+  idempotencyKey: string | null
+  createdAt: string
+}
+
+export interface ListWindow {
+  /** ISO timestamp; entries created at or after it. */
+  since: string
+  limit: number
+}
+
+/** Every admin_credit ledger entry in the window, newest first. */
+export async function listAdminCredits(window: ListWindow, exec: DbExecutor = defaultDb): Promise<AdminCreditLine[]> {
+  const e = workerWalletEntries
+  const rows = await exec
+    .select({
+      entryId: e.id,
+      workerId: e.workerId,
+      amountCents: e.amountCents,
+      note: e.note,
+      createdByAdminId: e.createdByAdminId,
+      idempotencyKey: e.idempotencyKey,
+      createdAt: e.createdAt,
+    })
+    .from(e)
+    .where(and(eq(e.kind, 'admin_credit'), gte(e.createdAt, window.since)))
+    .orderBy(desc(e.createdAt))
+    .limit(window.limit)
+  return rows.map((r) => ({ ...r, amountCents: Number(r.amountCents) }))
+}
+
+export type PendingAdminCreditLine = typeof pendingAdminCredits.$inferSelect
+
+/** Every second-approval request in the window, in any state, newest first. */
+export async function listPendingAdminCredits(
+  window: ListWindow,
+  exec: DbExecutor = defaultDb,
+): Promise<PendingAdminCreditLine[]> {
+  return exec
+    .select()
+    .from(pendingAdminCredits)
+    .where(gte(pendingAdminCredits.createdAt, window.since))
+    .orderBy(desc(pendingAdminCredits.createdAt))
+    .limit(window.limit)
 }
 
 /** True when this worker's wallet column and ledger agree. */

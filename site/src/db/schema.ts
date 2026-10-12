@@ -15,6 +15,8 @@ import {
   real,
   index,
   uniqueIndex,
+  date,
+  primaryKey,
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 
@@ -2285,6 +2287,48 @@ export const workerWalletEntries = pgTable('worker_wallet_entries', {
   withdrawalReversalUnique: uniqueIndex('worker_wallet_entries_withdrawal_reversal_unique')
     .on(table.payoutId)
     .where(sql`kind = 'withdrawal_reversal'`),
+}))
+
+// Daily aggregate caps on ad-hoc admin wallet credits (lib/admin-credit-caps.ts).
+// One row per (scope, subject, UTC day): scope 'admin' counts what an admin
+// has credited to anyone today, scope 'target' what a worker has received from
+// any admin today. The cap is enforced by Postgres in the upsert itself
+// (ON CONFLICT … DO UPDATE … WHERE new_total <= cap), which is the only way
+// to make it atomic on neon-http (no interactive transactions). Over-counting
+// is the safe failure: a crash after the bump leaves less room, never more.
+export const adminCreditDailyTotals = pgTable('admin_credit_daily_totals', {
+  scope: varchar('scope', { length: 10 }).notNull(), // 'admin' | 'target'
+  subjectId: integer('subject_id').notNull(), // workers.id of the admin or the target
+  day: date('day', { mode: 'string' }).notNull(), // UTC calendar date
+  totalCents: integer('total_cents').notNull().default(0),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.scope, table.subjectId, table.day] }),
+}))
+
+// Ad-hoc admin credits above the second-approval threshold wait here until a
+// DIFFERENT admin approves them (lib/admin-credit-approval.ts), mirroring job
+// approval: a conditional UPDATE on status='pending' is the claim, and only an
+// approved row produces the admin_credit ledger entry (walletEntryId).
+//   status: 'pending' | 'approved' | 'rejected'
+export const pendingAdminCredits = pgTable('pending_admin_credits', {
+  id: serial('id').primaryKey(),
+  targetWorkerId: integer('target_worker_id').notNull(),
+  amountCents: integer('amount_cents').notNull(),
+  reason: varchar('reason').notNull(),
+  // The requesting admin's idempotency key, reused as the ledger entry's key
+  // when the credit is approved so a retried request can never double-credit.
+  idempotencyKey: varchar('idempotency_key').notNull(),
+  createdByAdminId: integer('created_by_admin_id').notNull(),
+  status: varchar('status', { length: 20 }).notNull().default('pending'),
+  decidedByAdminId: integer('decided_by_admin_id'),
+  decidedAt: timestamp('decided_at', { mode: 'string', withTimezone: true }),
+  decisionNote: varchar('decision_note'),
+  walletEntryId: integer('wallet_entry_id'),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  statusIdx: index('pending_admin_credits_status_idx').on(table.status),
+  idempotencyUnique: uniqueIndex('pending_admin_credits_idempotency_key_unique').on(table.idempotencyKey),
 }))
 
 export const bountyPledges = pgTable('bounty_pledges', {

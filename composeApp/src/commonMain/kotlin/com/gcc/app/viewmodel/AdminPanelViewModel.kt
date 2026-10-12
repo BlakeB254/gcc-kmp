@@ -956,6 +956,9 @@ class AdminPanelViewModel(
                 invalidateTab(AdminTab.PAYOUTS)
                 invalidateTab(AdminTab.WORKERS)
                 val message = when {
+                    // Above the second-approval threshold: nothing landed yet.
+                    response.payout?.status?.startsWith("pending") == true ->
+                        "Needs a second admin's approval before it lands — request #${response.payout?.id ?: 0}"
                     response.alreadyProcessed -> "Payout was already sent"
                     response.payout?.method == "wallet" ->
                         "Added to the worker's wallet — they can cash out any time"
