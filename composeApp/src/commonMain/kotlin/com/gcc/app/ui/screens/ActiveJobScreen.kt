@@ -13,7 +13,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import com.gcc.app.platform.LocationProvider
+import com.gcc.app.platform.Permission
+import com.gcc.app.platform.PermissionManager
+import com.gcc.app.platform.PermissionStatus
 import com.gcc.app.ui.components.*
 import com.gcc.app.ui.map.GccMap
 import com.gcc.app.ui.map.MapStyles
@@ -49,6 +53,8 @@ fun ActiveJobScreen(
     onStartScan: (Int) -> Unit = {},
 ) {
     val viewModel = koinInject<ActiveJobViewModel>()
+    val permissionManager = remember { PermissionManager() }
+    val notifyScope = rememberCoroutineScope()
     val locationProvider = koinInject<LocationProvider>()
     val uiState by viewModel.uiState.collectAsState()
     val currentLocation by locationProvider.currentLocation.collectAsState()
@@ -211,7 +217,26 @@ fun ActiveJobScreen(
 
                             GccButton(
                                 text = if (uiState.isWithinStartArea) "Start Route" else "Go to Location to Start",
-                                onClick = { viewModel.startJob() },
+                                onClick = {
+                                    // Ask for notifications before the job starts.
+                                    // On Android 13+ a foreground-service notification
+                                    // is gated by POST_NOTIFICATIONS: without it the
+                                    // service still runs but its "Active Cleaning Job"
+                                    // banner is suppressed, leaving location tracking
+                                    // with no visible indicator — which is both a Play
+                                    // policy problem and the thing the review video has
+                                    // to show. Best-effort: never block starting work.
+                                    notifyScope.launch {
+                                        runCatching {
+                                            if (permissionManager.checkPermission(Permission.NOTIFICATIONS)
+                                                != PermissionStatus.GRANTED
+                                            ) {
+                                                permissionManager.requestPermission(Permission.NOTIFICATIONS)
+                                            }
+                                        }
+                                        viewModel.startJob()
+                                    }
+                                },
                                 variant = GccButtonVariant.PRIMARY,
                                 enabled = !uiState.isStarting && canStartRoute,
                                 isLoading = uiState.isStarting,

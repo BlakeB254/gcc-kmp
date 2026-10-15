@@ -126,6 +126,15 @@ fun AdminWorkerDetailScreen(
                                     workerId = w.id,
                                     status = computeOverallStatus(DocumentStatus.APPROVED, w.verification.proofOfAddressStatus),
                                     governmentIdStatus = DocumentStatus.APPROVED,
+                                    // Carry the OTHER document's current status. The server
+                                    // gates approval on
+                                    //   stored-document-id OR this-request's-status == approved
+                                    // for each document. Sending only the card being approved
+                                    // meant the second approval arrived with the other field
+                                    // null, so the check fell back to the stored id — which is
+                                    // absent whenever documents were never uploaded, and the
+                                    // request 400'd. Describing the full intended state fixes it.
+                                    proofOfAddressStatus = w.verification.proofOfAddressStatus,
                                     reviewNotes = reviewNotes.ifBlank { null },
                                 )
                             },
@@ -160,6 +169,15 @@ fun AdminWorkerDetailScreen(
                                 viewModel.verifyWorker(
                                     workerId = w.id,
                                     status = computeOverallStatus(w.verification.governmentIdStatus, DocumentStatus.APPROVED),
+                                    // Carry the OTHER document's current status. The server
+                                    // gates approval on
+                                    //   stored-document-id OR this-request's-status == approved
+                                    // for each document. Sending only the card being approved
+                                    // meant the second approval arrived with the other field
+                                    // null, so the check fell back to the stored id — which is
+                                    // absent whenever documents were never uploaded, and the
+                                    // request 400'd. Describing the full intended state fixes it.
+                                    governmentIdStatus = w.verification.governmentIdStatus,
                                     proofOfAddressStatus = DocumentStatus.APPROVED,
                                     reviewNotes = reviewNotes.ifBlank { null },
                                 )

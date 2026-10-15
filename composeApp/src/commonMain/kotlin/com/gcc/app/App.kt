@@ -26,6 +26,8 @@ import com.gcc.app.ui.screens.admin.AdminSpotDetailScreen
 import com.gcc.app.ui.theme.GccGreen
 import com.gcc.app.ui.screens.admin.AdminBountyDetailScreen
 import com.gcc.app.ui.screens.admin.AdminWorkerDetailScreen
+import com.gcc.app.ui.screens.UicCreditScreen
+import com.gcc.app.ui.screens.shouldShowUicCredit
 import com.gcc.app.ui.theme.GccTheme
 import com.gcc.shared.geo.routeCenterCoordinates
 import org.koin.mp.KoinPlatform
@@ -33,6 +35,9 @@ import org.koin.mp.KoinPlatform
 @Composable
 fun App(component: RootComponent) {
     var showSplash by remember { mutableStateOf(true) }
+    // Donor credit for the UIC-funded Android handset. Android-only and
+    // self-expiring — see shouldShowUicCredit().
+    var showUicCredit by remember { mutableStateOf(shouldShowUicCredit()) }
 
     // §5.2 splash gating: full sequence only when the intro was never seen
     // (first download); returning users get the ~1.5s logo hold. Resolved
@@ -56,6 +61,11 @@ fun App(component: RootComponent) {
                 shortMode = firstRunStore?.introSeen == true,
                 onFinished = { showSplash = false },
             )
+            return@GccTheme
+        }
+
+        if (showUicCredit) {
+            UicCreditScreen(onFinished = { showUicCredit = false })
             return@GccTheme
         }
 

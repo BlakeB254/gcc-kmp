@@ -3,7 +3,17 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <!-- ACCESS_BACKGROUND_LOCATION deliberately NOT declared.
+         Nothing ever requests Permission.LOCATION_BACKGROUND: the only runtime
+         permission the app asks for is CAMERA. Tracking works because startJob()
+         launches LocationTrackingService from the foreground, and a service typed
+         foregroundServiceType="location" keeps receiving updates with the screen
+         off on ACCESS_FINE_LOCATION alone. Background location is only needed for
+         location with no foreground service, or to start one from the background —
+         neither of which this app does. Declaring it triggered Play's background
+         location review (declaration + prominent disclosure + video) for a
+         capability we do not use. If screen-off tracking ever drops on an
+         aggressive OEM, the fix is a battery-optimisation exemption, not this. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />

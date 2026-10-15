@@ -126,16 +126,21 @@ android {
     defaultConfig {
         applicationId = "com.globalcommunitycleaners.worker"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         // Tracks the iOS release line: versionName matches
         // CFBundleShortVersionString, versionCode matches CFBundleVersion
         // at the time of each Android cut (Android had been parked at 2/1.0.1
         // since before the KMP consolidation).
         //
+        // 190: Play rejected 189 for targeting API 35 (it now requires 36), and
+        // a re-upload needs a higher versionCode. iOS CFBundleVersion moved to
+        // 190 in the same change so the pairing holds; the next iOS upload
+        // ships as 190.
+        //
         // Enforced by scripts/check-version-parity.sh in CI. It is a gate
         // because this was only a comment when PR #280 bumped iOS to 189 and
         // left Android on 188. Bump both platforms in the same PR.
-        versionCode = 189
+        versionCode = 190
         versionName = "1.1.0"
     }
     if (signingProps.containsKey("KEYSTORE_PATH")) {
@@ -150,6 +155,13 @@ android {
         buildTypes {
             release {
                 signingConfig = signingConfigs.getByName("release")
+                // Ship native symbols inside the bundle so Play can symbolicate
+                // crashes and ANRs in the dependency .so files (MapLibre, CameraX,
+                // androidx.graphics.path). Without this Play warns on every upload
+                // and native stack traces come back as raw addresses.
+                // SYMBOL_TABLE gives function names; FULL adds line numbers at a
+                // much larger upload size, which MapLibre alone would dominate.
+                ndk { debugSymbolLevel = "SYMBOL_TABLE" }
                 isMinifyEnabled = true
                 isShrinkResources = true
                 proguardFiles(
