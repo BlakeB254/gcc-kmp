@@ -220,7 +220,7 @@ function AddressChangeModal({
             </p>
             <input
               type="file"
-              accept="image/*,.pdf"
+              accept="image/jpeg,image/png,image/webp,application/pdf"
               required
               onChange={(e) => setProofFile(e.target.files?.[0] || null)}
               className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-white file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-brand-green-500 file:text-neutral-900 file:font-medium file:cursor-pointer"

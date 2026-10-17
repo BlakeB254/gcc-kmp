@@ -3,9 +3,16 @@ import { db } from '@/db'
 import { workers, media } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { verifyToken } from '@/lib/auth'
-import { put } from '@vercel/blob'
+import { PutObjectCommand } from '@aws-sdk/client-s3'
+import { processImage } from '@/lib/image-utils'
+import { isR2Configured, r2BucketName, r2Client } from '@/lib/r2'
+import { verificationDocKey } from '@/lib/verification-doc-key'
 
 export const runtime = 'nodejs'
+
+// Proof of address is a PII document: same formats and cap as onboarding.
+const ACCEPTED_MIME = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf'])
+const MAX_BYTES = 10 * 1024 * 1024
 
 // 24 hour cooldown in milliseconds
 const ADDRESS_CHANGE_COOLDOWN = 24 * 60 * 60 * 1000
@@ -114,26 +121,43 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Upload proof of address document to Vercel Blob
-    const timestamp = Date.now()
-    const safeFilename = proofOfAddress.name.replace(/[^a-zA-Z0-9.-]/g, '_')
-    const blobPath = `workers/${workerId}/address-change/${timestamp}-${safeFilename}`
+    if (!ACCEPTED_MIME.has(proofOfAddress.type)) {
+      return NextResponse.json({ error: 'Unsupported file type. Use JPEG, PNG, WebP, or PDF.' }, { status: 400 })
+    }
+    if (proofOfAddress.size > MAX_BYTES) {
+      return NextResponse.json({ error: 'File too large. Max 10MB.' }, { status: 400 })
+    }
 
-    const blob = await put(blobPath, proofOfAddress, {
-      access: 'public',
-      contentType: proofOfAddress.type,
-    })
+    // Stored PRIVATELY in R2 (never public Blob). No public fallback — a
+    // misconfigured server refuses rather than publishing the document.
+    if (!isR2Configured()) {
+      return NextResponse.json(
+        { error: 'Document uploads are temporarily unavailable. Please try again later.' },
+        { status: 503 }
+      )
+    }
 
-    // Create media record
+    // Images: auto-rotate, resize, strip EXIF, re-encode as JPEG. PDFs pass through.
+    const isPdf = proofOfAddress.type === 'application/pdf'
+    const raw = await proofOfAddress.arrayBuffer()
+    const processed = isPdf ? Buffer.from(raw) : await processImage(raw)
+    const contentType = isPdf ? 'application/pdf' : 'image/jpeg'
+    const key = verificationDocKey(workerId, 'address_change', isPdf ? 'pdf' : 'jpg')
+
+    await r2Client().send(
+      new PutObjectCommand({ Bucket: r2BucketName(), Key: key, Body: processed, ContentType: contentType })
+    )
+
+    // Create media record (url holds the private R2 key, not a fetchable URL)
     const [proofDoc] = await db
       .insert(media)
       .values({
         alt: `Proof of address for ${worker.name} - ${new Date().toISOString()}`,
         category: 'proof_of_address',
-        url: blob.url,
-        filename: safeFilename,
-        mimeType: proofOfAddress.type,
-        filesize: String(proofOfAddress.size),
+        url: key,
+        filename: key,
+        mimeType: contentType,
+        filesize: String(processed.length),
       })
       .returning({ id: media.id })
 

@@ -7,17 +7,26 @@
  *
  * Auth: cookie-based `worker-token` (same JWT issued by /set-password).
  *
+ * PRIVACY: these are PII documents. They are stored PRIVATELY in Cloudflare
+ * R2 under `verification/{workerId}/` (the same prefix as the mobile route,
+ * /api/workers/me/verification/upload), and the media row holds the object
+ * key, not a fetchable URL. Admins view them through
+ * GET /api/admin/workers/:id/documents, which issues short-lived presigned
+ * URLs. This route used to write public Vercel Blob URLs.
+ *
  * Inserts a row into `media` (with the right category), then patches
  * the worker row's `verificationGovernmentIdId` / `verificationProofOfAddressId`
  * and resets `verificationStatus` to 'pending' so the admin queue picks it up.
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { put } from '@vercel/blob'
+import { PutObjectCommand } from '@aws-sdk/client-s3'
 import { eq } from 'drizzle-orm'
 import { db } from '@/db'
 import { workers, media } from '@/db/schema'
 import { verifyToken } from '@/lib/auth'
 import { processImage } from '@/lib/image-utils'
+import { isR2Configured, r2BucketName, r2Client } from '@/lib/r2'
+import { verificationDocKey } from '@/lib/verification-doc-key'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -46,6 +55,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
   }
   const workerId = payload.id
+
+  // No public-blob fallback — a misconfigured server must refuse the upload
+  // rather than quietly publish someone's government ID.
+  if (!isR2Configured()) {
+    return NextResponse.json(
+      { error: 'Document uploads are temporarily unavailable. Please try again later.' },
+      { status: 503 },
+    )
+  }
 
   // Parse form
   let formData: FormData
@@ -79,18 +97,19 @@ export async function POST(request: NextRequest) {
   const ext = isPdf ? 'pdf' : 'jpg'
   const contentType = isPdf ? 'application/pdf' : 'image/jpeg'
 
-  const timestamp = Date.now()
-  const filename = `worker-docs/${workerId}/${documentType}-${timestamp}.${ext}`
+  const key = verificationDocKey(workerId, documentType, ext)
 
-  let blobUrl: string
   try {
-    const blob = await put(filename, processed, {
-      access: 'public',
-      contentType,
-    })
-    blobUrl = blob.url
+    await r2Client().send(
+      new PutObjectCommand({
+        Bucket: r2BucketName(),
+        Key: key,
+        Body: processed,
+        ContentType: contentType,
+      }),
+    )
   } catch (err) {
-    console.error('Blob upload failed:', err)
+    console.error('[upload-document] R2 upload failed:', err)
     return NextResponse.json({ error: 'Upload failed. Please try again.' }, { status: 500 })
   }
 
@@ -99,8 +118,8 @@ export async function POST(request: NextRequest) {
   const [mediaRow] = await db
     .insert(media)
     .values({
-      url: blobUrl,
-      filename,
+      url: key,
+      filename: key,
       mimeType: contentType,
       filesize: processed.length.toString(),
       category,
@@ -129,6 +148,5 @@ export async function POST(request: NextRequest) {
     success: true,
     documentType,
     mediaId: mediaRow.id,
-    url: blobUrl,
   })
 }
