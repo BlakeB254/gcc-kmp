@@ -38,6 +38,27 @@ Render Cron  ──curl + Bearer CRON_SECRET──▶  Next.js /api/cron/*  ─�
 |---|---|---|
 | `gcc-cron-route-releases` | `*/15 * * * *` | `/api/cron/route-releases` |
 | `gcc-cron-building-footprints` | `23 * * * *` | `/api/cron/building-footprints` |
+| `gcc-cron-verification-docs` (ms-a2 user timer) | daily `04:37` | `/api/cron/verification-docs?retention_days=90&retention=enforce` |
+
+**Verification documents** (`/api/cron/verification-docs`). Government IDs and
+proofs of address are PII, kept privately in R2 under `verification/{workerId}/`.
+The scheduler owns the policy through query parameters, so a bare call changes
+nothing:
+
+- `retention_days=N&retention=dry|enforce` purges objects older than N days
+  (never fewer than 30) whose worker is not in review: verification pending or
+  needs-info, a document pending or resubmit, or an address change pending.
+  Referenced media rows are tombstoned to `purged:<key>` before the object is
+  deleted. The policy is **90 days**, set 2026-10-17. Change it in the timer's
+  unit, not in code.
+- `migrate=dry|apply&limit=N` was the one-time move of legacy *public* Blob
+  documents (`worker-docs/`, `government-id/`, `proof-of-address/`,
+  `workers/*/address-change/`) into R2. It copies each file, verifies size and
+  MD5, repoints the media row, and only then deletes the public copy. It is
+  kept for re-runs and is a no-op once nothing is left.
+
+`backend/…/VerificationPhotoRetention.kt` was never deployed. This route is the
+retention job.
 
 The route-releases tick also sweeps abandoned **$0 test jobs** back off their
 worker (claimed and not started within 60 min, or in progress for over 24h),

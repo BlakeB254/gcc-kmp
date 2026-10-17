@@ -61,22 +61,12 @@ export async function POST(request: Request) {
   }
 
   // IDOR guard: a document reference must be a private R2 key THIS worker's
-  // upload route minted (verification/{ownWorkerId}/{ts}-{idx}.jpg) or a
-  // legacy public blob URL from the pre-R2 flow. Anything else — notably
-  // another worker's verification/* key, or any arbitrary bucket key — is
-  // rejected; otherwise a client could link someone else's government ID
-  // into their own review flow.
+  // upload route minted (verification/{ownWorkerId}/{ts}-{idx}.jpg). Anything
+  // else — another worker's verification/* key, an arbitrary bucket key, or a
+  // public blob URL (accepted before 2026-10-17 for the pre-R2 flow; identity
+  // documents must never be linked from public storage) — is rejected.
   const ownKeyPattern = new RegExp(`^verification/${user.workerId}/\\d+-\\d+\\.jpg$`)
-  const isLegacyBlobUrl = (v: string) =>
-    v.startsWith('https://') && new URL(v).hostname.endsWith('.public.blob.vercel-storage.com')
-  const isValidDocRef = (v: string) => {
-    if (ownKeyPattern.test(v)) return true
-    try {
-      return isLegacyBlobUrl(v)
-    } catch {
-      return false
-    }
-  }
+  const isValidDocRef = (v: string) => ownKeyPattern.test(v)
   if (!isValidDocRef(governmentIdUrl) || !isValidDocRef(proofOfAddressUrl)) {
     return NextResponse.json({ error: 'Invalid document reference' }, { status: 400 })
   }
@@ -85,9 +75,8 @@ export async function POST(request: Request) {
 
   // Persist the submitted document references as media rows and link them on
   // the worker, so the admin review flow (/api/admin/workers/:id/documents)
-  // can actually find them. Values are either private R2 object keys from
-  // /api/workers/me/verification/upload (preferred, e.g.
-  // `verification/{workerId}/...jpg`) or legacy public blob URLs.
+  // can actually find them. Values are private R2 object keys from
+  // /api/workers/me/verification/upload (`verification/{workerId}/...jpg`).
   const [govMedia] = await db
     .insert(media)
     .values({

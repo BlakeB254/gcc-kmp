@@ -21,7 +21,7 @@
 import { sql } from 'drizzle-orm'
 import { db } from '@/db'
 
-export type CronLeaseName = 'route-releases' | 'building-footprints'
+export type CronLeaseName = 'route-releases' | 'building-footprints' | 'verification-docs'
 
 export type CronLeaseOutcome<T> =
   | { ran: true; result: T }

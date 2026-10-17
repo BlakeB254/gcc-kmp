@@ -39,3 +39,8 @@ for (const route of [
     assert.ok(src.includes('PutObjectCommand'), 'writes to private R2')
   })
 }
+
+test('the mobile submit route no longer accepts public blob URLs as documents', () => {
+  const src = readFileSync(join(__dirname, '..', 'app/api/workers/me/verification/route.ts'), 'utf8')
+  assert.equal(src.includes('public.blob.vercel-storage.com'), false)
+})
