@@ -63,10 +63,33 @@ export async function getR2ViewUrl(key: string): Promise<string> {
 
 // Matches gridCell()'s exact output shape (site/src/lib/world-observations.ts):
 // `${latIdx}:${lngIdx}`, both signed integers.
-const LOCATION_CELL_ID_PATTERN = /^-?\d+:-?\d+$/
+// Bounded: real indices are at most 7 digits; an unbounded \d+ let a client
+// mint arbitrarily long keys.
+export const LOCATION_CELL_ID_PATTERN = /^-?\d{1,9}:-?\d{1,9}$/
 // Bounded alphanumeric identifier — covers CoverageDeviceId's 32-char hex
-// format without hard-coupling to that exact scheme.
-const DEVICE_ID_PATTERN = /^[0-9A-Za-z_-]{1,128}$/
+// format without hard-coupling to that exact scheme. 64 = scan_sessions.device_id.
+export const DEVICE_ID_PATTERN = /^[0-9A-Za-z_-]{1,64}$/
+// The app's one session-id generator (EnvScanSessionRecorder.generateSessionId):
+// `env-` + epoch ms + `-` + 6 of [a-z0-9]. Every session in prod R2 on
+// 2026-10-18 (175 of 175) has exactly this shape.
+export const SESSION_ID_PATTERN = /^env-\d{13}-[a-z0-9]{6}$/
+
+/**
+ * Session folders are owned by the first worker granted in them; device
+ * folders are not. So the two id formats must be disjoint, or a worker could
+ * claim a session folder named like a victim's device id and block that
+ * device's uploads. The app's device id (CoverageDeviceId) is 32 hex chars and
+ * can never match SESSION_ID_PATTERN; one that does is refused.
+ */
+export function isDeviceId(id: string): boolean {
+  return DEVICE_ID_PATTERN.test(id) && !SESSION_ID_PATTERN.test(id)
+}
+
+export function isSessionId(id: string): boolean {
+  return SESSION_ID_PATTERN.test(id)
+}
+// capturedAt becomes a file name; the app sends ISO instants and short ids.
+const CAPTURED_AT_PATTERN = /^[\x21-\x7E]{1,128}$/
 
 /**
  * Raw per-session capture key, per the documented bucket layout (design spec
@@ -81,8 +104,13 @@ export function rawScanKey(locationCellId: string, deviceId: string, capturedAt:
   if (!LOCATION_CELL_ID_PATTERN.test(locationCellId)) {
     throw new Error(`invalid locationCellId: ${locationCellId}`)
   }
-  if (!DEVICE_ID_PATTERN.test(deviceId)) {
+  if (!isDeviceId(deviceId)) {
     throw new Error(`invalid deviceId: ${deviceId}`)
+  }
+  // Over-long or non-printable is refused; printable punctuation is still
+  // rewritten to `-` as before.
+  if (!CAPTURED_AT_PATTERN.test(capturedAt)) {
+    throw new Error(`invalid capturedAt (${capturedAt.length} chars)`)
   }
   const safeCapturedAt = capturedAt.replace(/[^0-9A-Za-z._-]/g, '-')
   return `raw/${locationCellId}/${deviceId}/${safeCapturedAt}.${ext}`
@@ -110,8 +138,8 @@ const ARTIFACT_PATH_MAX_LENGTH = 200
  * Raw session-artifact key for Pillar 1 capture chunks (background HEVC
  * video / pose-sidecar JSONL / LiDAR depth files), per the session-capture
  * plan: `raw/{locationCellId}/{sessionId}/{artifactPath}`. Sibling of
- * `rawScanKey` — same locationCellId validation, sessionId sanitized the
- * same permissive way as `rawScanKey`'s capturedAt — but artifactPath is
+ * `rawScanKey` — same locationCellId validation, sessionId held to the app's
+ * exact session format (SESSION_ID_PATTERN; refused, not rewritten) — but artifactPath is
  * itself a `/`-joined relative path (e.g. `capture/chunk-0.mp4`), so unlike
  * every other key component here it is validated PER SEGMENT and slashes
  * are preserved rather than stripped/escaped. Each segment must match the
@@ -141,7 +169,9 @@ export function rawSessionArtifactKey(locationCellId: string, sessionId: string,
   if (!LOCATION_CELL_ID_PATTERN.test(locationCellId)) {
     throw new Error(`invalid locationCellId: ${locationCellId}`)
   }
-  const safeSessionId = sessionId.replace(/[^0-9A-Za-z._-]/g, '-')
+  if (!isSessionId(sessionId)) {
+    throw new Error(`invalid sessionId (${sessionId.length} chars)`)
+  }
   if (artifactPath.length === 0 || artifactPath.length > ARTIFACT_PATH_MAX_LENGTH) {
     throw new Error(`invalid artifactPath length: ${artifactPath.length}`)
   }
@@ -154,5 +184,5 @@ export function rawSessionArtifactKey(locationCellId: string, sessionId: string,
       throw new Error(`invalid artifactPath segment: ${segment}`)
     }
   }
-  return `raw/${locationCellId}/${safeSessionId}/${segments.join('/')}`
+  return `raw/${locationCellId}/${sessionId}/${segments.join('/')}`
 }

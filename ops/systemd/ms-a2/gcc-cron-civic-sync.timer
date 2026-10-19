@@ -1,0 +1,9 @@
+[Unit]
+Description=GCC civic-sync every 6 hours (the Kotlin CivicReportSync's old cadence)
+
+[Timer]
+OnCalendar=*-*-* 00/6:47:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -2035,6 +2035,9 @@ export const scanSessions = pgTable('scan_sessions', {
   videoCoveragePct: real('video_coverage_pct'), // videoCoveredSeconds / sessionSeconds * 100, clamped 0..100
   maxThermalState: varchar('max_thermal_state', { length: 16 }), // nominal|fair|serious|critical
   droppedVideoChunks: integer('dropped_video_chunks'),
+  // Worker whose upload grants cover this session's manifest (capture_upload_
+  // grants, migration 0054). Null for sessions uploaded before grants existed.
+  workerId: integer('worker_id'),
   indexedAt: timestamp('indexed_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
@@ -2095,6 +2098,50 @@ export const reconstructionJobs = pgTable('reconstruction_jobs', {
   claimIdx: index('reconstruction_jobs_claim_idx').on(table.status, table.createdAt),
   cellIdx: index('reconstruction_jobs_cell_idx').on(table.locationCellId),
 }))
+
+// Manifests the scan indexer (lib/scan-index) can never accept as uploaded:
+// undecodable, missing a required field, a key that doesn't match the ids it
+// claims, too large, or a session owned by another device. Lets the indexer
+// skip them until they are re-uploaded, and lets the watchdog alert on each one
+// once rather than staying red. Applied by migration 0052.
+export const scanManifestRejects = pgTable('scan_manifest_rejects', {
+  // text, not varchar: the key is whatever was uploaded, and an over-long one
+  // is exactly what gets rejected — its insert must not fail.
+  r2Key: text('r2_key').primaryKey(),
+  reason: text('reason').notNull(),
+  size: bigint('size', { mode: 'number' }).notNull(), // listed size of the rejected upload
+  lastModified: timestamp('last_modified', { mode: 'string', withTimezone: true }).notNull(),
+  firstSeenAt: timestamp('first_seen_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  alertedAt: timestamp('alerted_at', { mode: 'string', withTimezone: true }),
+})
+
+// Every raw/ capture key a presigned upload URL was issued for, and to whom
+// (/api/captures/upload-url, /api/scans/[id]/upload-url). The scan indexer
+// accepts a post-cutover manifest only if its key — and every key it names —
+// was granted to one worker (lib/scan-index/grants.ts). Applied by migration 0054.
+export const captureUploadGrants = pgTable('capture_upload_grants', {
+  r2Key: text('r2_key').primaryKey(),
+  workerId: integer('worker_id').notNull(),
+  deviceId: varchar('device_id', { length: 128 }),
+  sessionId: varchar('session_id', { length: 128 }),
+  issuedAt: timestamp('issued_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  lastIssuedAt: timestamp('last_issued_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  workerIdx: index('capture_upload_grants_worker_idx').on(table.workerId),
+  issuedIdx: index('capture_upload_grants_issued_idx').on(table.issuedAt),
+}))
+
+// The first worker granted an upload under a session folder owns that session:
+// upload-url refuses every other worker a key in it, even a new key name
+// (lib/scan-index/grants.ts). Device folders are deliberately not bound — test
+// handsets are shared between accounts. Applied by migration 0054.
+export const captureNamespaceOwners = pgTable('capture_namespace_owners', {
+  // The folder segment itself (raw/{cell}/{ns_id}/…), whatever request shape
+  // names it — only session-shaped requests ever create a row.
+  nsId: varchar('ns_id', { length: 64 }).primaryKey(),
+  workerId: integer('worker_id').notNull(),
+  firstGrantedAt: timestamp('first_granted_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
 
 export type ReconstructionJobRow = typeof reconstructionJobs.$inferSelect
 export type NewReconstructionJobRow = typeof reconstructionJobs.$inferInsert

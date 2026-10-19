@@ -21,7 +21,12 @@
 import { sql } from 'drizzle-orm'
 import { db } from '@/db'
 
-export type CronLeaseName = 'route-releases' | 'building-footprints' | 'verification-docs'
+export type CronLeaseName =
+  | 'route-releases'
+  | 'building-footprints'
+  | 'verification-docs'
+  | 'scan-index'
+  | 'civic-sync'
 
 export type CronLeaseOutcome<T> =
   | { ran: true; result: T }
@@ -34,7 +39,11 @@ function rowsOf(res: unknown): unknown[] {
   return Array.isArray(rows) ? rows : []
 }
 
-async function acquire(name: CronLeaseName, ttlSeconds: number): Promise<boolean> {
+/**
+ * Take the lease; returns its fencing token (the row's locked_at, as text) or
+ * null when another tick holds it.
+ */
+async function acquire(name: CronLeaseName, ttlSeconds: number): Promise<string | null> {
   // The `::int` casts are load-bearing: neon-http sends bind params untyped, and
   // `make_interval(secs => $1)` fails to resolve an overload against an unknown
   // param. Casting pins it.
@@ -45,19 +54,25 @@ async function acquire(name: CronLeaseName, ttlSeconds: number): Promise<boolean
       set locked_at = now(),
           expires_at = now() + make_interval(secs => ${ttlSeconds}::int)
       where cron_leases.expires_at < now()
-    returning name
+    returning locked_at::text as token
   `)
-  return rowsOf(res).length > 0
+  const row = rowsOf(res)[0] as { token?: string } | undefined
+  return row?.token ?? null
 }
 
 /**
  * Expire the lease immediately so the next tick isn't forced to wait out the
- * full TTL after a fast run. Never throws — losing the release is survivable
- * (the TTL still expires it), but losing the caller's result is not.
+ * full TTL after a fast run — but only if we still hold it: fenced on the
+ * token, so a run that outlived its TTL can't release the lease a newer tick
+ * has since taken. Never throws — losing the release is survivable (the TTL
+ * still expires it), but losing the caller's result is not.
  */
-async function release(name: CronLeaseName): Promise<void> {
+async function release(name: CronLeaseName, token: string): Promise<void> {
   try {
-    await db.execute(sql`update cron_leases set expires_at = now() where name = ${name}`)
+    await db.execute(sql`
+      update cron_leases set expires_at = now()
+      where name = ${name} and locked_at = ${token}::timestamptz
+    `)
   } catch (e) {
     console.error(`cron-lease: failed to release ${name} (will expire via TTL)`, e)
   }
@@ -73,12 +88,13 @@ export async function withCronLease<T>(
   ttlSeconds: number,
   fn: () => Promise<T>,
 ): Promise<CronLeaseOutcome<T>> {
-  if (!(await acquire(name, ttlSeconds))) {
+  const token = await acquire(name, ttlSeconds)
+  if (token == null) {
     return { ran: false, skipped: 'lease-held' }
   }
   try {
     return { ran: true, result: await fn() }
   } finally {
-    await release(name)
+    await release(name, token)
   }
 }

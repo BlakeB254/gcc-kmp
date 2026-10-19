@@ -1,5 +1,21 @@
 # GCC backend — scan control-plane (Kotlin/Ktor)
 
+> **Superseded (2026-10-18). Nothing here runs.** This service stopped running
+> on every host around 2026-09-08 and is not coming back: the Next.js API in
+> `site/` is the one backend. Its jobs now live there:
+>
+> | Kotlin | Next.js |
+> |---|---|
+> | `ScanIndexer` + `ScanIndexRepository` (+ `EventLogMetrics`) | `GET /api/cron/scan-index` → `site/src/lib/scan-index/indexer.ts` |
+> | `CivicReportSync` | `GET /api/cron/civic-sync` → `site/src/lib/scan-index/civic-sync.ts` |
+> | `VerificationPhotoRetention` | `GET /api/cron/verification-docs` → `site/src/lib/verification-retention.ts` |
+> | — | `GET /api/cron/scan-watchdog` (silence alarm) |
+>
+> Scheduling is in `ops/systemd/ms-a2/` and
+> `docs/governance/cron-and-scheduling.md`. The Kotlin source stays as the
+> reference the ports were checked against; do not deploy it — it would be a
+> second writer to the same tables.
+
 The first brick of GCC's unified Kotlin backend. It is a small, always-on Ktor
 service that does the **stateful, long-running work Next.js/Vercel can't** — and
 it grows over time to absorb more of the API. It reuses `:shared` for DTOs, so

@@ -2,7 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { PutObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { requireMobileAuth } from '@/lib/mobile-auth'
-import { isR2Configured, r2BucketName, r2Client, rawScanKey, rawSessionArtifactKey } from '@/lib/r2'
+import {
+  isDeviceId,
+  LOCATION_CELL_ID_PATTERN,
+  isR2Configured,
+  r2BucketName,
+  r2Client,
+  rawScanKey,
+  rawSessionArtifactKey,
+} from '@/lib/r2'
+import { grantRefusal, grantUploadKey, manifestSessionOf } from '@/lib/scan-index/grants'
+import { neonExec, r2Probe } from '@/lib/scan-index/deps'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -34,8 +44,6 @@ const EXTENSION_CONTENT_TYPES: Record<string, string> = {
   // gzipped JSONL uploaded as `…/events.jsonl.gz` alongside the manifest.
   gz: 'application/gzip',
 }
-const LOCATION_CELL_ID_PATTERN = /^-?\d+:-?\d+$/
-const DEVICE_ID_PATTERN = /^[0-9A-Za-z_-]{1,128}$/
 
 /**
  * Presigned R2 PUT URLs for ENVIRONMENT-SCAN session artifacts (photos +
@@ -45,6 +53,16 @@ const DEVICE_ID_PATTERN = /^[0-9A-Za-z_-]{1,128}$/
  * same strict key-component allowlists. One scan session = one manifest +
  * its photos under raw/{locationCellId}/{deviceId}/, ready for the DGX
  * reconstruction pipeline to discover.
+ *
+ * Every issued key is recorded in capture_upload_grants against the worker
+ * (lib/scan-index/grants.ts). A session folder belongs to the first worker
+ * granted in it; a device folder does not (shared test handsets), so there
+ * only the exact key is owned. Refused with 409 (the app drops the file): a
+ * worker's exact key, or a key where someone else's object already exists
+ * with no grant (legacy data can't be claimed). Refused with 503 +
+ * Retry-After (the app keeps the file): another account's session on a
+ * shared handset, or R2 unable to say whether the key is free. The scan
+ * indexer only accepts what was granted to one worker.
  */
 export async function POST(request: NextRequest) {
   const auth = await requireMobileAuth(request)
@@ -76,7 +94,7 @@ export async function POST(request: NextRequest) {
     const artifactPath = typeof body?.artifactPath === 'string' ? body.artifactPath : ''
     const useSessionArtifactKey = Boolean(sessionId && artifactPath)
 
-    if (!locationCellId || (!useSessionArtifactKey && (!deviceId || !capturedAt))) {
+    if (!locationCellId || !deviceId || (!useSessionArtifactKey && !capturedAt)) {
       return NextResponse.json(
         { data: null, success: false, message: 'locationCellId, deviceId, and capturedAt are required' },
         { status: 400 }
@@ -85,7 +103,9 @@ export async function POST(request: NextRequest) {
     if (!LOCATION_CELL_ID_PATTERN.test(locationCellId)) {
       return NextResponse.json({ data: null, success: false, message: 'Invalid locationCellId' }, { status: 400 })
     }
-    if (!useSessionArtifactKey && !DEVICE_ID_PATTERN.test(deviceId)) {
+    // The app sends its deviceId on both key shapes; it is recorded on the
+    // upload grant, so it is held to the same allowlist either way.
+    if (!isDeviceId(deviceId)) {
       return NextResponse.json({ data: null, success: false, message: 'Invalid deviceId' }, { status: 400 })
     }
     const contentType = EXTENSION_CONTENT_TYPES[ext]
@@ -105,7 +125,31 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ data: null, success: false, message: 'Invalid sessionId or artifactPath' }, { status: 400 })
       }
     } else {
-      r2Key = rawScanKey(locationCellId, deviceId, capturedAt, ext)
+      try {
+        r2Key = rawScanKey(locationCellId, deviceId, capturedAt, ext)
+      } catch (validationError) {
+        console.error('[captures/upload-url] invalid scan key components', validationError)
+      return NextResponse.json({ data: null, success: false, message: 'Invalid capturedAt' }, { status: 400 })
+      }
+    }
+    const grant = await grantUploadKey(neonExec, {
+      r2Key,
+      workerId: auth.workerId,
+      deviceId,
+      sessionId: useSessionArtifactKey ? sessionId : null,
+      folder: useSessionArtifactKey ? sessionId : deviceId,
+      claimFolder: useSessionArtifactKey,
+      relatedSession: useSessionArtifactKey ? null : manifestSessionOf(capturedAt, ext),
+    }, (key) => r2Probe.state(key))
+    const refusal = grantRefusal(grant)
+    if (refusal) {
+      return NextResponse.json(
+        { data: null, success: false, message: refusal.message },
+        {
+          status: refusal.status,
+          headers: refusal.retryAfter ? { 'Retry-After': String(refusal.retryAfter) } : undefined,
+        }
+      )
     }
     const uploadUrl = await getSignedUrl(
       r2Client(),

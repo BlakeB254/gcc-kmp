@@ -3,7 +3,9 @@ import { PutObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { requireMobileAuth } from '@/lib/mobile-auth'
 import { canAccessRouteScan, findRouteScan } from '@/lib/mobile-route-scan-response'
-import { isR2Configured, r2BucketName, r2Client, rawScanKey } from '@/lib/r2'
+import { LOCATION_CELL_ID_PATTERN, isDeviceId, isR2Configured, r2BucketName, r2Client, rawScanKey } from '@/lib/r2'
+import { grantRefusal, grantUploadKey, manifestSessionOf } from '@/lib/scan-index/grants'
+import { neonExec, r2Probe } from '@/lib/scan-index/deps'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -24,9 +26,6 @@ const EXTENSION_CONTENT_TYPES: Record<string, string> = {
   bin: 'application/octet-stream',
   ply: 'application/octet-stream',
 }
-// Matches gridCell()'s output shape (site/src/lib/world-observations.ts).
-const LOCATION_CELL_ID_PATTERN = /^-?\d+:-?\d+$/
-const DEVICE_ID_PATTERN = /^[0-9A-Za-z_-]{1,128}$/
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -87,7 +86,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (!LOCATION_CELL_ID_PATTERN.test(locationCellId)) {
       return NextResponse.json({ data: null, success: false, message: 'Invalid locationCellId' }, { status: 400 })
     }
-    if (!DEVICE_ID_PATTERN.test(deviceId)) {
+    if (!isDeviceId(deviceId)) {
       return NextResponse.json({ data: null, success: false, message: 'Invalid deviceId' }, { status: 400 })
     }
     const contentType = EXTENSION_CONTENT_TYPES[ext]
@@ -98,7 +97,33 @@ export async function POST(request: NextRequest, context: RouteContext) {
       )
     }
 
-    const r2Key = rawScanKey(locationCellId, deviceId, capturedAt, ext)
+    let r2Key: string
+    try {
+      r2Key = rawScanKey(locationCellId, deviceId, capturedAt, ext)
+    } catch (validationError) {
+      console.error('[scans/upload-url] invalid scan key components', validationError)
+      return NextResponse.json({ data: null, success: false, message: 'Invalid capturedAt' }, { status: 400 })
+    }
+    // Same grant record as /api/captures/upload-url (lib/scan-index/grants.ts).
+    const grant = await grantUploadKey(neonExec, {
+      r2Key,
+      workerId: auth.workerId,
+      deviceId,
+      sessionId: null,
+      folder: deviceId,
+      claimFolder: false,
+      relatedSession: manifestSessionOf(capturedAt, ext),
+    }, (key) => r2Probe.state(key))
+    const refusal = grantRefusal(grant)
+    if (refusal) {
+      return NextResponse.json(
+        { data: null, success: false, message: refusal.message },
+        {
+          status: refusal.status,
+          headers: refusal.retryAfter ? { 'Retry-After': String(refusal.retryAfter) } : undefined,
+        }
+      )
+    }
     const uploadUrl = await getSignedUrl(
       r2Client(),
       new PutObjectCommand({ Bucket: r2BucketName(), Key: r2Key, ContentType: contentType }),

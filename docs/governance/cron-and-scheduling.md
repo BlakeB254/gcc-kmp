@@ -39,6 +39,9 @@ Render Cron  ──curl + Bearer CRON_SECRET──▶  Next.js /api/cron/*  ─�
 | `gcc-cron-route-releases` | `*/15 * * * *` | `/api/cron/route-releases` |
 | `gcc-cron-building-footprints` | `23 * * * *` | `/api/cron/building-footprints` |
 | `gcc-cron-verification-docs` (ms-a2 user timer) | daily `04:37` | `/api/cron/verification-docs?retention_days=90&retention=enforce` |
+| `gcc-cron-scan-index` (ms-a2 user timer) | every 30 min, `:11`/`:41` | `/api/cron/scan-index` |
+| `gcc-cron-civic-sync` (ms-a2 user timer) | every 6 h at `:47` | `/api/cron/civic-sync` |
+| `gcc-cron-scan-watchdog` (ms-a2 user timer) | every 6 h at `:53` | `/api/cron/scan-watchdog` |
 
 **Verification documents** (`/api/cron/verification-docs`). Government IDs and
 proofs of address are PII, kept privately in R2 under `verification/{workerId}/`.
@@ -58,7 +61,59 @@ nothing:
   kept for re-runs and is a no-op once nothing is left.
 
 `backend/…/VerificationPhotoRetention.kt` was never deployed. This route is the
-retention job.
+retention job. The rest of `backend/` is superseded the same way (see
+`backend/README.md`).
+
+**Which scheduler actually runs.** As of 2026-10-18 the jobs that run are the
+ms-a2 user timers (`journalctl --user -u gcc-cron-*` shows each tick and its
+JSON). Their unit files are versioned in `ops/systemd/ms-a2/` (secret in
+`~/.config/cdx/gcc-cron.env`, not in git). There is no evidence the Render
+blueprint below was ever created; treat it as the documented alternative, not
+as what is live.
+
+**Scan indexing and the 311 mirror** (`/api/cron/scan-index`,
+`/api/cron/civic-sync`, code in `site/src/lib/scan-index/`). These replace the
+Kotlin `backend/` sweeps (`ScanIndexer`, `CivicReportSync`), which ran on no
+host after 2026-09-08 — so no scan was indexed or queued for reconstruction,
+and `civic_reports` froze. Same rows, same `'0:0'` cell fallback, same enqueue
+rule. **Upload grants** tie scans to workers: both upload-url routes record
+every presigned raw/ key against the authenticated worker in
+`capture_upload_grants` (migration 0054). The first worker granted a key
+under a session folder owns that session (`capture_namespace_owners`); every
+other worker is refused any key in it — with **503 + Retry-After**, not a 4xx:
+on a shared test handset that is another account's pending session, and the
+app keeps a file it gets a 5xx for (it deletes chunks on any 4xx). Device
+folders are not bound, so there only the exact key is owned (keys carry the
+session id, so a 409 there is a real collision). A first grant over an object
+that already exists is refused (legacy data can't be claimed) unless it sits
+in the requester's own session folder; if R2 can't say whether the key is
+free, the answer is 503 and nothing is granted. A grant counts only for an object written inside its window (issued_at −
+15 min … last_issued_at + 30 min URL TTL + 15 min); a grant whose URL expired
+with no object behind it can be re-granted. Legacy sessions are frozen: an
+object added after the cutover needs a grant from the session's one grant
+owner.
+Manifests written from the first grant + 2h on are accepted only if their key
+was granted, keep only keys granted to that same worker (device folder for
+photos/USDZ/manifest, session folder for capture chunks, event log and
+`photos/` keyframes), and stamp `scan_sessions.worker_id`. Older manifests keep
+the folder rules alone. Reads are capped at fetch time (ranged GET: manifest
+4 MiB, event log 2 MiB, inflated log 64 MiB). Each run fits Vercel's 60s: the indexer only re-reads manifests whose
+session changed since it was indexed (the tables are the watermark), and the
+311 sync resumes from `MAX(last_modified_date)`. Both are leased.
+
+**Silence alarm** (`/api/cron/scan-watchdog`). Answers 503 — failing the
+timer's `curl -f` — when a manifest has sat unindexed longer than
+`scan_hours`, the newest mirrored 311 change is older than `civic_hours`, or a
+reconstruction job has been claimable for longer than `recon_hours`. With
+`CRON_ALERT_EMAIL` set on Vercel it also emails. A manifest the indexer can never accept
+(undecodable, missing a required field, a key that doesn't match its ids) is
+recorded in `scan_manifest_rejects` (migration 0052): the indexer stops
+re-reading it until it is re-uploaded, and the watchdog fails **once** for it —
+the run that reports it marks it alerted — and leaves it out of the
+"unindexed" check afterwards. Five debug/test uploads in prod R2 are in this
+state; deleting them is the owner's call. It exists because the Spark
+recon timer kept logging "queue empty" for six weeks while nothing was being
+enqueued.
 
 The route-releases tick also sweeps abandoned **$0 test jobs** back off their
 worker (claimed and not started within 60 min, or in progress for over 24h),

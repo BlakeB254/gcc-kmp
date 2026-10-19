@@ -1,0 +1,10 @@
+[Unit]
+Description=GCC verification-docs retention daily 04:37 UTC
+
+[Timer]
+OnCalendar=*-*-* 04:37:00 UTC
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

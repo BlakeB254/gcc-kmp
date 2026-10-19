@@ -1,0 +1,9 @@
+[Unit]
+Description=GCC scan pipeline watchdog every 6 hours
+
+[Timer]
+OnCalendar=*-*-* 03/6:53:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

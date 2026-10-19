@@ -1,0 +1,7 @@
+[Unit]
+Description=GCC route-releases daily 06:00 (raise to hourly when route-release batches are in use)
+[Timer]
+OnCalendar=*-*-* 06:00:00
+Persistent=true
+[Install]
+WantedBy=timers.target

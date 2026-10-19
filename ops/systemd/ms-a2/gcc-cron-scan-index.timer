@@ -1,0 +1,10 @@
+[Unit]
+Description=GCC scan-index every 30 minutes (the Kotlin indexer's old cadence)
+
+[Timer]
+# :11 and :41 stay clear of building-footprints (:23) and the daily jobs.
+OnCalendar=*-*-* *:11,41:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,10 @@
+[Unit]
+Description=GCC cron: scan pipeline silence alarm (fails when indexing, the 311 mirror or the recon queue goes quiet)
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/home/codexian/.config/cdx/gcc-cron.env
+# The route answers 503 when a check fails, so curl -f fails this unit and it
+# shows in `systemctl --user --failed`. Thresholds (hours) are set here.
+ExecStart=/usr/bin/curl -fsS -m 60 -H "Authorization: Bearer ${CRON_SECRET}" "https://api.globalcommunitycleaners.org/api/cron/scan-watchdog?scan_hours=6&civic_hours=48&recon_hours=24"

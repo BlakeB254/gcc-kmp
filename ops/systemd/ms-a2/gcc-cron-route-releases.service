@@ -1,0 +1,6 @@
+[Unit]
+Description=GCC cron: route-releases
+[Service]
+Type=oneshot
+EnvironmentFile=/home/codexian/.config/cdx/gcc-cron.env
+ExecStart=/usr/bin/curl -fsS -m 90 -H "Authorization: Bearer ${CRON_SECRET}" https://api.globalcommunitycleaners.org/api/cron/route-releases
