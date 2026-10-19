@@ -77,6 +77,7 @@ export async function POST(request: NextRequest) {
         },
         mediaUrl: marker.mediaUrl ?? undefined,
         capturedAt: marker.capturedAt,
+        reporterWorkerId: auth.workerId,
       })
       inserted++
     }

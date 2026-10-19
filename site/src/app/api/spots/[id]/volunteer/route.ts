@@ -179,6 +179,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
           state: 'clean',
           mediaUrl: trashHeapMediaUrl || (afterMediaUrls && afterMediaUrls[0]) || undefined,
           capturedAt: new Date().toISOString(),
+          reporterWorkerId: auth.workerId,
         })
       }
 

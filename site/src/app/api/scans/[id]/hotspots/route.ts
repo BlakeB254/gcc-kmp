@@ -9,6 +9,14 @@ import {
   toMobileScanHotspot,
 } from '@/lib/mobile-route-scan-response'
 import { recordWorldObservation } from '@/lib/world-observations'
+import {
+  HOTSPOT_ROUTE_BUFFER_METERS,
+  capHotspotVolume,
+  hotspotPlacement,
+  isScanPhotoUrl,
+} from '@/lib/hotspot-checks'
+import { loadRouteGeometry } from '@/lib/scan-completion'
+import { checkEvidencePhotos } from '@/lib/photo-fingerprint-db'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -52,7 +60,43 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (!beforePhotoUrl) {
       return NextResponse.json({ data: null, success: false, message: 'beforePhotoUrl is required' }, { status: 400 })
     }
+    if (!isScanPhotoUrl(beforePhotoUrl, scan, auth.workerId)) {
+      return NextResponse.json(
+        { data: null, success: false, message: 'Hotspot photos must be uploaded through the app' },
+        { status: 400 },
+      )
+    }
 
+    // The hotspot must be on the block this scan is for (lib/hotspot-checks.ts).
+    // A route with no geometry cannot be checked here — and cannot complete
+    // either (scan-verification coverageRefusal), so nothing pays from it.
+    const placement = hotspotPlacement(lat, lng, await loadRouteGeometry(db, scan.routeId))
+    if (placement === 'off-route') {
+      return NextResponse.json(
+        {
+          data: null,
+          success: false,
+          message: `This hotspot is more than ${HOTSPOT_ROUTE_BUFFER_METERS} m from the route being scanned`,
+        },
+        { status: 422 },
+      )
+    }
+
+    // Fingerprint the photo; exact reuse from another job is refused, the
+    // rest are review flags (lib/photo-fingerprint.ts).
+    const photoCheck = await checkEvidencePhotos(
+      db,
+      [{ url: beforePhotoUrl, role: 'before' }],
+      { kind: 'scan', id: scanId, workStartedAt: scan.scoutStartedAt },
+      { isOwn: (url) => isScanPhotoUrl(url, scan, auth.workerId) },
+    )
+    if (photoCheck.reject) {
+      return NextResponse.json({ data: null, success: false, message: photoCheck.reject }, { status: 409 })
+    }
+
+    const clientVolume = Number.isFinite(Number(body?.estimatedVolumeLiters)) && body?.estimatedVolumeLiters != null
+      ? Number(body.estimatedVolumeLiters)
+      : null
     const [hotspot] = await db
       .insert(scanHotspots)
       .values({
@@ -61,9 +105,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
         lng,
         trashTypes: JSON.stringify(normalizeTags(body?.trashTypes)),
         severity: Number.isInteger(Number(body?.severity)) ? Number(body.severity) : 1,
-        estimatedVolumeLiters: Number.isFinite(Number(body?.estimatedVolumeLiters))
-          ? Number(body.estimatedVolumeLiters)
-          : null,
+        estimatedVolumeLiters: capHotspotVolume(clientVolume),
+        clientEstimatedVolumeLiters: clientVolume,
         estimatedWeightLbs: Number.isFinite(Number(body?.estimatedWeightLbs))
           ? Number(body.estimatedWeightLbs)
           : null,
@@ -100,6 +143,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       // recordWorldObservation run the block's exclusion-zone check; null on
       // legacy scans or routes without a block row, which skips the check.
       blockId: scan.blockId ?? undefined,
+      reporterWorkerId: scan.workerId,
     })
 
     return NextResponse.json({ data: toMobileScanHotspot(hotspot), success: true }, { status: 201 })

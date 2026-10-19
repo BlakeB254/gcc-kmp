@@ -21,6 +21,12 @@ val GccPendingReview = Color(0xFF8B5CF6)
 val GccCompleted = Color(0xFF10B981)
 val GccError = Color(0xFFEF4444)
 
+// Status TEXT colours (not brand colours): GccError (3.8:1) and GccClaimed
+// (2.2:1) fail WCAG AA for text on white, so warning/error wording uses
+// these. Measured on #FFFFFF: warning 7.1:1, error 6.5:1.
+val GccWarningText = Color(0xFF92400E)
+val GccErrorText = Color(0xFFB91C1C)
+
 // Badge tier colors
 val BadgeBronze = Color(0xFFCD7F32)
 val BadgeSilver = Color(0xFFC0C0C0)

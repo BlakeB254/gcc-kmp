@@ -15,16 +15,28 @@ import {
   supersedableCells,
 } from '@/lib/scan-verification'
 import { loadScanRouteCoverage, markScanComplete } from '@/lib/scan-completion'
+import { scanCompletionPoints } from '@/lib/hotspot-checks'
+import { NON_PAYING_PHOTO_FLAGS } from '@/lib/photo-fingerprint'
+import { flagsForUse, loadPhotoFlags } from '@/lib/photo-fingerprint-db'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
-function calculatePoints(hotspots: Awaited<ReturnType<typeof hotspotsForScan>>): number {
-  const cleaned = hotspots.filter((hotspot) => hotspot.status === 'cleaned')
-  const volumeBonus = cleaned.reduce((sum, hotspot) => sum + (hotspot.estimatedVolumeLiters ?? 0), 0)
-  return 50 + cleaned.length * 10 + Math.floor(volumeBonus)
+/**
+ * Scan points from server-checked values only (lib/hotspot-checks.ts):
+ * capped volumes, and a cleaned hotspot pays only when its after photo is
+ * not flagged as reused or identical to its before photo. The client's
+ * verificationScore is not an input.
+ */
+async function calculatePoints(scanId: number, hotspots: Awaited<ReturnType<typeof hotspotsForScan>>): Promise<number> {
+  const afterFlags = await loadPhotoFlags(db, hotspots.map((h) => h.afterPhotoUrl ?? '').filter(Boolean))
+  const paying = hotspots.map((h) => {
+    const flags = h.afterPhotoUrl ? flagsForUse(afterFlags.get(h.afterPhotoUrl), { kind: 'scan', id: scanId }) : []
+    return flags.some((f) => NON_PAYING_PHOTO_FLAGS.has(f)) ? { ...h, status: 'cleaned_unverified' } : h
+  })
+  return scanCompletionPoints(paying)
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
@@ -83,7 +95,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const body = await request.json().catch(() => null)
     const hotspots = await hotspotsForScan(scanId, 'complete')
-    const pointsAwarded = calculatePoints(hotspots)
+    const pointsAwarded = await calculatePoints(scanId, hotspots)
 
     const updated = await markScanComplete(
       db,

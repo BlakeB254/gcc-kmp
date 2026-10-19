@@ -10,6 +10,8 @@ import {
   toMobileScanHotspot,
 } from '@/lib/mobile-route-scan-response'
 import { recordWorldObservation } from '@/lib/world-observations'
+import { clientVerificationScore, isScanPhotoUrl } from '@/lib/hotspot-checks'
+import { checkEvidencePhotos } from '@/lib/photo-fingerprint-db'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -38,17 +40,58 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ data: null, success: false, message: 'Scan belongs to a different worker' }, { status: 403 })
     }
 
+    const [existing] = await db
+      .select({ beforePhotoUrl: scanHotspots.beforePhotoUrl, afterPhotoUrl: scanHotspots.afterPhotoUrl })
+      .from(scanHotspots)
+      .where(and(eq(scanHotspots.id, hotspotId), eq(scanHotspots.scanId, scanId)))
+      .limit(1)
+    if (!existing) {
+      return NextResponse.json({ data: null, success: false, message: 'Hotspot not found' }, { status: 404 })
+    }
+
     const body = await request.json().catch(() => null)
     const status = body?.status == null ? undefined : normalizeHotspotStatus(body.status)
     const cleanedAt = status === 'cleaned' ? new Date().toISOString() : undefined
+    const afterPhotoUrl = typeof body?.afterPhotoUrl === 'string' && body.afterPhotoUrl ? body.afterPhotoUrl : undefined
+
+    if (afterPhotoUrl && !isScanPhotoUrl(afterPhotoUrl, scan, auth.workerId)) {
+      return NextResponse.json(
+        { data: null, success: false, message: 'Hotspot photos must be uploaded through the app' },
+        { status: 400 },
+      )
+    }
+    // "Cleaned" is a claim the after photo backs; without one there is
+    // nothing for review (or scan points) to look at.
+    if (status === 'cleaned' && !afterPhotoUrl && !existing.afterPhotoUrl) {
+      return NextResponse.json(
+        { data: null, success: false, message: 'An after photo is required to mark a hotspot cleaned' },
+        { status: 400 },
+      )
+    }
+    if (afterPhotoUrl) {
+      // The stored before photo may predate origin checks: isOwn gates it
+      // too, so a foreign URL is flagged and never fetched.
+      const photoCheck = await checkEvidencePhotos(
+        db,
+        [{ url: afterPhotoUrl, role: 'after' }],
+        { kind: 'scan', id: scanId, workStartedAt: scan.scoutStartedAt },
+        {
+          isOwn: (url) => isScanPhotoUrl(url, scan, auth.workerId),
+          pairs: [[existing.beforePhotoUrl, afterPhotoUrl]],
+        },
+      )
+      if (photoCheck.reject) {
+        return NextResponse.json({ data: null, success: false, message: photoCheck.reject }, { status: 409 })
+      }
+    }
 
     const [updated] = await db
       .update(scanHotspots)
       .set({
-        afterPhotoUrl: typeof body?.afterPhotoUrl === 'string' ? body.afterPhotoUrl : undefined,
-        verificationScore: Number.isFinite(Number(body?.verificationScore))
-          ? Number(body.verificationScore)
-          : undefined,
+        afterPhotoUrl,
+        // The client's own match score — stored as its claim; scan points
+        // never read it (lib/hotspot-checks.ts scanCompletionPoints).
+        verificationScore: body?.verificationScore == null ? undefined : (clientVerificationScore(body.verificationScore) ?? undefined),
         status,
         cleanedAt,
       })
@@ -69,6 +112,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         state: 'clean',
         mediaUrl: updated.afterPhotoUrl ?? undefined,
         capturedAt: updated.cleanedAt ?? new Date().toISOString(),
+        reporterWorkerId: scan.workerId,
       })
     }
 

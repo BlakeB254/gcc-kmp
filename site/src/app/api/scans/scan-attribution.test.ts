@@ -256,12 +256,14 @@ test('coverage ingest: route events after the active scan started are stamped wi
     'POST',
     '/api/scans/coverage',
     {
+      // One fix per second: fixes sharing a timestamp are a duplicate burst
+      // and dropped by the GPS plausibility filter (lib/gps-plausibility.ts).
       events: [
         event(),
-        event({ scanMode: 'spot' }),
+        event({ scanMode: 'spot', capturedAt: '2026-10-07T09:10:01.000Z' }),
         event({ capturedAt: '2026-10-07T08:00:00.000Z' }),
         // A client cannot choose the scan: a smuggled routeScanId is overwritten.
-        event({ routeScanId: 999 }),
+        event({ routeScanId: 999, capturedAt: '2026-10-07T09:10:02.000Z' }),
       ],
     },
     { attribution: [{ id: 42, scoutStartedAt: STARTED }] },
@@ -274,7 +276,7 @@ test('coverage ingest: route events after the active scan started are stamped wi
 })
 
 test('coverage ingest: no active scan → events recorded with route_scan_id null', async () => {
-  const { res, log } = await call(ingestCoverage, 'POST', '/api/scans/coverage', { events: [event(), event({ routeScanId: 42 })] }, {
+  const { res, log } = await call(ingestCoverage, 'POST', '/api/scans/coverage', { events: [event(), event({ routeScanId: 42, capturedAt: '2026-10-07T09:10:01.000Z' })] }, {
     attribution: [],
   })
   assert.equal(res.status, 200)

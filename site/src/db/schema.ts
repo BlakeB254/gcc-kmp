@@ -3,6 +3,7 @@ import {
   serial,
   bigserial,
   varchar,
+  char,
   text,
   boolean,
   timestamp,
@@ -1652,6 +1653,16 @@ export const routeScans = pgTable('route_scans', {
   // Route coverage the SERVER computed from this scan's attributed coverage
   // events at scouting → scout_review, when lap one was stamped (0..1).
   lapOneCoverageRatio: doublePrecision('lap_one_coverage_ratio'),
+
+  // GPS plausibility (migration 0053, lib/gps-plausibility.ts). POST
+  // /api/scans/coverage drops implausible fixes before recording them and
+  // counts kept/dropped fixes here for the scan they would have counted
+  // toward. `gpsDropReasons` is {reason: count}; `gpsSuspect` is set once the
+  // dropped share is high enough for review to look (GPS_SUSPECT_*).
+  gpsPointsKept: integer('gps_points_kept').default(0).notNull(),
+  gpsPointsDropped: integer('gps_points_dropped').default(0).notNull(),
+  gpsDropReasons: jsonb('gps_drop_reasons').$type<Record<string, number>>().default({}).notNull(),
+  gpsSuspect: boolean('gps_suspect').default(false).notNull(),
 })
 
 // Hotspots recorded during route scan sessions
@@ -1662,7 +1673,10 @@ export const scanHotspots = pgTable('scan_hotspots', {
   lng: doublePrecision('lng').notNull(),
   trashTypes: varchar('trash_types', { length: 500 }).default('[]').notNull(),
   severity: integer('severity').default(1).notNull(),
+  // Server-capped (lib/hotspot-checks.ts MAX_HOTSPOT_VOLUME_LITERS) — the
+  // value scan points use. The client's own figure is kept beside it.
   estimatedVolumeLiters: doublePrecision('estimated_volume_liters'),
+  clientEstimatedVolumeLiters: doublePrecision('client_estimated_volume_liters'),
   estimatedWeightLbs: doublePrecision('estimated_weight_lbs'),
   confidence: doublePrecision('confidence').default(0).notNull(),
   beforePhotoUrl: varchar('before_photo_url', { length: 500 }).notNull(),
@@ -1671,9 +1685,66 @@ export const scanHotspots = pgTable('scan_hotspots', {
   depthData: text('depth_data'),
   detectedAt: timestamp('detected_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
   cleanedAt: timestamp('cleaned_at', { mode: 'string', withTimezone: true }),
+  // The CLIENT's own before/after match score (0..1) — a claim, stored for
+  // review only. Scan points never read it (lib/hotspot-checks.ts).
   verificationScore: doublePrecision('verification_score'),
   status: varchar('status', { length: 20 }).default('detected').notNull(),
 })
+
+// One row per evidence photo URL (migration 0053, lib/photo-fingerprint.ts):
+// sha256 + 64-bit dHash of the stored image, EXIF capture time from the
+// original upload, and the first job/scan the photo was submitted for. Used
+// to flag identical before/after, near-duplicates and stale EXIF, and to
+// refuse exact reuse of one photo across different jobs or scans.
+export const photoFingerprints = pgTable('photo_fingerprints', {
+  id: serial('id').primaryKey(),
+  url: varchar('url', { length: 500 }).notNull(),
+  status: varchar('status', { length: 16 }).default('ok').notNull(), // 'ok' | 'unverified'
+  sha256: char('sha256', { length: 64 }),
+  dhash: bigint('dhash', { mode: 'bigint' }),
+  byteSize: integer('byte_size'),
+  width: integer('width'),
+  height: integer('height'),
+  exifCapturedAt: timestamp('exif_captured_at', { mode: 'string', withTimezone: true }),
+  uploadedByWorkerId: integer('uploaded_by_worker_id'),
+  firstJobId: integer('first_job_id').references(() => jobs.id, { onDelete: 'set null' }),
+  firstScanId: integer('first_scan_id').references(() => routeScans.id, { onDelete: 'set null' }),
+  flags: jsonb('flags').$type<string[]>().default([]).notNull(),
+  error: varchar('error', { length: 200 }),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  urlUnique: uniqueIndex('photo_fingerprints_url_unique').on(table.url),
+  sha256Idx: index('photo_fingerprints_sha256_idx').on(table.sha256),
+  createdAtIdx: index('photo_fingerprints_created_at_idx').on(table.createdAt),
+}))
+
+export type PhotoFingerprintRow = typeof photoFingerprints.$inferSelect
+
+// First job each photo was submitted for (migration 0053). Keys are
+// `url:<url>` and `sha256:<hex>`; the primary key makes the first binding
+// atomic, so two jobs can never both claim the same photo
+// (lib/photo-fingerprint-db.ts claimPhotoForJob).
+export const photoJobBindings = pgTable('photo_job_bindings', {
+  photoKey: text('photo_key').primaryKey(),
+  jobId: integer('job_id').notNull().references(() => jobs.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+})
+
+// AI evidence review per job (migration 0053). Written by the Python review
+// worker (upsert on job_id); the site only reads it for the admin review
+// queue, where a missing row reads as "not reviewed yet".
+export const jobAiReviews = pgTable('job_ai_reviews', {
+  jobId: integer('job_id').primaryKey().references(() => jobs.id, { onDelete: 'cascade' }),
+  status: text('status').notNull(), // 'ok' | 'flagged' | 'error' (CHECK in 0053)
+  verdict: jsonb('verdict').notNull(),
+  model: text('model').notNull(),
+  inputHash: text('input_hash'),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }),
+})
+
+export type JobAiReviewRow = typeof jobAiReviews.$inferSelect
 
 // Material donation inquiry status enum
 export const materialDonationStatusEnum = pgEnum('enum_material_donations_status', [
@@ -1806,6 +1877,11 @@ export const worldObservations = pgTable('world_observations', {
   isCurrent: boolean('is_current').default(true).notNull(),
   excludedPrivateProperty: boolean('excluded_private_property').default(false).notNull(),
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow().notNull(),
+  // The worker whose report this is (migration 0053). Rectification refuses
+  // its bonus when the rectifier reported the dirty observation themselves.
+  // Null on legacy rows and system writers; see lib/rectify-checks.ts for the
+  // legacy fallback through scan_hotspots / community_reports.
+  reporterWorkerId: integer('reporter_worker_id'),
 }, (table) => ({
   // Bbox reads always filter on is_current first, then lat/lng (8 map/API
   // routes); cell-keyed reads (supersession, coverage boosts) hit
@@ -1842,10 +1918,19 @@ export const scanCoverageEvents = pgTable('scan_coverage_events', {
   // events, events with no active scan, and every event before 0050. Scan
   // verification (lib/scan-completion.ts) counts only events carrying it.
   routeScanId: integer('route_scan_id').references(() => routeScans.id),
+  // `${workerId}|${deviceId}|${capturedAt ISO}` (migration 0053). Unique, so a
+  // retried coverage batch inserts nothing twice and pays nothing twice
+  // (lib/scan-coverage.ts recordCoverageEvent). Null on rows before 0053.
+  dedupeKey: text('dedupe_key'),
 }, (table) => ({
   cellCapturedIdx: index('scan_coverage_events_cell_captured_idx').on(table.locationCellId, table.capturedAt),
   // Scan verification reads "this scan's route events" (lib/scan-completion.ts).
   routeScanIdx: index('scan_coverage_events_route_scan_id_idx').on(table.routeScanId),
+  // 0053: the per-device trajectory anchor (gps-plausibility-db.ts) and the
+  // rectify presence reads (rectify-checks-db.ts).
+  workerDeviceCapturedIdx: index('scan_coverage_events_worker_device_captured_idx').on(table.workerId, table.deviceId, table.capturedAt),
+  workerCapturedIdx: index('scan_coverage_events_worker_captured_idx').on(table.workerId, table.capturedAt),
+  dedupeKeyUnique: uniqueIndex('scan_coverage_events_dedupe_key_unique').on(table.dedupeKey),
 }))
 
 export type ScanCoverageEventRow = typeof scanCoverageEvents.$inferSelect

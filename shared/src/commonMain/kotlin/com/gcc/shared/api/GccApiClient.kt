@@ -1488,6 +1488,57 @@ data class PendingReview(
     val hasScan: Boolean = false,
     val scanDepthAvailable: Boolean = false,
     val completedAt: String?,
+    /** Server-side evidence checks (site/src/lib/review-trust.ts); null from older servers. */
+    val trust: PendingReviewTrust? = null,
+)
+
+/** `trust` on GET /api/admin/jobs/pending-review — what the server checked. */
+@Serializable
+data class PendingReviewTrust(
+    /** The job's qualifying (completion) scan; null when the job used none. */
+    val scan: ReviewScanTrust? = null,
+    val photos: List<ReviewPhotoTrust> = emptyList(),
+    /** Hotspot volume on that scan: the client's claim vs what the server counts. */
+    val volume: ReviewVolumeTrust? = null,
+    /** Null = the AI review worker has not looked at this job yet. */
+    val aiReview: ReviewAiVerdict? = null,
+)
+
+@Serializable
+data class ReviewScanTrust(
+    val scanId: Int,
+    /** Route coverage the server computed from kept GPS fixes (0..1). */
+    val verifiedCoverageRatio: Double? = null,
+    val gpsPointsKept: Int = 0,
+    val gpsPointsDropped: Int = 0,
+    val gpsDropReasons: Map<String, Int> = emptyMap(),
+    val gpsSuspect: Boolean = false,
+)
+
+@Serializable
+data class ReviewPhotoTrust(
+    val url: String,
+    /** "before" | "after" | "hotspot_before" | "hotspot_after" */
+    val role: String,
+    /** "ok" | "unverified" | "not_fingerprinted" */
+    val status: String,
+    val flags: List<String> = emptyList(),
+)
+
+@Serializable
+data class ReviewVolumeTrust(
+    val clientLiters: Double = 0.0,
+    val cappedLiters: Double = 0.0,
+    val hotspots: Int = 0,
+)
+
+@Serializable
+data class ReviewAiVerdict(
+    /** "ok" | "flagged" | "error" */
+    val status: String,
+    val model: String,
+    val verdict: JsonElement? = null,
+    val reviewedAt: String? = null,
 )
 
 @Serializable

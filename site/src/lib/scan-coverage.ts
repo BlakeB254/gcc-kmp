@@ -70,6 +70,17 @@ function categorizeCoverageEvent(
 }
 
 /**
+ * The idempotency key of a coverage event: one device of one worker cannot
+ * produce two fixes at the same instant, so a second insert with the same key
+ * is a retried batch. Null without a worker (nothing to pay, nothing to key).
+ */
+export function coverageDedupeKey(input: Pick<RecordCoverageEventInput, 'workerId' | 'deviceId' | 'capturedAt'>): string | null {
+  if (input.workerId == null) return null
+  const t = Date.parse(input.capturedAt)
+  return `${input.workerId}|${input.deviceId}|${Number.isNaN(t) ? input.capturedAt : new Date(t).toISOString()}`
+}
+
+/**
  * Records one coverage event (append-only) and upserts the per-cell rollup
  * summary used for cheap reads (map tile freshness, points calculation,
  * AR guidance). The event log is the source of truth; the summary is a
@@ -78,6 +89,9 @@ function categorizeCoverageEvent(
  * Also computes and awards distance-tracked points (design spec §5) —
  * skipped when the event has no workerId, since pointsLedger.workerId is
  * NOT NULL and an unauthenticated/deviceId-only event can't earn points.
+ *
+ * Idempotent per (worker, device, capturedAt): a retried event inserts
+ * nothing and returns null — no summary distance, no points.
  */
 export async function recordCoverageEvent(input: RecordCoverageEventInput) {
   const cellId = gridCell(input.lat, input.lng)
@@ -113,8 +127,13 @@ export async function recordCoverageEvent(input: RecordCoverageEventInput) {
       quality: input.quality,
       capturedAt: input.capturedAt,
       routeScanId: input.routeScanId ?? null,
+      dedupeKey: coverageDedupeKey(input),
     })
+    .onConflictDoNothing({ target: scanCoverageEvents.dedupeKey })
     .returning()
+
+  // Already recorded (a retried batch): nothing more to add or pay.
+  if (!row) return null
 
   // Denormalized cell-center coords for SQL bbox filtering on map reads
   // (schema comment on cellCoverageSummary.lat). Written on insert AND on

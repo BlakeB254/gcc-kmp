@@ -4,6 +4,7 @@ import { db } from '@/db'
 import { jobs, workers, blocks, media, routeScans, scanHotspots } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin-auth'
 import { evidenceMediaIds, evidenceUrls } from '@/lib/job-evidence'
+import { loadReviewTrust } from '@/lib/review-trust'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -11,8 +12,10 @@ export const dynamic = 'force-dynamic'
 /**
  * GET /api/admin/jobs/pending-review
  * Returns jobs with status='pending_review' and reviewStatus IS NULL,
- * with worker info, resolved photo URLs, and scan presence flags.
- * Admin-gated.
+ * with worker info, resolved photo URLs, scan presence flags, and `trust`:
+ * the server-side evidence checks (qualifying scan coverage + GPS
+ * plausibility, photo fingerprint flags, client vs capped hotspot volume,
+ * AI review — lib/review-trust.ts). Admin-gated.
  */
 export async function GET(request: Request) {
   const auth = await requireAdmin(request)
@@ -29,6 +32,7 @@ export async function GET(request: Request) {
         beforePhotos: jobs.beforePhotos,
         afterPhotos: jobs.afterPhotos,
         completedAt: jobs.completedAt,
+        completionScanId: jobs.completionScanId,
         routeId: blocks.routeId,
       })
       .from(jobs)
@@ -116,8 +120,17 @@ export async function GET(request: Request) {
       }
     }
 
-    // 5. Build the response payload
-    const data = pendingJobs.map(job => {
+    // 5. Server-side evidence checks per job (batched reads).
+    const resolved = pendingJobs.map(job => ({
+      jobId: job.jobId,
+      completionScanId: job.completionScanId ?? null,
+      beforePhotos: evidenceUrls(job.beforePhotos, mediaUrlMap),
+      afterPhotos: evidenceUrls(job.afterPhotos, mediaUrlMap),
+    }))
+    const trustByJob = await loadReviewTrust(db, resolved)
+
+    // 6. Build the response payload
+    const data = pendingJobs.map((job, i) => {
       const scanInfo =
         job.routeId !== null && job.routeId !== undefined
           ? (routeScanInfo.get(job.routeId) ?? { hasScan: false, scanDepthAvailable: false })
@@ -128,11 +141,12 @@ export async function GET(request: Request) {
         workerId: job.workerId ?? null,
         workerName: job.workerName ?? null,
         payoutAmount: job.payoutAmount !== null ? parseFloat(job.payoutAmount) : null,
-        beforePhotos: evidenceUrls(job.beforePhotos, mediaUrlMap),
-        afterPhotos: evidenceUrls(job.afterPhotos, mediaUrlMap),
+        beforePhotos: resolved[i].beforePhotos,
+        afterPhotos: resolved[i].afterPhotos,
         hasScan: scanInfo.hasScan,
         scanDepthAvailable: scanInfo.scanDepthAvailable,
         completedAt: job.completedAt ?? null,
+        trust: trustByJob.get(job.jobId) ?? null,
       }
     })
 

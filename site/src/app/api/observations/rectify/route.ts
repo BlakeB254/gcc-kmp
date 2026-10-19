@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireMobileAuth } from '@/lib/mobile-auth'
 import { recordWorldObservation, gridCell } from '@/lib/world-observations'
 import { db } from '@/db'
-import { pointsLedger, worldObservations } from '@/db/schema'
+import { pointsLedger } from '@/db/schema'
 import { RECTIFICATION_BONUS_POINTS } from '@/lib/points-config'
-import { and, eq } from 'drizzle-orm'
+import { decideRectification, parseRequestFix } from '@/lib/rectify-checks'
+import { claimDirtyObservation, loadDirtyObservations, loadLatestFix, loadRecentFixes } from '@/lib/rectify-checks-db'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,11 +15,11 @@ export const dynamic = 'force-dynamic'
  * Environment-scan variant of /api/scans/[id]/rectify: the worker stood at a
  * previously-reported-dirty spot during an environment scan (no route scan in
  * progress) and confirmed it is actually clean now. Records the superseding
- * clean observation and awards the flat rectification bonus — ONLY when a
- * real prior 'dirty' observation exists in this grid cell (anti-farming; the
- * same guard the route-scan variant uses; there is no scan-ownership check
- * here because environment scans have no scan row, so the prior-dirty check
- * and authenticated worker identity are the accountability anchors).
+ * clean observation and awards the flat rectification bonus — ONLY when the
+ * anti-farming rules in lib/rectify-checks.ts hold: a current dirty
+ * observation in this cell that someone else reported, and the worker's own
+ * recorded GPS at the cell. There is no scan-ownership check here because
+ * environment scans have no scan row.
  */
 export async function POST(request: NextRequest) {
   const auth = await requireMobileAuth(request)
@@ -36,18 +37,25 @@ export async function POST(request: NextRequest) {
   // Server-side timestamp — ledger rows must not carry client-controlled times.
   const capturedAt = new Date().toISOString()
 
-  // Anti-farming: award only when a real prior dirty observation exists in
-  // this cell. Read BEFORE recordWorldObservation's superseding write.
+  // Read BEFORE recordWorldObservation's superseding write.
   const cellId = gridCell(lat, lng)
-  const [priorDirty] = await db
-    .select({ id: worldObservations.id })
-    .from(worldObservations)
-    .where(and(
-      eq(worldObservations.locationCellId, cellId),
-      eq(worldObservations.state, 'dirty'),
-      eq(worldObservations.isCurrent, true),
-    ))
-    .limit(1)
+  // Presence: the fix the request carries (`fix: {lat, lng, capturedAt}`,
+  // trusted only when fresh and plausible against the recorded trajectory),
+  // or a recorded coverage fix near the cell.
+  const decision = decideRectification({
+    cellId,
+    rectifierId: auth.workerId,
+    dirty: await loadDirtyObservations(db, cellId, auth.workerId),
+    recentFixes: await loadRecentFixes(db, auth.workerId, cellId, capturedAt),
+    latestRecorded: await loadLatestFix(db, auth.workerId, capturedAt),
+    requestFix: parseRequestFix(body?.fix),
+    nowMs: Date.parse(capturedAt),
+  })
+
+  // The award is decided by reads; the payout is gated on an atomic claim of
+  // the dirty row (before recordWorldObservation supersedes the cell), so a
+  // concurrent duplicate request cannot be paid twice.
+  const claimed = decision.award && auth.role !== 'admin' && (await claimDirtyObservation(db, decision.observationId))
 
   const observation = await recordWorldObservation({
     sourceType: 'spot_report',
@@ -56,10 +64,12 @@ export async function POST(request: NextRequest) {
     itemType: null,
     state: 'clean',
     capturedAt,
+    reporterWorkerId: auth.workerId,
   })
 
-  if (priorDirty) {
-    if (auth.role !== 'admin') await db.insert(pointsLedger).values({
+  const awarded = claimed
+  if (awarded) {
+    await db.insert(pointsLedger).values({
       workerId: auth.workerId,
       action: 'scan_coverage_rectification',
       points: RECTIFICATION_BONUS_POINTS,
@@ -72,7 +82,12 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     success: true,
     observationId: observation.id,
-    pointsAwarded: priorDirty && auth.role !== 'admin' ? RECTIFICATION_BONUS_POINTS : 0,
-    wasRectification: Boolean(priorDirty),
+    pointsAwarded: awarded ? RECTIFICATION_BONUS_POINTS : 0,
+    wasRectification: decision.award,
+    ...(!decision.award
+      ? { bonusWithheld: decision.reason }
+      : !claimed && auth.role !== 'admin'
+        ? { bonusWithheld: 'already_rectified' }
+        : {}),
   })
 }

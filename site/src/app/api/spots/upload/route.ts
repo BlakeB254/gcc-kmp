@@ -9,6 +9,8 @@ import { put } from '@vercel/blob'
 import { verifyMobileToken } from '@/lib/mobile-auth'
 import { processImage } from '@/lib/image-utils'
 import { spotPhotoPathname } from '@/lib/spot-photo-path'
+import { db } from '@/db'
+import { recordUploadFingerprint } from '@/lib/photo-fingerprint-db'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -44,6 +46,11 @@ export async function POST(request: NextRequest) {
         // HTTP 500 "This blob already exists" — the production failure.
         addRandomSuffix: true,
       })
+
+      // Fingerprint now, while the original's EXIF still exists (the stored
+      // copy is re-encoded without it). Bounded and never throws — a failure
+      // only means the photo is hashed later, when it is submitted.
+      await recordUploadFingerprint(db, blob.url, processed, Buffer.from(raw), auth.workerId)
 
       urls.push(blob.url)
     }

@@ -5,6 +5,7 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { requireMobileAuth } from '@/lib/mobile-auth'
 import { routeIdsByBlockId, toMobileJob } from '@/lib/mobile-job-response'
 import { EVIDENCE_ALLOWED_STATUSES, evidenceAllowedForStatus, isOwnEvidenceUrl } from '@/lib/job-lifecycle'
+import { checkEvidencePhotos } from '@/lib/photo-fingerprint-db'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -65,6 +66,24 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         { error: 'Evidence photos must be uploaded through the app', success: false },
         { status: 400 },
       )
+    }
+
+    // Fingerprint both photos (lib/photo-fingerprint.ts). The same photo
+    // already submitted for a different job is refused; everything else
+    // (identical/near-identical before & after, old EXIF, unverifiable blob)
+    // is recorded as a flag for the reviewer.
+    const jobWorkerId = existing.workerId
+    const photoCheck = await checkEvidencePhotos(
+      db,
+      [
+        { url: beforePhotoUrl, role: 'before' },
+        { url: afterPhotoUrl, role: 'after' },
+      ],
+      { kind: 'job', id: jobId, workStartedAt: existing.claimedAt ?? existing.startedAt ?? null },
+      { isOwn: (url) => isOwnEvidenceUrl(url, jobWorkerId), pairs: [[beforePhotoUrl, afterPhotoUrl]] },
+    )
+    if (photoCheck.reject) {
+      return NextResponse.json({ error: photoCheck.reject, success: false }, { status: 409 })
     }
 
     const now = new Date().toISOString()

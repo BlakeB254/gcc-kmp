@@ -405,6 +405,7 @@ export async function POST(request: NextRequest) {
       const observation = await recordWorldObservation({
         sourceType: 'spot_report',
         communityReportId: observationReportId,
+        reporterWorkerId: auth.workerId,
         lat: item.lat,
         lng: item.lng,
         itemType: item.itemType,
@@ -464,6 +465,7 @@ export async function POST(request: NextRequest) {
       const observation = await recordWorldObservation({
         sourceType: 'spot_report',
         communityReportId: observationReportId,
+        reporterWorkerId: auth.workerId,
         lat,
         lng,
         itemType: item.itemType,
@@ -490,6 +492,7 @@ export async function POST(request: NextRequest) {
       const observation = await recordWorldObservation({
         sourceType: 'spot_report',
         communityReportId: observationReportId,
+        reporterWorkerId: auth.workerId,
         lat,
         lng,
         itemType: 'debris_pile',

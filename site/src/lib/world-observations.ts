@@ -53,6 +53,12 @@ export interface RecordObservationInput {
   arAnchorData?: string
   capturedAt: string
   blockId?: number
+  /**
+   * The worker whose report this is (world_observations.reporter_worker_id).
+   * Rectification refuses its bonus to the worker who reported the dirty
+   * observation (lib/rectify-checks.ts). Omit for system writers.
+   */
+  reporterWorkerId?: number
 }
 
 /**
@@ -259,6 +265,7 @@ export async function recordWorldObservation(input: RecordObservationInput) {
       capturedAt: input.capturedAt,
       isCurrent: true,
       excludedPrivateProperty: excluded,
+      reporterWorkerId: input.reporterWorkerId ?? null,
     })
     .returning()
 
