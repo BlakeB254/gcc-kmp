@@ -47,11 +47,28 @@ export function capHotspotVolume(value: unknown): number | null {
   return Math.min(Math.max(n, 0), MAX_HOTSPOT_VOLUME_LITERS)
 }
 
-/** Client verification score kept as a claim: a number in [0, 1], else null. */
-export function clientVerificationScore(value: unknown): number | null {
-  if (value == null || value === '') return null
-  const n = Number(value)
-  return Number.isFinite(n) ? Math.min(Math.max(n, 0), 1) : null
+/**
+ * The verificationScore column update for a hotspot PATCH body. The score is
+ * the client's on-device suggestion, kept only as a claim.
+ *  - a finite JSON number -> clamped to [0, 1]
+ *  - JSON null -> NULL ("not analysed"; never Number(null) = 0, "failed")
+ *  - key absent -> NULL when this PATCH claims the hotspot cleaned (the
+ *    claim is new, so a stale score must not survive it), else unchanged
+ *  - anything else (a string, NaN, Infinity, an object) -> 400
+ * `value: undefined` means "leave the column unchanged".
+ */
+export function verificationScoreUpdate(
+  body: unknown,
+  claimsCleaned: boolean,
+): { ok: true; value: number | null | undefined } | { ok: false; message: string } {
+  const hasKey = typeof body === 'object' && body !== null && 'verificationScore' in body
+  if (!hasKey) return { ok: true, value: claimsCleaned ? null : undefined }
+  const raw = (body as { verificationScore: unknown }).verificationScore
+  if (raw === null) return { ok: true, value: null }
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    return { ok: true, value: Math.min(Math.max(raw, 0), 1) }
+  }
+  return { ok: false, message: 'verificationScore must be a finite number or null' }
 }
 
 function pointSegmentMeters(

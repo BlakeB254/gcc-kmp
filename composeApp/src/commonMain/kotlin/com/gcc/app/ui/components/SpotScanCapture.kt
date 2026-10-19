@@ -28,6 +28,7 @@ import com.gcc.shared.geo.GeofenceVerification
 import com.gcc.shared.model.CaptureAttestation
 import com.gcc.shared.model.Coordinates
 import com.gcc.shared.model.ObservedSpotItem
+import com.gcc.shared.model.OnDeviceAnalysisResult
 import com.gcc.shared.model.ScanCapturedPhoto
 import com.gcc.app.ui.theme.GccAvailable
 import com.gcc.app.ui.theme.GccBlue
@@ -183,19 +184,7 @@ fun SpotScanCapture(
                         imageBytes = photo.bytes,
                         depthAnalysis = photo.depthAnalysis,
                     )
-                    if (analysis != null && analysis.trashTypes.isNotEmpty() && location != null) {
-                        val itemPos = projectForward(location, gpsHeading, 2.5)
-                        onTrashObserved(
-                            ObservedSpotItem(
-                                lat = itemPos.lat,
-                                lng = itemPos.lng,
-                                itemType = com.gcc.app.platform.TrashItemCatalog
-                                    .canonicalType(analysis.trashTypes.first()),
-                                severity = analysis.severity,
-                                confidence = analysis.confidence,
-                            )
-                        )
-                    }
+                    observedItemFromAnalysis(analysis, location, gpsHeading)?.let(onTrashObserved)
                     onPhotoCaptured(scanPhoto.copy(aiAnalysis = analysis))
                 } catch (e: Exception) {
                     DiagnosticsLog.error("vision-analyze", "first-capture analysis failed — photo kept without AI", e)
@@ -343,6 +332,27 @@ private fun CaptureModeBadge(
 }
 
 expect fun generateSessionId(): String
+
+/**
+ * The litter item a first-photo analysis may file, or null. No analysis (the
+ * analyzer is unavailable or failed) and an analysis that names no trash both
+ * file nothing: the item then only comes from the candidate tracker / user taps.
+ */
+internal fun observedItemFromAnalysis(
+    analysis: OnDeviceAnalysisResult?,
+    location: Coordinates?,
+    headingDeg: Float?,
+): ObservedSpotItem? {
+    if (analysis == null || analysis.trashTypes.isEmpty() || location == null) return null
+    val itemPos = projectForward(location, headingDeg, 2.5)
+    return ObservedSpotItem(
+        lat = itemPos.lat,
+        lng = itemPos.lng,
+        itemType = com.gcc.app.platform.TrashItemCatalog.canonicalType(analysis.trashTypes.first()),
+        severity = analysis.severity,
+        confidence = analysis.confidence,
+    )
+}
 
 /** Project [distanceMeters] forward from [from] along [bearingDeg] (null bearing → stay put). */
 internal fun projectForward(from: Coordinates, bearingDeg: Float?, distanceMeters: Double): Coordinates {

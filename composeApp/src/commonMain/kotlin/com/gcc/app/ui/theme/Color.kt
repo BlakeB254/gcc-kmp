@@ -20,6 +20,9 @@ val GccInProgress = Color(0xFF3B82F6)
 val GccPendingReview = Color(0xFF8B5CF6)
 val GccCompleted = Color(0xFF10B981)
 val GccError = Color(0xFFEF4444)
+// Dark status variants for TEXT on light surfaces (>= 4.5:1 on white).
+val GccErrorDark = Color(0xFFB91C1C)
+val GccWarningDark = Color(0xFF92400E)
 
 // Status TEXT colours (not brand colours): GccError (3.8:1) and GccClaimed
 // (2.2:1) fail WCAG AA for text on white, so warning/error wording uses

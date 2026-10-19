@@ -96,9 +96,14 @@ data class CreateHotspotRequest(
     val depthData: String? = null,
 )
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class UpdateHotspotRequest(
     val afterPhotoUrl: String? = null,
+    // Omitted when null ("not analysed"): GccJson encodes defaults, and a JSON
+    // null score must never be read as 0 ("failed"). The PATCH handler stores
+    // NULL for a cleaned claim without a score.
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
     val verificationScore: Float? = null,
     val status: HotspotStatus? = null,
 )

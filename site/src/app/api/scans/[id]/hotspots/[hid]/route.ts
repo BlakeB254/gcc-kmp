@@ -10,7 +10,7 @@ import {
   toMobileScanHotspot,
 } from '@/lib/mobile-route-scan-response'
 import { recordWorldObservation } from '@/lib/world-observations'
-import { clientVerificationScore, isScanPhotoUrl } from '@/lib/hotspot-checks'
+import { isScanPhotoUrl, verificationScoreUpdate } from '@/lib/hotspot-checks'
 import { checkEvidencePhotos } from '@/lib/photo-fingerprint-db'
 
 export const dynamic = 'force-dynamic'
@@ -53,6 +53,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const status = body?.status == null ? undefined : normalizeHotspotStatus(body.status)
     const cleanedAt = status === 'cleaned' ? new Date().toISOString() : undefined
     const afterPhotoUrl = typeof body?.afterPhotoUrl === 'string' && body.afterPhotoUrl ? body.afterPhotoUrl : undefined
+    const score = verificationScoreUpdate(body, status === 'cleaned')
+    if (!score.ok) {
+      return NextResponse.json({ data: null, success: false, message: score.message }, { status: 400 })
+    }
 
     if (afterPhotoUrl && !isScanPhotoUrl(afterPhotoUrl, scan, auth.workerId)) {
       return NextResponse.json(
@@ -89,9 +93,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       .update(scanHotspots)
       .set({
         afterPhotoUrl,
-        // The client's own match score — stored as its claim; scan points
-        // never read it (lib/hotspot-checks.ts scanCompletionPoints).
-        verificationScore: body?.verificationScore == null ? undefined : (clientVerificationScore(body.verificationScore) ?? undefined),
+        // The client's own match score — stored as its claim (NULL = not
+        // analysed); scan points never read it (scanCompletionPoints).
+        verificationScore: score.value,
         status,
         cleanedAt,
       })

@@ -51,7 +51,7 @@ fun CleanScreen(
     onCleanHotspot: (ScanHotspot) -> Unit,
     onSkipHotspot: (ScanHotspot) -> Unit,
     onBack: () -> Unit,
-    onConfirmCleaned: ((hotspotId: Int, afterPhotoUrl: String, score: Float) -> Unit)? = null,
+    onConfirmCleaned: ((hotspotId: Int, afterPhotoUrl: String, score: Float?) -> Unit)? = null,
     lap2Weight: Lap2WeightProgress = Lap2WeightProgress(),
     /** Re-enter the AR guidance overlay (plan 2.2) — null hides the button
      *  (non-AR devices). */
@@ -436,9 +436,9 @@ private fun CurrentCleanupSectionCard(
                 text = uiState.sectionPrompt ?: if (currentTarget == null) {
                     "Complete the scan to submit the route recording."
                 } else if (uiState.deviceType == com.gcc.shared.model.DeviceType.AR) {
-                    "Run the after scan here. When AI sees the area as clean, this section approves automatically."
+                    "Run the after scan here, then confirm the after photo to mark this section clean."
                 } else {
-                    "Take the after photo for this section. The app will approve it and move you to the next area."
+                    "Take the after photo for this section and confirm it to mark the section clean."
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = TextMuted,

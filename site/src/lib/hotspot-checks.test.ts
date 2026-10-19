@@ -8,12 +8,12 @@ import {
   HOTSPOT_ROUTE_BUFFER_METERS,
   MAX_HOTSPOT_VOLUME_LITERS,
   capHotspotVolume,
-  clientVerificationScore,
   distanceToRouteMeters,
   hotspotCountsAsCleaned,
   hotspotPlacement,
   isScanPhotoUrl,
   scanCompletionPoints,
+  verificationScoreUpdate,
   type HotspotForPoints,
 } from './hotspot-checks'
 import { METERS_PER_DEG_LAT, METERS_PER_DEG_LNG } from './geo-utils'
@@ -35,14 +35,6 @@ test('capHotspotVolume: null for nothing/nonsense, clamps to [0, cap]', () => {
   assert.equal(capHotspotVolume(42.5), 42.5)
   assert.equal(capHotspotVolume(1e6), MAX_HOTSPOT_VOLUME_LITERS)
   assert.equal(MAX_HOTSPOT_VOLUME_LITERS, 200)
-})
-
-test('clientVerificationScore: kept as a claim in [0, 1]', () => {
-  assert.equal(clientVerificationScore(0.83), 0.83)
-  assert.equal(clientVerificationScore(7), 1)
-  assert.equal(clientVerificationScore(-1), 0)
-  assert.equal(clientVerificationScore('x'), null)
-  assert.equal(clientVerificationScore(null), null)
 })
 
 test('distanceToRouteMeters: perpendicular distance to the segment, endpoint distance past its ends', () => {
@@ -98,4 +90,27 @@ test('scanCompletionPoints: base + per hotspot + litres, from capped volumes', (
   assert.equal(scanCompletionPoints([hs({ estimatedVolumeLiters: 1e6 })]), 50 + 10 + MAX_HOTSPOT_VOLUME_LITERS)
   // Not cleaned / no after photo → contributes nothing, volume included.
   assert.equal(scanCompletionPoints([hs({ status: 'detected', estimatedVolumeLiters: 100 }), hs({ afterPhotoUrl: null })]), 50)
+})
+
+test('verificationScoreUpdate: null is NULL (not analysed), never 0', () => {
+  assert.deepEqual(verificationScoreUpdate({ verificationScore: null }, true), { ok: true, value: null })
+  assert.deepEqual(verificationScoreUpdate({ verificationScore: null }, false), { ok: true, value: null })
+})
+
+test('verificationScoreUpdate: missing key is NULL on a cleaned claim, else unchanged', () => {
+  assert.deepEqual(verificationScoreUpdate({ status: 'cleaned' }, true), { ok: true, value: null })
+  assert.deepEqual(verificationScoreUpdate({ status: 'skipped' }, false), { ok: true, value: undefined })
+  assert.deepEqual(verificationScoreUpdate(null, false), { ok: true, value: undefined })
+})
+
+test('verificationScoreUpdate: finite numbers are kept, clamped to [0, 1]', () => {
+  assert.deepEqual(verificationScoreUpdate({ verificationScore: 0.7 }, true), { ok: true, value: 0.7 })
+  assert.deepEqual(verificationScoreUpdate({ verificationScore: 0 }, true), { ok: true, value: 0 })
+  assert.deepEqual(verificationScoreUpdate({ verificationScore: 3 }, true), { ok: true, value: 1 })
+})
+
+test('verificationScoreUpdate: non-numbers and non-finite values are rejected (400)', () => {
+  for (const bad of ['abc', '0.7', NaN, Infinity, -Infinity, {}, [0.5], true]) {
+    assert.equal(verificationScoreUpdate({ verificationScore: bad }, true).ok, false, String(bad))
+  }
 })

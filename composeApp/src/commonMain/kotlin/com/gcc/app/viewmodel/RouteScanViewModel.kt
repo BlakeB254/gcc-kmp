@@ -1191,7 +1191,7 @@ class RouteScanViewModel(
     fun confirmHotspotCleaned(
         hotspotId: Int,
         afterPhotoUrl: String,
-        verificationScore: Float,
+        verificationScore: Float?,
     ) {
         val scanId = _uiState.value.scanId ?: return
         scope.launch {

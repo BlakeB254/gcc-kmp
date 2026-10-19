@@ -56,6 +56,10 @@ object TrashDetectionRules {
         "paper" to "Paper", "box" to "Box", "napkin" to "Napkin",
         "tissue" to "Tissue", "foil" to "Foil", "styrofoam" to "Styrofoam",
         "straw" to "Straw", "lid" to "Lid", "jug" to "Jug", "glass" to "Glass",
+        // A litter class of the Stage-2 crop classifier (LitterCropClassifier)
+        // that no token typed until now, so its verdicts were silently dropped.
+        // TACO's most common category after "other".
+        "cigarette" to "Cigarette",
     )
 
     /**

@@ -19,7 +19,7 @@ import com.gcc.shared.model.OnDeviceAnalysisResult
 import com.gcc.shared.model.ScanHotspot
 import kotlinx.coroutines.launch
 
-private enum class CaptureState {
+internal enum class CaptureState {
     PREVIEW,     // Shows before photo placeholder + "Take After Photo" button
     CAPTURING,   // Shows camera preview + capture button
     COMPARING,   // Shows before/after side-by-side + score + confirm/retake
@@ -41,7 +41,7 @@ private const val VERIFICATION_THRESHOLD = 0.3f
 @Composable
 fun HotspotCaptureSheet(
     hotspot: ScanHotspot,
-    onConfirmed: (afterPhotoBytes: ByteArray, verificationScore: Float) -> Unit,
+    onConfirmed: (afterPhotoBytes: ByteArray, verificationScore: Float?) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -56,8 +56,7 @@ fun HotspotCaptureSheet(
     var isCapturing by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // Derive pass/fail from score
-    val passed = verificationScore?.let { it > VERIFICATION_THRESHOLD } ?: false
+    val badge = afterPhotoBadge(afterPhotoBytes, verificationScore)
 
     Surface(
         modifier = modifier
@@ -165,9 +164,10 @@ fun HotspotCaptureSheet(
                             if (cameraManager.hasCameraHardware()) {
                                 captureState = CaptureState.CAPTURING
                             } else {
-                                // Desktop fallback: skip to comparing with dummy bytes
-                                afterPhotoBytes = ByteArray(0)
-                                verificationScore = 1.0f
+                                // No camera (desktop): the compare shows "Photo not
+                                // captured" and Confirm stays disabled.
+                                afterPhotoBytes = null
+                                verificationScore = null
                                 captureState = CaptureState.COMPARING
                             }
                         },
@@ -229,7 +229,6 @@ fun HotspotCaptureSheet(
                                                 val bytes = photo.bytes
                                                 afterPhotoBytes = bytes
 
-                                                // Newer devices use after-scan AI to auto-approve clean sections.
                                                 isAnalyzing = true
                                                 val analysis = if (analyzer.isAvailable()) {
                                                     analyzer.analyzePhoto(
@@ -237,19 +236,16 @@ fun HotspotCaptureSheet(
                                                         depthAnalysis = photo.depthAnalysis,
                                                     )
                                                 } else null
-                                                val score = cleanVerificationScore(analysis)
-                                                verificationScore = score
+                                                val outcome = afterPhotoOutcome(analysis)
+                                                verificationScore = outcome.suggestedScore
                                                 isAnalyzing = false
-
-                                                if (score > VERIFICATION_THRESHOLD) {
-                                                    onConfirmed(bytes, score)
-                                                } else {
-                                                    captureState = CaptureState.COMPARING
-                                                }
+                                                captureState = outcome.state
                                             } else {
-                                                // Desktop or capture failed — still allow confirm
-                                                afterPhotoBytes = ByteArray(0)
-                                                verificationScore = 1.0f
+                                                // Capture failed (or no camera): no photo, no
+                                                // score. The compare says "Photo not captured" and
+                                                // Confirm stays disabled until a Retake succeeds.
+                                                afterPhotoBytes = null
+                                                verificationScore = null
                                                 captureState = CaptureState.COMPARING
                                             }
                                         } catch (e: Exception) {
@@ -283,7 +279,6 @@ fun HotspotCaptureSheet(
 
                 // ── COMPARING: before/after side-by-side + score ───────────
                 CaptureState.COMPARING -> {
-                    val score = verificationScore ?: 0f
 
                     // Side-by-side photo row
                     Row(
@@ -356,11 +351,8 @@ fun HotspotCaptureSheet(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(
-                                if (passed) GccGreen.copy(alpha = 0.12f)
-                                else GccError.copy(alpha = 0.12f)
-                            )
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(badge.background)
                             .padding(12.dp),
                     ) {
                         Row(
@@ -368,28 +360,40 @@ fun HotspotCaptureSheet(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = if (passed) "\u2713 Verification passed" else "\u26A0 Verification weak",
+                                    text = badge.title,
                                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                                    color = if (passed) GccGreen else GccError,
+                                    color = badge.textColor,
                                 )
                                 Text(
-                                    text = if (passed) "Significant change detected" else "Low visual change — retake if needed",
+                                    text = badge.detail,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = TextMuted,
                                 )
                             }
-                            Text(
-                                text = "${(score * 100).toInt()}%",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = if (passed) GccGreen else GccError,
-                            )
+                            badgePercent(verificationScore, badge)?.let { percent ->
+                                Text(
+                                    text = percent,
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = badge.textColor,
+                                )
+                            }
                         }
                     }
 
                     errorMessage?.let {
-                        Text(it, style = MaterialTheme.typography.bodySmall, color = GccError)
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = GccErrorDark)
+                    }
+
+                    val payload = confirmPayload(afterPhotoBytes, verificationScore)
+                    if (payload == null) {
+                        // Inside the sheet, above the buttons — not under the scrim.
+                        Text(
+                            "Confirm needs an after photo. Tap Retake to take it again.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = GccErrorDark,
+                        )
                     }
 
                     // Confirm / Retake buttons
@@ -413,11 +417,8 @@ fun HotspotCaptureSheet(
                         }
 
                         Button(
-                            onClick = {
-                                val bytes = afterPhotoBytes ?: ByteArray(0)
-                                val finalScore = verificationScore ?: 1.0f
-                                onConfirmed(bytes, finalScore)
-                            },
+                            onClick = { payload?.let { onConfirmed(it.afterPhotoBytes, it.verificationScore) } },
+                            enabled = payload != null,
                             modifier = Modifier.weight(2f),
                             colors = ButtonDefaults.buttonColors(containerColor = GccGreen),
                         ) {
@@ -435,12 +436,71 @@ fun HotspotCaptureSheet(
     }
 }
 
-private fun cleanVerificationScore(analysis: OnDeviceAnalysisResult?): Float {
-    if (analysis == null) return 1.0f
+/** How the compare describes the after photo. */
+internal enum class AfterPhotoBadge(
+    val title: String,
+    val detail: String,
+    val textColor: Color,
+    val background: Color,
+) {
+    PHOTO_NOT_CAPTURED(
+        "Photo not captured", "No after photo to confirm with.", GccErrorDark, GccError.copy(alpha = 0.10f),
+    ),
+    NOT_ANALYSED(
+        "Not analysed", "No on-device check — compare the photos yourself.", GccBlueDark, GccBlueLight.copy(alpha = 0.6f),
+    ),
+    LOOKS_CLEAN(
+        "Looks clean", "Suggestion only — you confirm.", GccGreenDark, GccGreen.copy(alpha = 0.12f),
+    ),
+    LITTER_MAY_REMAIN(
+        "Litter may remain", "Check the after photo — retake if needed.", GccWarningDark, GccClaimed.copy(alpha = 0.14f),
+    ),
+}
+
+internal fun afterPhotoBadge(afterPhotoBytes: ByteArray?, suggestedScore: Float?): AfterPhotoBadge = when {
+    afterPhotoBytes == null || afterPhotoBytes.isEmpty() -> AfterPhotoBadge.PHOTO_NOT_CAPTURED
+    suggestedScore == null -> AfterPhotoBadge.NOT_ANALYSED
+    suggestedScore > VERIFICATION_THRESHOLD -> AfterPhotoBadge.LOOKS_CLEAN
+    else -> AfterPhotoBadge.LITTER_MAY_REMAIN
+}
+
+/** The suggestion as a percentage, only when there is a real analysed score. */
+internal fun badgePercent(suggestedScore: Float?, badge: AfterPhotoBadge): String? =
+    if (badge == AfterPhotoBadge.LOOKS_CLEAN || badge == AfterPhotoBadge.LITTER_MAY_REMAIN) {
+        suggestedScore?.let { "${(it * 100).toInt()}%" }
+    } else null
+
+/** What the worker's Confirm tap sends. */
+internal class ConfirmPayload(val afterPhotoBytes: ByteArray, val verificationScore: Float?)
+
+/**
+ * Null = Confirm is disabled (no after photo). The score passes through
+ * unchanged — a missing analysis is sent as null, never defaulted to 1.0.
+ */
+internal fun confirmPayload(afterPhotoBytes: ByteArray?, suggestedScore: Float?): ConfirmPayload? =
+    afterPhotoBytes?.takeIf { it.isNotEmpty() }?.let { ConfirmPayload(it, suggestedScore) }
+
+/** What the sheet does once the after photo has been analysed. */
+internal data class AfterPhotoOutcome(val state: CaptureState, val suggestedScore: Float?)
+
+/**
+ * ALWAYS the before/after compare: a cleaned section is confirmed only by the
+ * worker's tap, whatever the on-device analysis says (it can be missing,
+ * label-less or simply wrong). The score only pre-fills the compare's
+ * suggestion; trust comes from server-side checks and AI review, not from the
+ * phone. Null score = no analysis.
+ */
+internal fun afterPhotoOutcome(analysis: OnDeviceAnalysisResult?): AfterPhotoOutcome =
+    AfterPhotoOutcome(CaptureState.COMPARING, analysis?.let { cleanVerificationScore(it) })
+
+private fun hasTrashSignal(analysis: OnDeviceAnalysisResult): Boolean =
+    analysis.suggestedTags.isNotEmpty() || analysis.trashTypes.isNotEmpty()
+
+/** Suggestion shown in the compare: 1.0 = looks clean, down to 0.2 = litter still there. */
+internal fun cleanVerificationScore(analysis: OnDeviceAnalysisResult): Float {
     val severity = analysis.severity ?: 1
-    val hasTrashSignal = analysis.suggestedTags.isNotEmpty() || analysis.trashTypes.isNotEmpty()
     return when {
-        !hasTrashSignal -> 1.0f
+        !hasTrashSignal(analysis) -> 1.0f
         severity <= 1 -> 0.85f
         severity == 2 && (analysis.confidence ?: 0f) < 0.35f -> 0.70f
         else -> 0.20f

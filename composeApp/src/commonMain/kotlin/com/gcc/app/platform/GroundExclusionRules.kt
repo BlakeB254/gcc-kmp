@@ -116,6 +116,8 @@ object GroundExclusionRules {
         // would type planters/bins/fixtures as litter.
         "trash", "garbage", "litter", "waste", "debris", "napkin", "tissue",
         "foil", "styrofoam", "straw", "lid", "jug",
+        // Crop-classifier class (see TrashDetectionRules.TRASH_TOKENS).
+        "cigarette",
     )
 
     /** Token-set match for [identifier]: first whole word from [vocab] found
