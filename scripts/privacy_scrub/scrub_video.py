@@ -82,7 +82,12 @@ def scrub_video_bytes(
     dilation_radius: int = 6,
     pad_frac: float = 0.08,
     detect_batch: int = 16,
+    check: Callable[[], None] | None = None,
 ) -> ScrubOutput:
+    """`check` runs between batches of `detect_batch` frames in both passes;
+    it raises to stop (the scrub worker's memory gate). Peak memory stays one
+    batch of decoded frames + boxes + the encoded output."""
+    check = check or (lambda: None)
     # Pass 1: decode + detect (batched), keep only boxes.
     per_frame: list[list[Detection]] = []
     with av.open(io.BytesIO(video_bytes)) as container:
@@ -90,9 +95,11 @@ def scrub_video_bytes(
         for frame in container.decode(video=0):
             batch.append(frame.to_ndarray(format="bgr24"))
             if len(batch) == detect_batch:
+                check()
                 per_frame.extend(detect_frames(batch))
                 batch = []
         if batch:
+            check()
             per_frame.extend(detect_frames(batch))
 
     effective = dilate_detections(per_frame, dilation_radius)
@@ -115,6 +122,8 @@ def scrub_video_bytes(
         out_stream.options = {"crf": "23", "preset": "medium", "bf": "0"}
         w, h = out_stream.width, out_stream.height
         for i, frame in enumerate(src.decode(video=0)):
+            if i % detect_batch == 0:
+                check()
             img = frame.to_ndarray(format="bgr24")
             dets = effective[i] if i < len(effective) else []
             if dets:

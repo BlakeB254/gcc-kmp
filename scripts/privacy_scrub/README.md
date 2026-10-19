@@ -8,6 +8,12 @@ on the DGX, before that imagery feeds reconstruction or any review
 surface.** Until a chunk has a scrubbed rendition, admin-only access to the
 raw artifact is the mitigation.
 
+**Where it runs.** The Spark is the intelligence engine (Blake, 2026-10-18):
+its memory belongs to the resident model. The scrub's intended home is the
+**cloud recon container**, running ahead of reconstruction (see "Running in
+the cloud recon container"). The Spark timer is only a memory-gated
+fallback, and on a busy Spark it mostly defers.
+
 ## The naming contract (what the review UI relies on)
 
 For every raw capture video chunk, the scrubbed rendition lives at the SAME
@@ -36,12 +42,87 @@ pane can exploit.
 
 ## What gets blurred, and why whole boxes
 
-Two YOLO passes per frame (batch of 16):
+### Detector switch: `SCRUB_DETECTOR=yolo|rfdetr` (default `yolo`)
 
-- **COCO pass** (`yolo11m.pt`): person, bicycle, car, motorcycle, bus, truck
-  at conf 0.25 / imgsz 1280 (chunks are 1280-long-edge).
-- **Face pass** (`face_yolov8m.pt`, ADetailer weights): catches
-  partially-visible people the person class misses.
+Two detector backends sit behind one interface (`detect_frames`,
+`qc_counts`, `describe`):
+
+| value | modules | licence | status |
+|---|---|---|---|
+| `yolo` (**default**) | `detector_yolo.py`: YOLO11m + face_yolov8m | Ultralytics **AGPL-3.0**, internal use only | the current live behaviour. Merging this change alters nothing live. |
+| `rfdetr` | `detector.py`: RF-DETR + YuNet | Apache-2.0 / MIT | the target. Off until the rotated-face sweep passes. |
+
+**Do not flip the switch until the sweep below shows RF-DETR Large plus the
+chosen face setting leaving no more than one reference face uncovered.** Until
+then the Spark timer keeps running YOLO.
+
+To flip it:
+
+1. Set `Environment=SCRUB_DETECTOR=rfdetr` in the unit (or the container env).
+2. Re-run a few sessions with `--force` and compare the `detector` blocks in
+   their scrub reports.
+3. In a follow-up, delete `detector_yolo.py` and `requirements-yolo.txt`.
+   That is when the AGPL dependency leaves.
+
+The dependencies are split so that the rfdetr install never pulls AGPL code:
+
+| file | contents |
+|---|---|
+| `requirements-common.txt` | shared |
+| `requirements-yolo.txt` | ultralytics, AGPL-3.0, internal Spark fallback only |
+| `requirements-rfdetr.txt` | no AGPL |
+
+`setup.sh` installs only the file for `SCRUB_DETECTOR`.
+
+Each pass below runs per frame, in batches of 16.
+
+- **Object pass**: RF-DETR (`rfdetr`, Apache-2.0; Large COCO weights by
+  default, `SCRUB_RFDETR_VARIANT=medium` for Medium; XL/2XL are under PML
+  and are refused) for person, bicycle, car, motorcycle, bus and truck at
+  conf 0.25, at the variant's square inference resolution.
+- **Face pass**: OpenCV `FaceDetectorYN` (Apache-2.0) with
+  `face_detection_yunet_2023mar.onnx` (opencv_zoo, MIT) at score 0.3. It runs
+  upright and at both quarter turns, because chunks decode sideways (the
+  phone's rotation flag is not applied) and YuNet is not rotation-invariant.
+  It catches partially visible people that the person class misses.
+
+### Benchmark (2026-10-18, Spark, 198 frames from 3 RAW chunks, in memory)
+
+The reference is the retired YOLO11m + face_yolov8m pair, at conf 0.25 and
+imgsz 1280: 43 boxes (33 person/vehicle, 10 face), 1.95% of frame area
+blurred, 149 ms/frame. "Uncovered" means a reference box less than 50%
+covered by the candidate's padded boxes.
+
+| candidate (faces: YuNet 0.5, upright only) | uncovered | IoU<0.3 missed | candidate-only boxes | faces found | blurred area | ms/frame |
+|---|---|---|---|---|---|---|
+| RF-DETR Large @704  | 10 (1 car, 9 face) | 12 | 82 | 8 | 3.17% | 139 |
+| RF-DETR Large @960  | 10 (1 car, 9 face) | 12 | 78 | 8 | 3.30% | 159 |
+| RF-DETR Medium @576 | 12 (3 car, 9 face) | 14 | 87 | 8 | 3.57% | 117 |
+
+- **Person/vehicle boxes:** Large leaves 1 of 33 reference boxes uncovered
+  (a car; the uncovered reference confidences are all 0.28–0.45). It finds
+  82 boxes the reference did not and blurs about 60% more area.
+- **Faces:** upright YuNet at 0.5 left 9 of the 10 reference faces
+  uncovered. That is a material regression. The defaults were therefore moved
+  to score 0.3 plus 0° / 90° / 270° passes (rotation mapping is unit-tested).
+  **The sweep that measures those settings has not run yet:** the Spark's
+  headroom fell to 3–8 GB once the resident model restarted. Run it before
+  installing:
+
+```bash
+SCRUB_MODELS_DIR=… .venv-with-ultralytics/bin/python benchmark_detectors.py --lock-wait-s 3600 \
+  --min-available-gb 5 --frames 200 --batch 1 --key raw/… --key raw/… --key raw/… \
+  --candidate large --face 0.5/1/0 --face 0.5 --face 0.3 --face 0.3/2 --face 0.2/2
+```
+
+Accept when Large plus the chosen face setting leaves no more than one
+reference face uncovered.
+
+`benchmark_detectors.py` compares a candidate detector with the retired YOLO
+pair on RAW chunks, in memory only. It reports missed and uncovered reference
+boxes, candidate-only boxes, faces, blurred area and ms/frame. Re-run it
+before changing the variant or the thresholds; it needs Ultralytics in a
+scratch venv, never this one.
 
 Whole-person and whole-vehicle boxes are pixelated (INTER_AREA mosaic,
 ~14px cells + Gaussian) — that covers faces and license plates by
@@ -61,7 +142,8 @@ picture.
 
 ```bash
 cd scripts/privacy_scrub
-./setup.sh            # uv venv (py3.12) + torch nightly cu130 (GB10 sm_121) + deps + weights
+./setup.sh            # SCRUB_DETECTOR=yolo (default): uv venv (py3.12) + torch nightly cu130 + requirements-yolo.txt + weights
+SCRUB_DETECTOR=rfdetr ./setup.sh   # requirements-rfdetr.txt + RF-DETR/YuNet weights (no AGPL)
 .venv/bin/python -m pytest tests/ -v
 
 set -a; source ../../backend/deploy/.env; set +a   # R2_* + DATABASE_URL
@@ -79,10 +161,80 @@ never loads torch. The worker only ever writes under `scrubbed/`.
 
 Central model repo only (never in the project tree):
 
-- `/home/codex450/models/specialty/detection/yolo11m.pt` (setup.sh downloads;
-  `~/models/ultralytics/` is root-owned so new weights can't land there)
-- `/home/codex450/models/ultralytics/bbox/face_yolov8m.pt` (pre-existing,
-  read-only)
+`/home/codex450/models/specialty/detection/` (override with
+`SCRUB_MODELS_DIR`). setup.sh downloads, for the chosen backend:
+
+- `rfdetr`, each checked against a pinned hash:
+  - `rf-detr-large-2026.pth` (md5 `5cb72153…`, the hash rfdetr pins)
+  - `rf-detr-medium.pth` (md5 `7223f764…`)
+  - `face_detection_yunet_2023mar.onnx` (sha256 `8f2383e4…`)
+- `yolo`: `yolo11m.pt`. The face model, `~/models/ultralytics/bbox/face_yolov8m.pt`, is pre-existing and read-only.
+
+## Running in the cloud recon container
+
+Blake has decided that GPU vision work other than the resident model moves to
+cloud GPUs, and the Spark stays the intelligence engine. The scrub must run
+**before** reconstruction. It therefore belongs in the same image as the
+cloud recon worker that lane-recon is building (`deploy/cloud/recon/`), not in
+a separate service.
+
+The scrub needs nothing host-specific; every setting comes from the
+environment:
+
+- **Code and dependencies:** copy `scripts/privacy_scrub/` and
+  `scripts/reconstruction/r2_store.py` into the image, then run
+  `pip install -r requirements-rfdetr.txt` on the image's CUDA torch.
+  **Install only the rfdetr file**: the image must never carry ultralytics
+  (AGPL).
+- **Weights:** fetch them at build time with
+  `SCRUB_DETECTOR=rfdetr SCRUB_SKIP_VENV=1 SCRUB_MODELS_DIR=/models/detection ./setup.sh`.
+- **Env:**
+  - `R2_*` and `DATABASE_URL`, the same set the recon worker uses
+  - `SCRUB_MODELS_DIR`
+  - `SCRUB_DETECTOR=rfdetr`. The container cannot run the yolo path, so it
+    goes live together with the switch flip, after the face sweep passes.
+    Until then, the Spark fallback scrubs.
+  - `SCRUB_MEMGATE=0`. A dedicated GPU box has no shared model to protect,
+    so this turns the memory gate off.
+- **Order:** run `python scrub_worker.py --sweep` (or `--cell <id>` for the
+  job's cell) before draining `reconstruction_jobs`. `recon_worker`'s
+  `REQUIRE_SCRUBBED_VIDEO` gate already defers any job whose cell still has
+  unscrubbed chunks, so a container that runs scrub, then recon, then scrub
+  again on each tick stays correct even if a step is skipped.
+- **The Spark timer stays as a fallback,** with the memory gate on. Both can
+  run at once safely: the sweep is idempotent and skips chunks that already
+  have a rendition.
+
+## Memory budget (Spark fallback)
+
+With the resident model loaded, the Spark idles at about 3–8 GB
+MemAvailable, and earlyoom fires near 3 GB, killing shared services.
+`memgate.py` budgets for that. All values are in GB and can be tuned through
+env:
+
+| setting | value | default yolo | default rfdetr |
+|---|---|---|---|
+| abort floor | `SCRUB_ABORT_AVAIL_GB`, else `SCRUB_EARLYOOM_GB` (3) + `SCRUB_MARGIN_GB` (1.5) | 4.5 | 4.5 |
+| start | abort + weights (`SCRUB_WEIGHTS_GB`: yolo 1.5, rfdetr 2.5) + decode (`SCRUB_DECODE_GB` 1.0); `SCRUB_MIN_AVAIL_GB` raises it | 7.0 | 8.0 |
+| loaded | abort + decode | 5.5 | 5.5 |
+
+1. **Before any weights load:** if `start` is not available, the sweep logs
+   `deferred: low memory` and exits 0. No weights are ever loaded on a
+   deferral.
+2. **Right after the load:** if `loaded` is not available, the sweep drops
+   the detector, frees CUDA memory, logs `deferred: low memory after loading
+   weights` and exits 0.
+3. **While working:** the abort floor is checked between every 16-frame
+   batch, in both the detect pass and the encode pass, and before and during
+   QC. Decoding is bounded the whole time:
+   - the scrub keeps one batch of decoded frames plus boxes;
+   - QC seeks to its 8 samples instead of decoding the whole chunk.
+
+   Below the abort floor, the sweep stops its own work. The interrupted chunk
+   is neither uploaded nor marked; the next sweep redoes it, and finished
+   chunks still get their report.
+
+On a dedicated host, set `SCRUB_MEMGATE=0` to turn the gate off.
 
 ## Ordering enforcement (scrub BEFORE reconstruction)
 

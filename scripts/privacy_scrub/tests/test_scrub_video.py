@@ -134,3 +134,35 @@ def test_unfinalized_mov_raises_invalid_data():
     chunks, deferring their reconstruction jobs forever)."""
     with pytest.raises(av.error.InvalidDataError):
         scrub_video_bytes(_unfinalized_mov(), lambda frames: [[] for _ in frames])
+
+
+def test_check_runs_between_batches_in_both_passes_and_can_stop():
+    video = _make_video(n_frames=48)
+    calls = []
+    scrub_video_bytes(video, _fake_detector([]), detect_batch=16, check=lambda: calls.append(1))
+    assert len(calls) == 3 + 3  # 48 frames / 16 per batch, detect pass + encode pass
+
+    class Stop(Exception):
+        pass
+
+    def stop_on_third():
+        calls.append(1)
+        if len(calls) > 2:
+            raise Stop
+
+    calls.clear()
+    with pytest.raises(Stop):
+        scrub_video_bytes(video, _fake_detector([]), detect_batch=16, check=stop_on_third)
+
+
+def test_qc_sampler_seeks_and_spreads_over_the_clip():
+    import scrub_worker as sw  # noqa: PLC0415
+
+    # Our own encoder's output (what QC actually samples).
+    out = scrub_video_bytes(_make_video(n_frames=48), _fake_detector([]))  # marker < 255, no wrap
+    frames = sw._sample_frames(out.video_bytes, n=8)
+    assert len(frames) == 8
+    # The marker block brightens with the frame index: samples must be
+    # spread out and in order, not 8 copies of the first frame.
+    marks = [int(f[20:30, 20:50].mean()) for f in frames]
+    assert marks == sorted(marks) and marks[-1] - marks[0] > 100

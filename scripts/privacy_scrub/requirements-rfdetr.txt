@@ -1,0 +1,6 @@
+# SCRUB_DETECTOR=rfdetr — no AGPL. rfdetr Apache-2.0 (pulls transformers
+# Apache-2.0, supervision MIT, pydantic MIT, tqdm MPL-2.0/MIT); faces via
+# OpenCV FaceDetectorYN + YuNet (MIT). The cloud recon container installs
+# ONLY this file.
+-r requirements-common.txt
+rfdetr>=1.11,<2

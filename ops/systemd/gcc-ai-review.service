@@ -1,0 +1,31 @@
+# Server-side AI review of cleanup evidence (scripts/ai_review/): the
+# resident vision model, via the Spark's local seat, checks every
+# pending_review job's before/after photos and writes job_ai_reviews for the
+# admin review screen. Advisory only — it never approves, denies or pays.
+# Paired with gcc-ai-review.timer (every 10 min). Needs the job_ai_reviews
+# migration applied first.
+#
+# Install (user scope, on the DGX — the seat is only reachable there):
+#   cd ~/cdx/dev-projects/gcc/scripts/ai_review && uv venv --python 3.12 .venv && VIRTUAL_ENV=$PWD/.venv uv pip install -r requirements.txt
+#   ln -sf ~/cdx/dev-projects/gcc/ops/systemd/gcc-ai-review.{service,timer} ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now gcc-ai-review.timer
+[Unit]
+Description=GCC AI evidence review (pending_review jobs -> job_ai_reviews)
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/codex450/cdx/dev-projects/gcc/scripts/ai_review
+EnvironmentFile=/home/codex450/cdx/dev-projects/gcc/backend/deploy/.env
+Environment=LOCAL_SEAT_URL=http://127.0.0.1:8001/v1
+# REQUIRED — our Vercel Blob public host, exact (<store>.public.blob.vercel-storage.com,
+# the host of any evidence photo URL; not a secret). Empty = the worker exits 3.
+Environment=AI_REVIEW_BLOB_HOST=
+ExecStart=/home/codex450/cdx/dev-projects/gcc/scripts/ai_review/.venv/bin/python -u review_worker.py
+# Exit 2 = seat unavailable, incl. "no local model is resident" (backs off
+# 5/20/60 s, then stops; nothing recorded; the next tick retries). Left a
+# failure on purpose so a long seat outage shows in `systemctl --user --failed`.
+# No GPU of its own: the model runs in the seat; images are downscaled in RAM.
+MemoryMax=2G
+# AI_REVIEW_MAX_JOBS (20) x AI_REVIEW_MAX_PAIRS (4) x ~40 s per pair on a busy
+# seat stays inside this.
+TimeoutStartSec=3600

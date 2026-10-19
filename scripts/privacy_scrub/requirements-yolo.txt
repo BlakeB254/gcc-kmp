@@ -1,0 +1,6 @@
+# SCRUB_DETECTOR=yolo — the default until the rotated-face sweep passes.
+# ultralytics is AGPL-3.0: internal use only (the Spark fallback timer);
+# never ship it in an image or service others use. Deleted when the switch
+# flips to rfdetr.
+-r requirements-common.txt
+ultralytics>=8.3

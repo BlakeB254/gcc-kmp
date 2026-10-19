@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the GCC AI evidence review every 10 minutes
+
+[Timer]
+OnBootSec=7min
+OnUnitActiveSec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -6,6 +6,9 @@ scrub-report.json. Idempotent on rendition existence.
 
 Env: R2_ACCOUNT_ID/R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_BUCKET_NAME
      + DATABASE_URL (scan-index lookups) — same set as recon_worker.py;
+     SCRUB_ABORT_AVAIL_GB / SCRUB_WEIGHTS_GB / SCRUB_DECODE_GB … — memory
+     budget, see memgate.py (SCRUB_MEMGATE=0 disables it on a dedicated host);
+     SCRUB_DETECTOR yolo|rfdetr (default yolo — README "Detector switch");
      source backend/deploy/.env.
 
 Usage:
@@ -31,6 +34,8 @@ from botocore.exceptions import ClientError
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "reconstruction"))
 import r2_store  # noqa: E402
 
+import memgate  # noqa: E402
+
 MOV_CHUNKS_SQL = """
 SELECT r2_key, session_id, location_cell_id FROM capture_chunks
 WHERE format = 'mov' {where}
@@ -46,15 +51,68 @@ def _index_chunks(where: str, params: tuple) -> list[tuple[str, str, str]]:
         return conn.execute(MOV_CHUNKS_SQL.format(where=where), params).fetchall()
 
 
+DETECTORS = {
+    # Current live behaviour; Ultralytics is AGPL — internal only, retired
+    # once the switch flips.
+    "yolo": "detector_yolo",
+    # Apache-2.0 / MIT. Becomes the default only after the rotated-face
+    # sweep passes (README "Detector switch").
+    "rfdetr": "detector",
+}
+
+
+def detector_kind(env=os.environ) -> str:
+    kind = env.get("SCRUB_DETECTOR", "yolo")
+    if kind not in DETECTORS:
+        raise SystemExit(f"SCRUB_DETECTOR must be one of {sorted(DETECTORS)}, got {kind!r}")
+    return kind
+
+
+def load_detector(env=os.environ):
+    """SCRUB_DETECTOR=yolo|rfdetr (default yolo). Same interface either way:
+    detect_frames, qc_counts, describe. Imports only the chosen backend."""
+    module = __import__(DETECTORS[detector_kind(env)])
+    return module.PrivacyDetector()
+
+
+def _unload(det) -> None:
+    """Drop the detector and hand its GPU memory back before deferring."""
+    import gc  # noqa: PLC0415
+
+    del det
+    gc.collect()
+    torch = sys.modules.get("torch")
+    if torch is not None and torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
 def _sample_frames(video_bytes: bytes, n: int = 8) -> list[np.ndarray]:
+    """n frames spread over the clip, decoding only around each sample: seek
+    to the keyframe before each target and decode forward to it. Never holds
+    more than one decoded frame besides the n kept (the old version decoded
+    and kept the whole ~1800-frame chunk)."""
     frames: list[np.ndarray] = []
     with av.open(io.BytesIO(video_bytes)) as c:
-        for f in c.decode(video=0):
-            frames.append(f.to_ndarray(format="bgr24"))
-    if not frames:
-        return []
-    step = max(1, len(frames) // n)
-    return frames[::step][:n]
+        st = c.streams.video[0]
+        if not st.duration or not st.time_base:
+            # No index to seek by: stride-decode, keeping only n frames.
+            total = st.frames or 0
+            step = max(1, total // n) if total else 1
+            for i, f in enumerate(c.decode(st)):
+                if i % step == 0:
+                    frames.append(f.to_ndarray(format="bgr24"))
+                    if len(frames) >= n:
+                        break
+            return frames
+        start = st.start_time or 0
+        for i in range(n):
+            target = start + int(st.duration * (i + 0.5) / n)
+            c.seek(target, stream=st, backward=True, any_frame=False)
+            for f in c.decode(st):
+                if f.pts is None or f.pts >= target:
+                    frames.append(f.to_ndarray(format="bgr24"))
+                    break
+    return frames
 
 
 def main() -> None:
@@ -95,11 +153,38 @@ def main() -> None:
     if not todo:
         return
 
-    # Deferred: importing torch/ultralytics costs seconds; --dry-run stays instant.
-    from detector import PrivacyDetector  # noqa: PLC0415
+    kind = detector_kind()
+    budget = memgate.budget(kind)
+    if budget.enabled:
+        avail = memgate.mem_available_gb()
+        if avail < budget.start_gb:
+            # Shared GB10 near its floor: defer the whole sweep WITHOUT
+            # loading weights (the next timer tick retries). Exit 0 —
+            # waiting for memory is not a failure.
+            print(f"deferred: low memory ({avail:.1f} GB available < {budget.start_gb:.1f} GB "
+                  f"budget for {kind}: abort floor + weights + decode)")
+            return 0
+
+    # Deferred: importing torch costs seconds; --dry-run stays instant.
     from scrub_video import scrub_video_bytes  # noqa: PLC0415
 
-    det = PrivacyDetector()
+    det = load_detector()
+    if budget.enabled:
+        avail = memgate.mem_available_gb()
+        if avail < budget.loaded_gb:
+            # The weights cost more than estimated (or something else grew):
+            # give the memory back before decoding anything.
+            _unload(det)
+            print(f"deferred: low memory after loading weights ({avail:.1f} GB available < "
+                  f"{budget.loaded_gb:.1f} GB; raise SCRUB_WEIGHTS_GB?)")
+            return 0
+    abort_gb = budget.abort_gb
+    detect = memgate.guarded(det.detect_frames, abort_gb)
+    qc_counts = memgate.guarded(det.qc_counts, abort_gb)
+
+    def between_batches():
+        memgate.check(abort_gb)
+    low_memory_abort: str | None = None
     reports: dict[str, dict] = {}
 
     def _report_for(session_id: str, cell: str) -> dict:
@@ -109,8 +194,7 @@ def main() -> None:
             "locationCellId": cell,
             "scrubbedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
             "detector": {
-                "coco": "yolo11m.pt", "face": "face_yolov8m.pt",
-                "conf": det.conf, "imgsz": det.imgsz,
+                **det.describe(),
                 "dilationRadius": args.dilation_radius, "padFrac": args.pad_frac,
             },
             "chunks": [],
@@ -131,9 +215,18 @@ def main() -> None:
         try:
             video = r2_store.download_bytes(raw_key)
             result = scrub_video_bytes(
-                video, det.detect_frames,
+                video, detect,
                 dilation_radius=args.dilation_radius, pad_frac=args.pad_frac,
+                check=between_batches,
             )
+            memgate.check(abort_gb)  # before decoding the QC samples
+            qc = qc_counts(_sample_frames(result.video_bytes))
+        except memgate.LowMemory as exc:
+            # Stop our own inference before earlyoom picks a victim. This
+            # chunk is neither uploaded nor marked; the next sweep redoes it.
+            low_memory_abort = f"{raw_key}: {exc}"
+            print(f"  !! aborted: low memory ({exc}); stopping the sweep")
+            break
         except av.error.InvalidDataError as exc:
             # Permanent: the object in R2 is not a decodable video. Record it
             # beside the would-be scrubbed rendition so later sweeps and the
@@ -179,7 +272,6 @@ def main() -> None:
             continue
 
         scrub_key = r2_store.scrubbed_key_for(raw_key)
-        qc = det.qc_counts(_sample_frames(result.video_bytes))
         r2_store.upload_bytes(scrub_key, result.video_bytes, "video/quicktime")
         print(
             f"  {result.frame_count} frames, {result.frames_with_detections} with detections "
@@ -213,6 +305,9 @@ def main() -> None:
         print(f"\n{len(unreadable)} unreadable chunk(s) skipped (permanent):")
         for k in unreadable:
             print(f"  {k}")
+    if low_memory_abort:
+        # Not a failure: the chunk stays unscrubbed and the next tick retries.
+        print(f"\ndeferred: low memory, sweep stopped at {low_memory_abort}")
     if errored:
         # Transient/unknown failures are worth surfacing as a unit failure so
         # they don't rot silently; unreadable ones are permanent and expected.
