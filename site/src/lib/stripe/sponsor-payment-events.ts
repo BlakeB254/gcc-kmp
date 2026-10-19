@@ -20,11 +20,16 @@
  * not at all, so a failure anywhere later in the handler cannot double-count,
  * and a failure in this statement leaves nothing behind for the retry to trip on.
  *
+ * The `funded` UPDATE only touches blocks still `available`: a payment that
+ * lands after its block was claimed, completed or funded by someone else is
+ * recorded as a reservation for that block instead (withReservationFallback).
+ *
  * Emails go out only when this run created the rows: at most once. A crash
  * after the insert and before the email loses that email rather than sending
  * it twice.
  */
 import { and, eq, inArray, sql } from 'drizzle-orm'
+import type { PgInsertValue } from 'drizzle-orm/pg-core'
 import type Stripe from 'stripe'
 import { blocks, sponsorDeliverablePackages, sponsors, transactions } from '@/db/schema'
 import type { DbExecutor } from '@/lib/job-lifecycle'
@@ -59,6 +64,8 @@ export interface RecordPaymentInput {
 export interface InsertedPaymentRow {
   id: number
   blockId: number | null
+  /** True when the row became a reservation (its block was not fundable). */
+  reserved: boolean
 }
 
 /**
@@ -66,16 +73,53 @@ export interface InsertedPaymentRow {
  * statement. Returns the rows this call created: empty when every row already
  * existed (a retry or replay), in which case nothing else was written.
  */
+/**
+ * The only block status a payment may fund: the one checkout offered it in
+ * (lib/sponsor-checkout.ts isAssignableNow). Between checkout and this webhook
+ * the block can be claimed, completed or funded by someone else; the payment
+ * must never overwrite that.
+ */
+export const FUNDABLE_BLOCK_STATUS = 'available' as const
+
+/**
+ * True (SQL) when this payment can fund the block. FOR UPDATE locks the row
+ * for the rest of the statement, so the `funded` UPDATE sees the same answer
+ * even if a claim commits in between (READ COMMITTED re-checks a locked row
+ * against its latest version).
+ */
+function blockIsFundable(blockId: number) {
+  return sql`exists (select 1 from ${blocks} where ${blocks.id} = ${blockId}
+    and ${blocks.status} = ${FUNDABLE_BLOCK_STATUS} for update)`
+}
+
+/**
+ * A block row funds its block when the block is still available or, when it
+ * is no longer fundable, is recorded as a one-block RESERVATION for
+ * that block's next cycle (reservedBlockCount 1, its code), which shows up in
+ * /admin/reservations. Blake's rule: a sponsorship for a block that is not
+ * available is a reservation and never changes the block's status by itself.
+ */
+function withReservationFallback(row: TransactionRow): PgInsertValue<typeof transactions> {
+  if (row.blockId == null) return row
+  const fundable = blockIsFundable(row.blockId)
+  return {
+    ...row,
+    reservedBlockCount: sql`case when ${fundable} then null else 1 end`,
+    reservedBlockCodes: sql`case when ${fundable} then null
+      else (select ${blocks.code} from ${blocks} where ${blocks.id} = ${row.blockId}) end`,
+  }
+}
+
 export async function recordPaymentOnce(exec: DbExecutor, input: RecordPaymentInput): Promise<InsertedPaymentRow[]> {
   if (input.rows.length === 0) return []
 
   const ins = exec
-    .$with('ins', { id: transactions.id, blockId: transactions.blockId })
+    .$with('ins', { id: transactions.id, blockId: transactions.blockId, reservedBlockCount: transactions.reservedBlockCount })
     .as(exec
       .insert(transactions)
-      .values(input.rows)
+      .values(input.fundBlocks ? input.rows.map(withReservationFallback) : input.rows)
       .onConflictDoNothing()
-      .returning({ id: transactions.id, blockId: transactions.blockId }).getSQL())
+      .returning({ id: transactions.id, blockId: transactions.blockId, reservedBlockCount: transactions.reservedBlockCount }).getSQL())
 
   const ctes = []
 
@@ -84,7 +128,14 @@ export async function recordPaymentOnce(exec: DbExecutor, input: RecordPaymentIn
       exec.$with('funded', { id: blocks.id }).as(exec
         .update(blocks)
         .set(input.fundBlocks)
-        .where(inArray(blocks.id, sql`(select "block_id" from "ins" where "block_id" is not null)`))
+        .where(
+          and(
+            inArray(blocks.id, sql`(select "block_id" from "ins" where "block_id" is not null)`),
+            // Never overwrite a claimed, in-progress, completed or already
+            // funded block: those rows were recorded as reservations above.
+            eq(blocks.status, FUNDABLE_BLOCK_STATUS),
+          ),
+        )
         .returning({ id: blocks.id }).getSQL()),
     )
   }
@@ -96,8 +147,14 @@ export async function recordPaymentOnce(exec: DbExecutor, input: RecordPaymentIn
         .update(sponsors)
         .set({
           statsTotalContributed: sql`COALESCE(${sponsors.statsTotalContributed}, 0) + ${s.contributedCents}`,
+          // With block funding, count the blocks this statement really
+          // funded (reserved rows fund nothing).
           ...(s.blocksFunded > 0
-            ? { statsBlocksFunded: sql`COALESCE(${sponsors.statsBlocksFunded}, 0) + ${s.blocksFunded}` }
+            ? {
+                statsBlocksFunded: input.fundBlocks
+                  ? sql`COALESCE(${sponsors.statsBlocksFunded}, 0) + (select count(*) from "funded")::int`
+                  : sql`COALESCE(${sponsors.statsBlocksFunded}, 0) + ${s.blocksFunded}`,
+              }
             : {}),
           statsLastContributionAt: s.at,
           updatedAt: s.at,
@@ -109,9 +166,38 @@ export async function recordPaymentOnce(exec: DbExecutor, input: RecordPaymentIn
 
   const rows = await exec
     .with(ins, ...ctes)
-    .select({ id: ins.id, blockId: ins.blockId })
+    .select({ id: ins.id, blockId: ins.blockId, reservedBlockCount: ins.reservedBlockCount })
     .from(ins)
-  return rows.map((r) => ({ id: Number(r.id), blockId: r.blockId == null ? null : Number(r.blockId) }))
+  return rows.map((r) => ({
+    id: Number(r.id),
+    blockId: r.blockId == null ? null : Number(r.blockId),
+    reserved: r.reservedBlockCount != null,
+  }))
+}
+
+/**
+ * The email's block line from the rows a payment created: funded blocks by
+ * name, then any reserved ones ("reserved for their next cleaning"). A
+ * reserved block was not funded and must not read as if it were.
+ */
+export async function sponsoredBlocksLine(exec: DbExecutor, rows: InsertedPaymentRow[]): Promise<string> {
+  const ids = rows.flatMap((r) => (r.blockId == null ? [] : [r.blockId]))
+  const named = ids.length
+    ? await exec.select({ id: blocks.id, name: blocks.name }).from(blocks).where(inArray(blocks.id, ids))
+    : []
+  const nameOf = new Map(named.map((b) => [b.id, b.name]))
+  const names = (reserved: boolean) =>
+    rows.filter((r) => r.blockId != null && r.reserved === reserved).map((r) => nameOf.get(r.blockId as number) ?? `block #${r.blockId}`)
+  const funded = names(false)
+  const reserved = names(true)
+  const plural = (n: number) => (n === 1 ? 'block' : 'blocks')
+  const parts: string[] = []
+  if (funded.length === 1) parts.push(funded[0])
+  else if (funded.length > 1) parts.push(`${funded.length} blocks: ${funded.join(', ')}`)
+  if (reserved.length > 0) {
+    parts.push(`${reserved.length} ${plural(reserved.length)} reserved for their next cleaning: ${reserved.join(', ')}`)
+  }
+  return parts.join('; ')
 }
 
 export interface SponsorPaymentDeps {
@@ -236,13 +322,14 @@ export async function handleCheckoutSessionCompleted(
     } else {
       const sponsor = await loadSponsor()
       if (sponsor) {
-        const fundedBlocks = await exec.select({ name: blocks.name }).from(blocks).where(inArray(blocks.id, blockIds))
-        const blockNames = fundedBlocks.map((b) => b.name).join(', ')
+        // Thank the sponsor for what this payment really did: blocks it
+        // funded, and — separately — blocks it reserved for their next cycle
+        // because they were no longer available (claimed, in progress, done).
         const emailContent = sponsorConfirmationEmail({
           name: sponsor.name,
           email: sponsor.email,
           amount: amountDollars,
-          blockAddress: blockCount === 1 ? blockNames : `${blockCount} blocks: ${blockNames}`,
+          blockAddress: await sponsoredBlocksLine(exec, rows),
           isRecurring: frequency !== 'one_time',
         })
         const emailResult = await sendEmail({

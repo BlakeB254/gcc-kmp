@@ -73,6 +73,7 @@ export async function GET(request: Request) {
       startedAt: jobs.startedAt,
       completedAt: jobs.completedAt,
       stalledAt: jobs.stalledAt,
+      reviewStatus: jobs.reviewStatus,
     }
 
     // createdAt alone is not a total order — ties let LIMIT/OFFSET pages
@@ -115,6 +116,9 @@ export async function GET(request: Request) {
       startedAt: toIso(row.startedAt),
       completedAt: toIso(row.completedAt),
       stalledAt: currentStall(row),
+      // 'denied' marks rework (in_progress) and jobs denied under the old
+      // rule (pending_review), which the app lets an admin release.
+      reviewStatus: row.reviewStatus ?? null,
     }))
 
     return NextResponse.json({ data })

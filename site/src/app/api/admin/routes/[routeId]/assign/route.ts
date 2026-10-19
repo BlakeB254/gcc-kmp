@@ -10,10 +10,9 @@ import { blocks, jobs, routes, workers } from '@/db/schema'
 import { and, desc, eq, isNotNull } from 'drizzle-orm'
 import { requireAdmin } from '@/lib/admin-auth'
 import { toMobileJob } from '@/lib/mobile-job-response'
-import { ensureJobForRouteWorker } from '@/lib/ensure-job-for-route-worker'
-import { eligibleBlockStatusForRoute } from '@/lib/admin-route-status'
-import { isReleasableJobStatus, releaseJobPatch } from '@/lib/release-route-jobs'
-import { reopenReleaseSlotSafely } from '@/lib/route-release-slot'
+import { ensureJobForRouteWorker, JobAssignmentConflict } from '@/lib/ensure-job-for-route-worker'
+import { isReleasableJobStatus } from '@/lib/release-route-jobs'
+import { releaseInOneStatement } from '@/lib/job-lifecycle'
 import {
   commitPublicDataMutation,
   type PublicDataInvalidator,
@@ -137,7 +136,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
       )
     }
 
-    const result = await ensureJobForRouteWorker(routeId, workerId, { isTest, jobStatus: 'claimed' })
+    let result: Awaited<ReturnType<typeof ensureJobForRouteWorker>>
+    try {
+      result = await ensureJobForRouteWorker(routeId, workerId, { isTest, jobStatus: 'claimed' })
+    } catch (error) {
+      // Another active paid job already holds this route's block.
+      if (error instanceof JobAssignmentConflict) {
+        return NextResponse.json({ error: error.message, success: false }, { status: 409 })
+      }
+      throw error
+    }
 
     if (!result.created) {
       return NextResponse.json(
@@ -193,28 +201,17 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     // unpublish/archive verbs. The block follows the job: linkedBlockStatusUpdate
     // never touches `in_progress` blocks (they belong to a job), so once the job
     // is released the block must be put back or the map keeps showing it worked.
+    // One statement (neon-http: each statement is its own transaction): the
+    // job, its block (only if no other active job holds it) and a route-queue
+    // job's release slot — lib/job-lifecycle.ts releaseInOneStatement.
     const now = new Date().toISOString()
-    const [route] = await db
-      .select({ status: routes.status, claimStatus: routes.claimStatus })
-      .from(routes)
-      .where(eq(routes.id, routeId))
-      .limit(1)
-    const blockStatus = route
-      ? eligibleBlockStatusForRoute({ status: route.status ?? 'draft', claimStatus: route.claimStatus })
-      : 'funded'
-    const [updatedRows] = await commitRouteAssignmentMutation(() =>
-      db.batch([
-        db.update(jobs).set(releaseJobPatch(existing.job, now)).where(eq(jobs.id, jobId)).returning(),
-        db
-          .update(blocks)
-          .set({ status: blockStatus, updatedAt: now })
-          .where(and(eq(blocks.id, existing.job.blockId), eq(blocks.status, 'in_progress'))),
-      ]),
+    const released = await commitRouteAssignmentMutation(() =>
+      releaseInOneStatement(db, existing.job, eq(jobs.status, existing.job.status!), now),
     )
-    const updated = updatedRows[0]
-
-    // A route-queue job goes back on offer: reopen its release slot.
-    await reopenReleaseSlotSafely(db, jobId, now)
+    if (!released) {
+      return NextResponse.json({ error: 'Assignment changed meanwhile; reload and try again', success: false }, { status: 409 })
+    }
+    const [updated] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1)
 
     return NextResponse.json({
       data: toMobileJob(updated, routeId),

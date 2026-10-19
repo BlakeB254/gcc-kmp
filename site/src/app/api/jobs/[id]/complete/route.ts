@@ -5,7 +5,8 @@ import { eq } from 'drizzle-orm'
 import { requireMobileAuth } from '@/lib/mobile-auth'
 import { routeIdsByBlockId, toMobileJob } from '@/lib/mobile-job-response'
 import { generateBlockCompletionReport } from '@/lib/block-completion-report'
-import { completeJob, payoutCents } from '@/lib/job-lifecycle'
+import { completeJob, hasEvidencePairSince, payoutCents, reworkSince, workFloor } from '@/lib/job-lifecycle'
+import { blobUploadedAt } from '@/lib/evidence-upload-time'
 import { notifyAdmins, notificationTemplates } from '@/lib/notifications'
 import { findQualifyingScanForJob, isUniqueViolation } from '@/lib/scan-completion'
 import {
@@ -59,29 +60,61 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     // through the same check: they exercise the same flow, and a test that
     // skips the gate tests nothing.
     //
-    // Admin completion stays ungated (manual recovery path). Blocks without a
-    // linked route can't be scanned, so they skip the check.
+    // A job an admin denied and sent back for rework needs evidence made
+    // AFTER the denial — never the scan or photos that were denied.
+    //
+    // Admin completion stays ungated (manual recovery path). A block without
+    // a linked route can't be scanned: a PAID job there needs a before AND an
+    // after evidence photo (PATCH /api/jobs/[id]/evidence, server-stamped)
+    // from this claim/rework instead. Paid work never completes on nothing.
     const blockRouteMap = await routeIdsByBlockId([existing.blockId])
     const blockRouteId = blockRouteMap.get(existing.blockId) ?? null
+    const rework = reworkSince(existing)
     let completionScanId: number | null = null
     if (auth.role !== 'admin' && blockRouteId != null) {
       const scan = await findQualifyingScanForJob(
         db,
         // Ownership was already enforced above, so on this (non-admin) path
         // the job's worker IS the caller.
-        { id: existing.id, workerId: auth.workerId, claimedAt: existing.claimedAt, startedAt: existing.startedAt },
+        {
+          id: existing.id,
+          workerId: auth.workerId,
+          claimedAt: existing.claimedAt,
+          startedAt: existing.startedAt,
+          reworkSince: rework,
+        },
         blockRouteId,
       )
       if (!scan) {
         return NextResponse.json(
           {
-            error: 'Complete a verified block scan (both laps) after claiming this job before completing it',
+            error: rework
+              ? 'This job was sent back for rework: complete a new verified block scan (both laps) before resubmitting'
+              : 'Complete a verified block scan (both laps) after claiming this job before completing it',
             success: false,
           },
           { status: 409 },
         )
       }
       completionScanId = scan.id
+    } else if (
+      auth.role !== 'admin' &&
+      payoutCents(existing.payoutAmount) > 0 &&
+      !(await hasEvidencePairSince(existing.beforePhotos, existing.afterPhotos, workFloor(existing), {
+        // Ownership was enforced above: on this path the job's worker is the caller.
+        workerId: auth.workerId,
+        uploadedAtOf: (url) => blobUploadedAt(url),
+      }))
+    ) {
+      return NextResponse.json(
+        {
+          error: rework
+            ? 'This job was sent back for rework: add new before and after photos before resubmitting'
+            : 'This block has no route to scan: add before and after photos before completing it',
+          success: false,
+        },
+        { status: 409 },
+      )
     }
 
     // Paid job → pending_review (an admin approves it, which is the ONLY

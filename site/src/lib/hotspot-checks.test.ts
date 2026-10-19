@@ -19,7 +19,9 @@ import {
 import { METERS_PER_DEG_LAT, METERS_PER_DEG_LNG } from './geo-utils'
 
 // isOwnEvidenceUrl derives the store host from this token at call time.
-delete process.env.BLOB_READ_WRITE_TOKEN
+// isOwnEvidenceUrl fails closed without a store, so tests configure ours:
+// this token's store host is abc.public.blob.vercel-storage.com.
+process.env.BLOB_READ_WRITE_TOKEN = 'vercel_blob_rw_abc_testsecret'
 
 const ROUTE = { type: 'LineString', coordinates: [[-87.7202, 41.8601], [-87.7182, 41.8601]] }
 const north = (m: number) => 41.8601 + m / METERS_PER_DEG_LAT
@@ -66,7 +68,7 @@ test('hotspotPlacement: within the buffer is ok, beyond is off-route, no geometr
 })
 
 test('isScanPhotoUrl: the caller’s or the scan worker’s own upload on our blob store', () => {
-  // No BLOB_READ_WRITE_TOKEN in tests: any Vercel Blob host, bound by the spots/{id}/ path.
+  // Our store (abc…, from the test token), bound by the spots/{id}/ path.
   const base = 'https://abc.public.blob.vercel-storage.com'
   assert.equal(isScanPhotoUrl(`${base}/spots/7/a.jpg`, { workerId: 7 }, 7), true)
   assert.equal(isScanPhotoUrl(`${base}/spots/3/a.jpg`, { workerId: 7 }, 3), true, 'admin performing the scan')

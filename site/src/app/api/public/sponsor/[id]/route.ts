@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { sponsors, transactions, media } from '@/db/schema'
 import { eq, desc, sum, count, sql } from 'drizzle-orm'
+import { fundedBlockRow } from '@/lib/sponsor-funded'
 
 export const runtime = 'nodejs'
 export const revalidate = 60
@@ -64,7 +65,8 @@ export async function GET(
     const [stats] = await db
       .select({
         totalAmount: sum(transactions.amount),
-        blocksSponsored: count(sql`CASE WHEN ${transactions.blockId} IS NOT NULL THEN 1 END`),
+        // Funded blocks only: a reservation keeps its block_id but funded nothing.
+        blocksSponsored: count(fundedBlockRow()),
         transactionCount: count(),
         displayNames: sql<string>`ARRAY_AGG(DISTINCT ${transactions.displayName}) FILTER (WHERE ${transactions.displayName} IS NOT NULL)`,
         firstContribution: sql<string>`MIN(${transactions.createdAt})`,

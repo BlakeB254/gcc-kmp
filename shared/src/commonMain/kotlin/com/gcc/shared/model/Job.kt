@@ -34,8 +34,8 @@ data class Job(
     val gpsPath: JsonArray? = null,
     val payoutAmount: Int? = null,
     val payoutStatus: TransactionStatus? = null,
-    /** Admin review of a paid completion: null (not reviewed), "approved" or "denied".
-     *  A denied job stays PENDING_REVIEW; [denyReason] says why. */
+    /** Admin review of a paid completion: null (not reviewed / resubmitted), "approved" or "denied".
+     *  A denied job goes back to IN_PROGRESS for rework; [denyReason] says why. */
     val reviewStatus: String? = null,
     val approvedByAdminId: Int? = null,
     val deniedByAdminId: Int? = null,

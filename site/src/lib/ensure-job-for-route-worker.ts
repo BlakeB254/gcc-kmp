@@ -9,14 +9,24 @@
  * or { job, created: false } when an existing active job was found.
  * Callers that need 409-on-duplicate (e.g. the assign endpoint) should
  * check `created === false` and return 409 themselves.
+ *
+ * A new PAID job takes the block through the same statement a claim uses
+ * (takeBlockForJob): block → in_progress and the job row together, and the
+ * one-active-paid-job indexes (per block, per worker; migration 0055) refuse
+ * a second one (JobAssignmentConflict → 409). A $0 test run leaves the block
+ * alone and is exempt from both.
  */
 import { db } from '@/db'
 import { blocks, jobs, jobStatusEnum, routes } from '@/db/schema'
 import { and, eq, inArray } from 'drizzle-orm'
+import { takeBlockForJob, takeRefusalMessage } from '@/lib/job-lifecycle'
 
 type JobStatus = (typeof jobStatusEnum.enumValues)[number]
 
 const activeJobStatuses = ['claimed', 'in_progress', 'pending_review'] as const
+
+/** The block is already held by another active paid job (or changed meanwhile). */
+export class JobAssignmentConflict extends Error {}
 
 export async function ensureJobForRouteWorker(
   routeId: number,
@@ -73,6 +83,25 @@ export async function ensureJobForRouteWorker(
   }
 
   const now = new Date().toISOString()
+  if (payoutAmount > 0 && (jobStatus === 'claimed' || jobStatus === 'in_progress')) {
+    const taken = await takeBlockForJob(db, {
+      blockId: blockRows[0].id,
+      workerId,
+      now,
+      // An admin may start work on a funded (route-queue), cleaned or stale
+      // in-progress block; the per-block index still refuses a held one.
+      fromStatuses: ['available', 'funded', 'completed', 'in_progress'],
+      requireWorkerFree: false,
+      job: { kind: 'new', status: jobStatus, payoutCents: payoutAmount, payoutStatus: 'pending', performedByAdminId },
+    })
+    if (!taken.ok) {
+      throw new JobAssignmentConflict(
+        taken.reason === 'worker_busy' ? 'This worker already has an active paid job' : takeRefusalMessage(taken.reason),
+      )
+    }
+    return { job: taken.job, created: true }
+  }
+
   const [job] = await db
     .insert(jobs)
     .values({

@@ -9,6 +9,7 @@ import { jobs, routeCommunityQueue, routeJobOffers, routeReleaseBatches, routeRe
 import { and, eq, gt } from 'drizzle-orm'
 import { requireMobileAuth } from '@/lib/mobile-auth'
 import { toMobileJob } from '@/lib/mobile-job-response'
+import { acceptOfferedJob, takeRefusalMessage } from '@/lib/job-lifecycle'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -52,15 +53,17 @@ export async function POST(request: NextRequest, context: { params: Promise<{ of
       .limit(1)
     if (!slot) return NextResponse.json({ error: 'That route is no longer available', success: false }, { status: 409 })
 
-    // Claim the open job (guarded so two workers can't grab the same slot).
-    const [claimed] = await db
-      .update(jobs)
-      .set({ workerId: auth.workerId, status: 'claimed', claimedAt: now, updatedAt: now })
-      .where(and(eq(jobs.id, slot.jobId), eq(jobs.status, 'available')))
-      .returning()
-    if (!claimed) {
-      return NextResponse.json({ error: 'That route was just taken', success: false }, { status: 409 })
+    // Claim the open job (guarded so two workers can't grab the same slot)
+    // and flip its block to in_progress in the same statement, so the block
+    // shows who holds it and a web claim can't reopen it underneath.
+    const [offeredJob] = await db.select({ blockId: jobs.blockId }).from(jobs).where(eq(jobs.id, slot.jobId)).limit(1)
+    if (!offeredJob) return NextResponse.json({ error: 'That route is no longer available', success: false }, { status: 409 })
+    const taken = await acceptOfferedJob(db, { jobId: slot.jobId, blockId: offeredJob.blockId, workerId: auth.workerId, now })
+    if (!taken.ok) {
+      const error = taken.reason === 'worker_busy' ? takeRefusalMessage(taken.reason) : 'That route was just taken'
+      return NextResponse.json({ error, success: false }, { status: 409 })
     }
+    const claimed = taken.job
 
     await db
       .update(routeReleaseRoutes)

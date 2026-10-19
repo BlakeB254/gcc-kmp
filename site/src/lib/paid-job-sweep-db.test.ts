@@ -29,56 +29,51 @@ const claimed: PaidJobCandidate = {
   stalledAt: null,
 }
 
-test('releasePaidClaim: guarded job release, block back to its route status, queue slot reopened', async () => {
+test('releasePaidClaim: job, block and queue slot in ONE statement (neon-http: one statement = one transaction)', async () => {
   const { db, queries } = recordingDb(
-    when(/^update "jobs"/, [[11]]),
     when(/from "blocks" left join "routes"/, [['published', 'open']]),
-    when(/^update "route_release_routes"/, [[501, 61]]),
+    when(/^with "released"/, [[11, 'available', 1, 1]]),
   )
   const result = await releasePaidClaim(db, claimed, NOW)
   assert.deepEqual(result, { released: true, slotReopened: true })
 
-  const [jobUpdate, blockRead, blockUpdate, slotUpdate, batchUpdate] = queries
-  // The canonical releaseJobPatch, for a paid job → available.
-  assert.match(jobUpdate.sql, /^update "jobs" set "worker_id" = \$\d+, "status" = \$\d+, "claimed_at" = \$\d+, "started_at" = \$\d+, "payout_status" = \$\d+/)
-  assert.ok(jobUpdate.params.includes('available'))
-  const jobWhere = flat(jobUpdate.sql.slice(jobUpdate.sql.indexOf(' where ')))
+  const writes = queries.filter((q) => /^(update|insert|delete|with)/.test(q.sql))
+  assert.equal(writes.length, 1, 'no later statement a crash could skip')
+  const stmt = writes[0]
+  // The canonical releaseJobPatch, for a paid job → available …
+  assert.match(stmt.sql, /^with "released" as \(update "jobs" set "worker_id" = \$\d+, "status" = \$\d+, "claimed_at" = \$\d+, "started_at" = \$\d+, "completed_at" = \$\d+, "payout_status" = \$\d+/)
+  assert.match(stmt.sql, /"review_status" = \$\d+, "denied_by_admin_id" = \$\d+, "deny_reason" = \$\d+, "reviewed_at" = \$\d+/)
+  assert.ok(stmt.params.includes('available'))
+  // … guarded on the stale claim we judged (not a fresh re-claim) …
+  const jobWhere = flat(stmt.sql.slice(stmt.sql.indexOf(' where '), stmt.sql.indexOf('"reopened"')))
   assert.match(jobWhere, /"jobs"\."status" = \$\d+ and "jobs"\."worker_id" = \$\d+ and "jobs"\."started_at" is null/)
   assert.match(jobWhere, /"jobs"\."claimed_at" < \$\d+::timestamptz - make_intervalhours => \$\d+::int/)
-  assert.ok(jobUpdate.params.includes('claimed'))
-  assert.ok(jobUpdate.params.includes(24))
-
-  assert.match(blockRead.sql, /from "blocks" left join "routes"/)
-  assert.match(blockUpdate.sql, /^update "blocks" set "status" = \$1/)
-  assert.equal(blockUpdate.params[0], 'available', 'published + open route → block available again')
-  assert.match(blockUpdate.sql, /not exists \(select 1 from jobs j where j\.block_id = "blocks"\."id"/)
-
-  assert.match(slotUpdate.sql, /^update "route_release_routes" set "status" = \$1, "accepted_by_worker_id" = \$2, "accepted_offer_id" = \$3, "accepted_at" = \$4/)
-  assert.equal(slotUpdate.params[0], 'open')
-  assert.match(flat(slotUpdate.sql), /"job_id" = \$\d+ and "route_release_routes"\."status" = \$\d+/)
-  assert.match(slotUpdate.sql, /exists \(select 1 from jobs j where j\.id = \$\d+ and j\.status = 'available'\)/)
-  assert.ok(slotUpdate.params.includes(11))
-
-  // The batch is re-activated only if it had completed (every slot taken).
-  assert.match(batchUpdate.sql, /^update "route_release_batches" set "status" = \$1, "next_wave_at" = \$2/)
-  assert.equal(batchUpdate.params[0], 'active')
-  assert.ok(batchUpdate.params.includes('completed'))
-  assert.ok(batchUpdate.params.includes(61))
+  assert.ok(stmt.params.includes('claimed'))
+  assert.ok(stmt.params.includes(24))
+  // … the block back to its route status, only if nobody else holds it …
+  assert.match(stmt.sql, /"reopened" as \(update "blocks" set "status" = \$\d+/)
+  assert.match(stmt.sql, /not exists \(select 1 from jobs j where j\.block_id = "blocks"\."id" and j\.id <> \$\d+/)
+  // … and the queue slot + its completed batch, keyed on the released row.
+  assert.match(stmt.sql, /"slot" as \(update "route_release_routes" set "status" = \$\d+, "accepted_by_worker_id" = \$\d+, "accepted_offer_id" = \$\d+, "accepted_at" = \$\d+/)
+  assert.match(stmt.sql, /exists \(select 1 from "released" where "status" = 'available'\)/)
+  assert.match(stmt.sql, /"batch" as \(update "route_release_batches" set "status" = \$\d+, "next_wave_at" = \$\d+/)
+  assert.ok(stmt.params.includes('open'))
+  assert.ok(stmt.params.includes('active'))
 })
 
-test('releasePaidClaim: a job the worker started meanwhile (0 rows) is left alone — no block or slot change', async () => {
-  const { db, queries } = recordingDb()
+test('releasePaidClaim: a job the worker started meanwhile (0 rows) is left alone — the one statement wrote nothing', async () => {
+  const { db, queries } = recordingDb(when(/from "blocks" left join "routes"/, [['published', 'open']]))
   const result = await releasePaidClaim(db, claimed, NOW)
   assert.deepEqual(result, { released: false, slotReopened: false })
-  assert.equal(queries.length, 1)
+  assert.equal(queries.filter((q) => /^(update|with)/.test(q.sql)).length, 1)
 })
 
 test('releasePaidClaim: a job that was never on the release queue reports no slot reopened', async () => {
-  const { db, queries } = recordingDb(when(/^update "jobs"/, [[11]]))
+  const { db } = recordingDb(when(/from "blocks" left join "routes"/, [['published', 'open']]), when(/^with "released"/, [[11, 'available', 1, 0]]))
   const result = await releasePaidClaim(db, claimed, NOW)
   assert.deepEqual(result, { released: true, slotReopened: false })
-  assert.ok(!queries.some((q) => /route_release_batches/.test(q.sql)), 'no batch touched without a slot')
 })
+
 
 test('reopenReleaseSlot: only a slot still `claimed` whose job is `available` again', async () => {
   const { db, queries } = recordingDb()

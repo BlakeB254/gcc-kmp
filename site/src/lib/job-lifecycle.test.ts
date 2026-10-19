@@ -3,8 +3,6 @@ import test from 'node:test'
 
 import {
   approvalGuard,
-  claimAvailableBlock,
-  claimAvailableJob,
   claimJobForApproval,
   completeJob,
   completionStatusFor,
@@ -58,10 +56,11 @@ test('completeJob: a worker completing a PAID job moves it to pending_review, gu
 })
 
 test('completeJob: a $0 test job completes outright and is marked settled', async () => {
-  const { db, queries } = recordingDb(when(/^update "jobs"/, [jobRow({ status: 'completed', payoutAmount: '0' })]))
+  const { db, queries } = recordingDb(when(/^with "done"/, [[1]]))
   await completeJob(db, { id: 1, payoutAmount: '0', payoutStatus: null }, { workerId: 7, isAdmin: false }, NOW)
-  assert.equal(queries[0].params[0], 'completed')
-  assert.equal(queries[0].params[2], 'completed')
+  const stmt = queries.find((q) => /^with "done" as \(update "jobs"/.test(q.sql))!
+  assert.equal(stmt.params[0], 'completed')
+  assert.equal(stmt.params[2], 'completed')
 })
 
 test('completeJob: 0 rows (already completed / raced) → null so the route answers 409', async () => {
@@ -93,10 +92,13 @@ test('approvalGuard: only pending_review jobs, never denied, never your own', ()
   assert.equal(self?.status, 403, 'an admin cannot approve their own job')
 })
 
+const APPROVE_STMT = /^with "approved" as \(update "jobs"/
+
 test('claimJobForApproval: atomic UPDATE re-checks pending_review, treats NULL payoutStatus as unpaid, excludes self', async () => {
-  const { db, queries } = recordingDb(when(/^update "jobs"/, [[1]]))
+  const { db, queries } = recordingDb(when(APPROVE_STMT, [[1]]))
   const claimed = await claimJobForApproval(db, 1, 3, NOW)
   assert.deepEqual(claimed, { id: 1 })
+  assert.equal(queries.length, 1, 'job approval and block close are ONE statement')
   const { sql, params } = queries[0]
   assert.match(sql, /"jobs"\."status" = \$\d+/)
   assert.ok(params.includes('pending_review'))
@@ -112,7 +114,7 @@ test('claimJobForApproval: a NULL-payoutStatus job is approvable once; the secon
   // second finds status != pending_review and matches nothing.
   const job = { status: 'pending_review', payoutStatus: null as string | null }
   const { db } = recordingDb((q) => {
-    if (!/^update "jobs"/.test(q.sql)) return undefined
+    if (!APPROVE_STMT.test(q.sql)) return undefined
     const matches = job.status === 'pending_review' && (job.payoutStatus == null || !['completed', 'processing'].includes(job.payoutStatus))
     if (!matches) return []
     job.status = 'completed'
@@ -124,20 +126,6 @@ test('claimJobForApproval: a NULL-payoutStatus job is approvable once; the secon
 })
 
 // ── Claim / start races ─────────────────────────────────────────────────────
-
-test('claimAvailableJob: guarded on status=available; 0 rows → null (409)', async () => {
-  const { db, queries } = recordingDb()
-  assert.equal(await claimAvailableJob(db, 5, 7, NOW), null)
-  assert.match(flat(queries[0].sql), /where "jobs"\."id" = \$\d+ and "jobs"\."status" = \$\d+ returning/)
-  assert.ok(queries[0].params.includes('available'))
-})
-
-test('claimAvailableJob: the winner gets the row', async () => {
-  const { db } = recordingDb(when(/^update "jobs"/, [jobRow({ id: 5, status: 'claimed' })]))
-  const row = await claimAvailableJob(db, 5, 7, NOW)
-  assert.equal(row?.id, 5)
-  assert.equal(row?.status, 'claimed')
-})
 
 test('startClaimedJob: worker start is guarded on status=claimed AND ownership; 0 rows → null (409)', async () => {
   const { db, queries } = recordingDb()
@@ -152,13 +140,6 @@ test('startClaimedJob: admin start still requires status=claimed', async () => {
   await startClaimedJob(db, 5, { workerId: 99, isAdmin: true }, NOW)
   assert.match(queries[0].sql, /"jobs"\."status" = \$\d+/)
   assert.doesNotMatch(queries[0].sql, /"jobs"\."worker_id" = /)
-})
-
-test('claimAvailableBlock: guarded on blocks.status=available; 0 rows → null (409)', async () => {
-  const { db, queries } = recordingDb()
-  assert.equal(await claimAvailableBlock(db, 3, NOW), null)
-  assert.match(flat(queries[0].sql), /^update "blocks" set "status" = \$1.* where "blocks"\."id" = \$\d+ and "blocks"\."status" = \$\d+/)
-  assert.ok(queries[0].params.includes('available'))
 })
 
 test('routePayoutCentsForBlock: payout comes from routes.payout_amount (cents), not blocks.funding_goal', async () => {
@@ -200,7 +181,7 @@ test('isOwnEvidenceUrl: only our blob store, under the worker’s own spots/ pre
   assert.equal(isOwnEvidenceUrl(`http://${host}/spots/7/a.jpg`, 7, host), false, 'not https')
   assert.equal(isOwnEvidenceUrl(`https://${host}/verification/7/a.jpg`, 7, host), false, 'wrong prefix')
   assert.equal(isOwnEvidenceUrl('not a url', 7, host), false)
-  // Without a derivable store host, any Vercel Blob public host — still bound to the worker prefix.
-  assert.equal(isOwnEvidenceUrl(`https://zzz.public.blob.vercel-storage.com/spots/7/a.jpg`, 7, null), true)
+  // Without a derivable store host nothing is our evidence (fail closed — no wildcard host).
+  assert.equal(isOwnEvidenceUrl(`https://zzz.public.blob.vercel-storage.com/spots/7/a.jpg`, 7, null), false)
   assert.equal(isOwnEvidenceUrl(`https://evil.example.com/spots/7/a.jpg`, 7, null), false)
 })

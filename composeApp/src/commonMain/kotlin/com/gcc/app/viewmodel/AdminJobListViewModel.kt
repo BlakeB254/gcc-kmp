@@ -28,6 +28,11 @@ data class AdminJobListUiState(
     val reassignInFlight: Boolean = false,
     val reassignError: String? = null,
     val reassignSuccess: String? = null,
+    // Release flow (return a stalled / denied job to the pool)
+    val releaseJob: AdminJobSummary? = null,
+    val releaseInFlight: Boolean = false,
+    val releaseError: String? = null,
+    val releaseSuccess: String? = null,
 )
 
 /**
@@ -145,6 +150,47 @@ class AdminJobListViewModel(
                     it.copy(
                         reassignInFlight = false,
                         reassignError = error.message ?: "Failed to reassign job",
+                    )
+                }
+            }
+        }
+    }
+
+    // ── Release to the pool (stalled / denied / abandoned work) ────────
+
+    fun openRelease(job: AdminJobSummary) {
+        _uiState.update { it.copy(releaseJob = job, releaseError = null, releaseSuccess = null) }
+    }
+
+    fun dismissRelease() {
+        _uiState.update { it.copy(releaseJob = null, releaseError = null) }
+    }
+
+    fun clearReleaseSuccess() {
+        _uiState.update { it.copy(releaseSuccess = null) }
+    }
+
+    fun release() {
+        val job = _uiState.value.releaseJob ?: return
+        _uiState.update { it.copy(releaseInFlight = true, releaseError = null) }
+        scope.launch {
+            try {
+                apiClient.adminReleaseJob(job.jobId)
+                _uiState.update {
+                    it.copy(
+                        releaseInFlight = false,
+                        releaseJob = null,
+                        releaseSuccess = "Job #${job.jobId} is back in the pool.",
+                    )
+                }
+                load(lastStatus)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                _uiState.update {
+                    it.copy(
+                        releaseInFlight = false,
+                        releaseError = error.message ?: "Failed to release job",
                     )
                 }
             }

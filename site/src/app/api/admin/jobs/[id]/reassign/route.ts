@@ -25,6 +25,7 @@ import { requireAdmin } from '@/lib/admin-auth'
 import { creditWallet, debitWallet } from '@/lib/wallet'
 import { notifyWorker, notificationTemplates } from '@/lib/notifications'
 import { payoutsPausedResponse } from '@/lib/payouts-enabled'
+import { activePaidJobConflictMessage } from '@/lib/job-lifecycle'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -105,11 +106,20 @@ export async function POST(request: Request, context: RouteContext) {
     .limit(1)
 
   // ── Atomic claim: only reassign from the worker we just read ─────────────
-  const claimed = await db
-    .update(jobs)
-    .set({ workerId: toWorkerId, updatedAt: new Date().toISOString() })
-    .where(and(eq(jobs.id, jobId), eq(jobs.workerId, fromWorkerId)))
-    .returning({ id: jobs.id })
+  let claimed: { id: number }[]
+  try {
+    claimed = await db
+      .update(jobs)
+      .set({ workerId: toWorkerId, updatedAt: new Date().toISOString() })
+      .where(and(eq(jobs.id, jobId), eq(jobs.workerId, fromWorkerId)))
+      .returning({ id: jobs.id })
+  } catch (error) {
+    // Moving an ACTIVE paid job onto a worker who already holds one: the
+    // one-active-paid-job-per-worker index (migration 0055) refuses it.
+    const conflict = activePaidJobConflictMessage(error)
+    if (conflict) return NextResponse.json({ error: conflict }, { status: 409 })
+    throw error
+  }
 
   if (claimed.length === 0) {
     return NextResponse.json(

@@ -1,16 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
-import { jobs } from '@/db/schema'
-import { eq } from 'drizzle-orm'
 import { requireMobileAuth } from '@/lib/mobile-auth'
-import { routeIdsByBlockId, toMobileJob } from '@/lib/mobile-job-response'
-import { claimAvailableJob } from '@/lib/job-lifecycle'
+import { toMobileJob } from '@/lib/mobile-job-response'
+import { claimWork } from '@/lib/job-lifecycle'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
+/**
+ * POST /api/jobs/[id]/claim — the app's claim (GccApiClient.claimJob).
+ *
+ * Same rules as the web's POST /api/jobs/claim, because both call claimWork
+ * (lib/job-lifecycle.ts): verified worker, one active job, block available on
+ * a route, block flipped to in_progress atomically with the job claim. Admins
+ * claim under the same rules; reassigning a taken job is
+ * /api/admin/jobs/[id]/reassign.
+ */
 export async function POST(request: NextRequest, context: RouteContext) {
   const auth = await requireMobileAuth(request)
   if (!auth) {
@@ -24,26 +31,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Invalid job ID', success: false }, { status: 400 })
     }
 
-    const [existing] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1)
-    if (!existing) {
-      return NextResponse.json({ error: 'Job not found', success: false }, { status: 404 })
-    }
-    if (existing.status !== 'available') {
-      return NextResponse.json({ error: 'Job is not available', success: false }, { status: 409 })
+    const result = await claimWork(db, { jobId }, auth.workerId, new Date().toISOString())
+    if (!result.ok) {
+      return NextResponse.json({ error: result.message, success: false }, { status: result.status })
     }
 
-    // Conditional on status='available' so two concurrent claims can't both
-    // win (the read above is only for the 404/clear message). Admins no
-    // longer bypass availability: reassigning a taken job is
-    // /api/admin/jobs/[id]/reassign.
-    const updated = await claimAvailableJob(db, jobId, auth.workerId, new Date().toISOString())
-    if (!updated) {
-      return NextResponse.json({ error: 'Job was just claimed by someone else', success: false }, { status: 409 })
-    }
-
-    const routeMap = await routeIdsByBlockId([updated.blockId])
     return NextResponse.json({
-      data: toMobileJob(updated, routeMap.get(updated.blockId) ?? null),
+      data: toMobileJob(result.job, result.block.routeId ?? null),
       success: true,
     })
   } catch (error) {

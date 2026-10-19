@@ -4,7 +4,7 @@ import { blocks, routeScans, routes, workers } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { requireMobileAuth } from '@/lib/mobile-auth'
 import { normalizeDeviceType, toMobileRouteScan } from '@/lib/mobile-route-scan-response'
-import { ensureJobForRouteWorker } from '@/lib/ensure-job-for-route-worker'
+import { ensureJobForRouteWorker, JobAssignmentConflict } from '@/lib/ensure-job-for-route-worker'
 import { findActiveScanConflict } from '@/lib/scan-completion'
 
 export const dynamic = 'force-dynamic'
@@ -83,7 +83,14 @@ export async function POST(request: NextRequest) {
 
     // Ensure a Job exists for (route, effectiveWorker) when acting on behalf
     if (onBehalfOfWorkerId != null) {
-      await ensureJobForRouteWorker(routeId, effectiveWorkerId, { performedByAdminId })
+      try {
+        await ensureJobForRouteWorker(routeId, effectiveWorkerId, { performedByAdminId })
+      } catch (error) {
+        if (error instanceof JobAssignmentConflict) {
+          return NextResponse.json({ data: null, success: false, message: error.message }, { status: 409 })
+        }
+        throw error
+      }
     }
 
     // Resolve the owning block (1:1 via blocks.route_id) so downstream

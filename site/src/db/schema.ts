@@ -605,6 +605,17 @@ export const jobs = pgTable('jobs', {
   blockIdx: index('jobs_block_id_idx').on(table.blockId),
   statusIdx: index('jobs_status_idx').on(table.status),
   completionScanUnique: uniqueIndex('jobs_completion_scan_id_unique').on(table.completionScanId),
+  // Migration 0055: at most one ACTIVE PAID job per block and per worker.
+  // Every path that starts work takes the block in one statement
+  // (lib/job-lifecycle.ts takeBlockForJob); these are the database's own
+  // guarantee behind it (neon-http: each statement is its own transaction,
+  // so an app-side "check, then write" can't be). $0 test runs are exempt.
+  oneActivePaidJobPerBlock: uniqueIndex('jobs_one_active_paid_job_per_block')
+    .on(table.blockId)
+    .where(sql`status in ('claimed', 'in_progress', 'pending_review') and coalesce(payout_amount, 0) > 0`),
+  oneActivePaidJobPerWorker: uniqueIndex('jobs_one_active_paid_job_per_worker')
+    .on(table.workerId)
+    .where(sql`status in ('claimed', 'in_progress', 'pending_review') and coalesce(payout_amount, 0) > 0 and worker_id is not null`),
 }))
 
 // Route release queues turn a set of funded routes into timed offer waves.
@@ -808,7 +819,9 @@ export const transactions = pgTable('transactions', {
   preferredCleaningTimeEnd: varchar('preferred_cleaning_time_end', { length: 5 }), // HH:MM format, optional
 
   // Block reservation: a block sponsorship paid while the blocks could not be
-  // assigned (lib/sponsor-checkout.ts). Set on a `general` row with no blockId;
+  // assigned (lib/sponsor-checkout.ts). Set on a `general` row with no blockId,
+  // or (count 1, that block's code) on a block row whose block was no longer
+  // `available` when the payment landed (lib/stripe/sponsor-payment-events.ts);
   // an admin allocates it from /admin/reservations. Null on every other row.
   reservedBlockCount: integer('reserved_block_count'),
   reservedBlockCodes: varchar('reserved_block_codes', { length: 500 }), // comma-separated, or null = GCC chooses

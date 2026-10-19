@@ -18,7 +18,9 @@ import { NextRequest } from 'next/server'
 process.env.JWT_SECRET = 'test-secret-for-evidence-checks-0123456789'
 process.env.DATABASE_URL ??= 'postgres://test:test@localhost/test'
 process.env.ADMIN_EMAILS = 'admin@example.org'
-delete process.env.BLOB_READ_WRITE_TOKEN
+// isOwnEvidenceUrl fails closed without a store, so tests configure ours:
+// this token's store host is abc.public.blob.vercel-storage.com.
+process.env.BLOB_READ_WRITE_TOKEN = 'vercel_blob_rw_abc_testsecret'
 
 import { __setDbForTests } from '@/db'
 import { createFakeDb, callArg, type FakeQuery } from '@/test-support/fake-db'

@@ -47,11 +47,22 @@ export type ReleaseJobPatch = {
   status: 'available' | 'disputed'
   claimedAt: null
   startedAt: null
+  completedAt: null
   payoutStatus: null
+  reviewStatus: null
+  deniedByAdminId: null
+  denyReason: null
+  reviewedAt: null
+  completionScanId: null
   updatedAt: string
 }
 
-/** The column patch that detaches a worker from a job. */
+/**
+ * The column patch that detaches a worker from a job. A released job may be
+ * a denied one sent back for rework (pending_review → deny → in_progress),
+ * so the previous worker's review and completion fields go too: the next
+ * worker must not inherit a denial, a completion time or a scan.
+ */
 export function releaseJobPatch(
   job: { payoutAmount: number | string | null | undefined },
   now: string,
@@ -61,7 +72,13 @@ export function releaseJobPatch(
     status: releasedJobStatus(job.payoutAmount),
     claimedAt: null,
     startedAt: null,
+    completedAt: null,
     payoutStatus: null,
+    reviewStatus: null,
+    deniedByAdminId: null,
+    denyReason: null,
+    reviewedAt: null,
+    completionScanId: null,
     updatedAt: now,
   }
 }

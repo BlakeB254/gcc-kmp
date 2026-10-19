@@ -256,8 +256,8 @@ fun ActiveJobScreen(
                         // Job completed — show success. A paid job lands in
                         // PENDING_REVIEW until an admin approves the payout.
                         val inReview = uiState.job?.status == JobStatus.PENDING_REVIEW
-                        // An admin denial leaves the job PENDING_REVIEW with
-                        // reviewStatus "denied" and a reason the worker should see.
+                        // A job denied before deny-means-rework (2026-10-18) can
+                        // still sit PENDING_REVIEW with reviewStatus "denied".
                         val denied = inReview && uiState.job?.isPayoutDenied() == true
                         SectionHeader(
                             title = when {
@@ -290,6 +290,14 @@ fun ActiveJobScreen(
                         // Job in progress — the work happens in the two-lap scan
                         SectionHeader(title = "Route Scan In Progress")
                         Spacer(modifier = Modifier.height(12.dp))
+
+                        // An admin denial sends the job back here for rework
+                        // (reviewStatus "denied"): the worker needs the reason
+                        // and must scan again — the denied scan no longer counts.
+                        if (uiState.job?.isPayoutDenied() == true) {
+                            ReworkNotice(reason = uiState.job?.denyReason)
+                            Spacer(modifier = Modifier.height(12.dp))
+                        }
 
                         Text(
                             "This assignment is completed with the two-lap scan: " +
@@ -412,5 +420,36 @@ private fun TestAssignmentCountdownCard(
             color = if (isExpired) GccError else GccClaimed,
             modifier = Modifier.padding(12.dp),
         )
+    }
+}
+
+/**
+ * An admin denied the submission and sent the job back for rework. The state
+ * is named in text ("Sent back for rework"), not carried by colour; text is
+ * the logo's brand blue, readable on the light card.
+ */
+@Composable
+internal fun ReworkNotice(reason: String?) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        color = GccSurface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, GccBlue),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                "Sent back for rework",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = GccBlue,
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                (reason?.takeIf { it.isNotBlank() }?.let { "Admin's reason: $it. " } ?: "") +
+                    "Scan the block again (both laps) and resubmit. The earlier scan no longer counts.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = GccBlue,
+            )
+        }
     }
 }

@@ -338,6 +338,12 @@ export type JobForScan = {
   id: number
   claimedAt: string | null
   startedAt: string | null
+  /**
+   * Set when an admin denied the job and sent it back for rework
+   * (lib/job-lifecycle.ts reworkSince): only a scan created after the denial
+   * counts, never the one that was denied.
+   */
+  reworkSince?: string | null
 }
 
 function ms(ts: string | null | undefined): number | null {
@@ -349,13 +355,15 @@ function ms(ts: string | null | undefined): number | null {
 /**
  * Whether a scan (already filtered to this job's route + worker) can be the
  * evidence for completing this job: server-verified, created at/after the
- * worker claimed the job (falling back to start), and not already spent on
- * a different job.
+ * worker claimed the job (falling back to start) and after the last denial
+ * when the job is in rework, and not already spent on a different job.
  */
 export function scanQualifiesForJob(scan: ScanForJob, job: JobForScan): boolean {
   if (scan.status !== 'completed' || scan.phase !== 'complete') return false
   if (scan.verifiedCoverageRatio == null || scan.verifiedCoverageRatio < SCAN_COMPLETION_MIN_ROUTE_COVERAGE) return false
-  const since = ms(job.claimedAt) ?? ms(job.startedAt)
+  const claimed = ms(job.claimedAt) ?? ms(job.startedAt)
+  const rework = ms(job.reworkSince)
+  const since = claimed == null ? null : Math.max(claimed, rework ?? claimed)
   const created = ms(scan.createdAt)
   if (since == null || created == null || created < since) return false
   if (scan.usedByJobId != null && scan.usedByJobId !== job.id) return false

@@ -225,6 +225,20 @@ test('job: a scan from before the claim (an old scan) is refused', () => {
   assert.equal(scanQualifiesForJob(scan({ createdAt: '2026-10-06T09:00:00.000Z' }), JOB), false)
 })
 
+test('job: after a denial (rework) only a scan created after the denial qualifies — never the denied one', () => {
+  const deniedAt = '2026-10-07T12:00:00.000Z'
+  const rework = { ...JOB, reworkSince: deniedAt }
+  // The denied scan is this job's own (usedByJobId 50) and after the claim, but before the denial.
+  assert.equal(scanQualifiesForJob(scan({ usedByJobId: 50 }), rework), false)
+  assert.equal(scanQualifiesForJob(scan({ createdAt: '2026-10-07T12:30:00.000Z' }), rework), true)
+  assert.equal(scanQualifiesForJob(scan({ createdAt: deniedAt }), rework), true, 'at the denial instant counts')
+  // A denial stamp older than the claim (released and re-claimed) never loosens the claim floor.
+  assert.equal(
+    scanQualifiesForJob(scan({ createdAt: '2026-10-07T07:00:00.000Z' }), { ...JOB, reworkSince: '2026-10-06T00:00:00.000Z' }),
+    false,
+  )
+})
+
 test('job: a scan already used to complete another job is refused; the same job may re-use its own', () => {
   assert.equal(scanQualifiesForJob(scan({ usedByJobId: 49 }), JOB), false)
   assert.equal(scanQualifiesForJob(scan({ usedByJobId: 50 }), JOB), true)

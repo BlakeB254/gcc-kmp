@@ -95,6 +95,9 @@ fun AdminJobListScreen(
                             onReassign = if (job.workerId != null) {
                                 { viewModel.openReassign(job) }
                             } else null,
+                            onRelease = if (job.isReleasable()) {
+                                { viewModel.openRelease(job) }
+                            } else null,
                         )
                     }
                 }
@@ -109,6 +112,27 @@ fun AdminJobListScreen(
             onSearchChange = viewModel::updateReassignSearch,
             onPick = viewModel::reassign,
             onDismiss = viewModel::dismissReassign,
+        )
+    }
+
+    uiState.releaseJob?.let { job ->
+        ReleaseJobDialog(
+            job = job,
+            inFlight = uiState.releaseInFlight,
+            error = uiState.releaseError,
+            onConfirm = viewModel::release,
+            onDismiss = viewModel::dismissRelease,
+        )
+    }
+
+    uiState.releaseSuccess?.let { message ->
+        AlertDialog(
+            onDismissRequest = { viewModel.clearReleaseSuccess() },
+            title = { Text("Job released") },
+            text = { Text(message) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.clearReleaseSuccess() }) { Text("OK") }
+            },
         )
     }
 
@@ -197,10 +221,74 @@ private fun ReassignWorkerDialog(
     )
 }
 
+/**
+ * The confirmation step for releasing a job. Destructive, so the consequence
+ * is spelled out in text and the confirm button says exactly what it does.
+ * Text colours are the logo's brand green/blue (readable on white).
+ */
 @Composable
-private fun AdminJobRow(
+internal fun ReleaseJobDialog(
+    job: AdminJobSummary,
+    inFlight: Boolean,
+    error: String?,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = { if (!inFlight) onDismiss() },
+        title = { Text("Release job #${job.jobId}?") },
+        text = {
+            Column {
+                Text(
+                    "${job.workerName ?: "The worker"} loses this job and it goes back to the pool " +
+                        "for the next worker. Nothing is paid.",
+                    color = GccOnSurface,
+                )
+                error?.let {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "Couldn't release: $it",
+                        color = GccBlue,
+                        fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm, enabled = !inFlight) {
+                Text(
+                    if (inFlight) "Releasing..." else "Release job",
+                    color = GccBlue,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !inFlight) {
+                Text("Cancel", color = GccGreen)
+            }
+        },
+    )
+}
+
+/**
+ * Work an admin can take back (POST /api/admin/jobs/{id}/release): claimed or
+ * in progress (incl. denied → rework), and jobs denied before deny-means-rework
+ * that still sit in PENDING_REVIEW with nobody to review them.
+ */
+internal fun AdminJobSummary.isReleasable(): Boolean =
+    workerId != null && (
+        status == JobStatus.CLAIMED ||
+            status == JobStatus.IN_PROGRESS ||
+            (status == JobStatus.PENDING_REVIEW && reviewStatus == "denied")
+        )
+
+@Composable
+internal fun AdminJobRow(
     job: AdminJobSummary,
     onReassign: (() -> Unit)? = null,
+    onRelease: (() -> Unit)? = null,
 ) {
     val spacing = GccTheme.spacing
 
@@ -213,6 +301,10 @@ private fun AdminJobRow(
             if (job.stalledAt != null) {
                 Spacer(modifier = Modifier.width(spacing.xs))
                 StalledChip()
+            }
+            if (job.reviewStatus == "denied") {
+                Spacer(modifier = Modifier.width(spacing.xs))
+                DeniedChip()
             }
             Spacer(modifier = Modifier.weight(1f))
             job.payoutAmount?.let { amount ->
@@ -237,6 +329,11 @@ private fun AdminJobRow(
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f),
             )
+            if (onRelease != null) {
+                TextButton(onClick = onRelease) {
+                    Text("Release", color = GccBlue, fontWeight = FontWeight.SemiBold)
+                }
+            }
             if (onReassign != null) {
                 TextButton(onClick = onReassign) { Text("Reassign") }
             }
@@ -263,13 +360,15 @@ private fun AdminJobRow(
 
 @Composable
 private fun JobStatusChip(status: JobStatus) {
+    // Text on light is brand green or brand blue only (logo colours, readable
+    // on white); the label, not the colour, names the state.
     val color = when (status) {
-        JobStatus.AVAILABLE -> GccSky
-        JobStatus.CLAIMED -> GccSky
+        JobStatus.AVAILABLE -> GccBlue
+        JobStatus.CLAIMED -> GccBlue
         JobStatus.IN_PROGRESS -> GccGreen
-        JobStatus.PENDING_REVIEW -> GccSky
+        JobStatus.PENDING_REVIEW -> GccBlue
         JobStatus.COMPLETED -> GccGreen
-        JobStatus.DISPUTED -> GccError
+        JobStatus.DISPUTED -> GccBlue
     }
     Surface(
         shape = RoundedCornerShape(8.dp),
@@ -290,13 +389,30 @@ private fun JobStatusChip(status: JobStatus) {
 private fun StalledChip() {
     Surface(
         shape = RoundedCornerShape(8.dp),
-        color = GccError.copy(alpha = 0.12f),
+        color = GccBlueLight,
     ) {
         Text(
             "Stalled",
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.SemiBold,
-            color = GccError,
+            color = GccBlue,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+        )
+    }
+}
+
+/** An admin denied this job's submission (state named in text; brand blue on light). */
+@Composable
+private fun DeniedChip() {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = GccBlueLight,
+    ) {
+        Text(
+            "Denied",
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = GccBlue,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
         )
     }

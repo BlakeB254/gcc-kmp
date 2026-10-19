@@ -27,7 +27,7 @@ type RouteContext = { params: Promise<{ id: string }> }
  *
  * Read-only guards (checked BEFORE any state change):
  *  1. Job exists and status === 'pending_review'            → 404 / 409
- *  2. reviewStatus !== 'denied' (denied is terminal)        → 409
+ *  2. reviewStatus !== 'denied' (a denied job is back in rework) → 409
  *  3. Job has an assigned worker                            → 409
  *  4. The approving admin is not the job's worker           → 403
  *  5. amountCents is finite and > 0                         → 409
@@ -37,6 +37,8 @@ type RouteContext = { params: Promise<{ id: string }> }
  *    AND (payoutStatus IS NULL OR NOT IN ('completed','processing'))
  *    AND payoutStripeTransferId IS NULL AND not denied AND worker <> admin
  *  - no row → 409 (already approved, credited or being paid)
+ *  - the same statement closes the job's block: status 'completed',
+ *    completedById = the worker, completedAt = when the work was submitted
  *
  * On successful claim:
  *  - creditWallet(kind='job_earning') — double-credit is additionally blocked

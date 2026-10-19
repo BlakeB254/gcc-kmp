@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test, { mock } from 'node:test'
 
-import { handleCheckoutSessionCompleted, handleInvoicePaid } from './sponsor-payment-events'
+import { handleCheckoutSessionCompleted, handleInvoicePaid, sponsoredBlocksLine } from './sponsor-payment-events'
 import { processEventOnce, type EventClaimStore } from './webhook-event-claim'
 import { recordingDb, type RecordedQuery } from '../testing/recording-db'
 
@@ -105,10 +105,33 @@ test('checkout.session.completed: block rows, block funding and stats are ONE st
     const stmt = fake.queries.find((q) => /^with "ins"/.test(q.sql))
     assert.ok(stmt)
     assert.match(stmt.sql, /on conflict do nothing returning "id", "block_id"/)
-    assert.match(stmt.sql, /"funded" as \(update "blocks" .* where "blocks"\."id" in \(select "block_id" from "ins"/)
+    assert.match(stmt.sql, /"funded" as \(update "blocks" .* where \(\("blocks"\."id" in \(select "block_id" from "ins"/)
     assert.match(stmt.sql, /"stats" as \(update "sponsors" .*\(exists \(select 1 from "ins"\)/)
     assert.equal(strayWrites(fake.queries).length, 0, 'no insert/update outside the payment statement')
     assert.equal(fake.rows.length, 2)
+  } finally {
+    restore()
+  }
+})
+
+test('checkout.session.completed: funding never overwrites a claimed/in-progress/completed block — that row becomes a reservation', async () => {
+  const restore = quiet()
+  try {
+    const fake = fakeLedger()
+    await handleCheckoutSessionCompleted(blockSession, { exec: fake.db, invalidate: noInvalidate, sendEmail: async () => ({ success: true }) })
+    const stmt = fake.queries.find((q) => /^with "ins"/.test(q.sql))
+    assert.ok(stmt)
+    // The block UPDATE only touches blocks still `available` (what checkout offered).
+    assert.match(stmt.sql, /"funded" as \(update "blocks" .* and \("blocks"\."status" = \$\d+\)\) returning "id"\)/)
+    const funded = stmt.sql.slice(stmt.sql.indexOf('"funded" as'))
+    const guardParam = Number(funded.match(/"blocks"\."status" = \$(\d+)\)\) returning/)?.[1])
+    assert.equal(stmt.params[guardParam - 1], 'available')
+    // Each block row decides, under a row lock, whether it funds or is reserved
+    // for that block's next cycle (reserved_block_count 1 + the block's code).
+    assert.equal(stmt.sql.match(/case when exists \(select 1 from "blocks" where "blocks"\."id" = \$\d+\s+and "blocks"\."status" = \$\d+ for update\) then null else 1 end/g)?.length, 2)
+    assert.match(stmt.sql, /else \(select "blocks"\."code" from "blocks" where "blocks"\."id" = \$\d+\) end/)
+    // The sponsor's blocks-funded stat counts blocks really funded, not rows.
+    assert.match(stmt.sql, /"stats_blocks_funded" = COALESCE\("sponsors"\."stats_blocks_funded", 0\) \+ \(select count\(\*\) from "funded"\)::int/)
   } finally {
     restore()
   }
@@ -227,4 +250,27 @@ test('invoice.paid: the first subscription invoice is left to checkout.session.c
   const out = await handleInvoicePaid({ ...renewalInvoice, billing_reason: 'subscription_create' }, { exec: fake.db, invalidate: noInvalidate })
   assert.deepEqual(out, { recorded: false, reason: 'not_a_renewal' })
   assert.equal(fake.queries.length, 0)
+})
+
+test('sponsoredBlocksLine: the confirmation email names only blocks the payment FUNDED; reserved ones are said to be reserved', async () => {
+  const { db } = recordingDb((q) =>
+    /^select "id", "name" from "blocks"/.test(q.sql) ? [[11, 'Ogden Ave (S)'], [12, 'Pulaski Rd (N)'], [13, 'Cermak Rd (E)']] : undefined,
+  )
+  assert.equal(
+    await sponsoredBlocksLine(db, [
+      { id: 1, blockId: 11, reserved: false },
+      { id: 2, blockId: 12, reserved: true },
+    ]),
+    'Ogden Ave (S); 1 block reserved for their next cleaning: Pulaski Rd (N)',
+  )
+  assert.equal(
+    await sponsoredBlocksLine(db, [
+      { id: 1, blockId: 11, reserved: false },
+      { id: 3, blockId: 13, reserved: false },
+    ]),
+    '2 blocks: Ogden Ave (S), Cermak Rd (E)',
+  )
+  // Nothing funded: no block is presented as sponsored.
+  const onlyReserved = await sponsoredBlocksLine(db, [{ id: 2, blockId: 12, reserved: true }])
+  assert.equal(onlyReserved, '1 block reserved for their next cleaning: Pulaski Rd (N)')
 })

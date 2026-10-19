@@ -43,6 +43,9 @@ export type PaidJobCandidate = {
   startReminderSentAt: string | null
   progressReminderSentAt: string | null
   stalledAt: string | null
+  /** A denied job back in rework only auto-submits on a scan made after the denial. */
+  reviewStatus?: string | null
+  reviewedAt?: string | null
 }
 
 export type PaidJobAction =

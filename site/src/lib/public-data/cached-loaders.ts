@@ -5,6 +5,11 @@ import { db } from '@/db'
 import { blocks, communityReports, media, sponsors, transactions, waitlistEntries, workers } from '@/db/schema'
 import { GCC_CACHE_TAGS } from './cache-tags'
 
+// Sponsored-block counts use the shared predicate (reservations don't count).
+import { fundedBlockRow } from '@/lib/sponsor-funded'
+export { fundedBlockRow }
+
+
 type Tier = 'platinum' | 'gold' | 'silver' | 'bronze'
 
 export type PublicStatsResponse = {
@@ -242,7 +247,7 @@ export async function querySponsorWall(): Promise<SponsorWallResponse> {
     .select({
       sponsorId: transactions.sponsorId,
       totalAmount: sum(transactions.amount),
-      blocksSponsored: count(sql`CASE WHEN ${transactions.blockId} IS NOT NULL THEN 1 END`),
+      blocksSponsored: count(fundedBlockRow()),
       lastContribution: sql<string>`MAX(${transactions.createdAt})`,
       displayNames: sql<string>`ARRAY_AGG(DISTINCT ${transactions.displayName}) FILTER (WHERE ${transactions.displayName} IS NOT NULL)`,
       sponsorName: sponsors.name,
@@ -285,7 +290,7 @@ export async function querySponsorWall(): Promise<SponsorWallResponse> {
   const [statsResult] = await db
     .select({
       totalRaised: sum(transactions.amount),
-      totalBlocks: count(sql`CASE WHEN ${transactions.blockId} IS NOT NULL THEN 1 END`),
+      totalBlocks: count(fundedBlockRow()),
       sponsorCount: count(sql`DISTINCT ${transactions.sponsorId}`),
     })
     .from(transactions)
@@ -319,7 +324,7 @@ export async function querySponsorWall(): Promise<SponsorWallResponse> {
 
 export async function querySupportWall(input: { view: string; limit: number }): Promise<SupportWallResponse> {
   const statsResults = await db
-    .select({ totalRaised: sum(transactions.amount), blocksFunded: count(sql`CASE WHEN ${transactions.blockId} IS NOT NULL THEN 1 END`), totalContributors: count(sql`DISTINCT ${transactions.sponsorId}`) })
+    .select({ totalRaised: sum(transactions.amount), blocksFunded: count(fundedBlockRow()), totalContributors: count(sql`DISTINCT ${transactions.sponsorId}`) })
     .from(transactions)
     .where(eq(transactions.status, 'completed'))
   const thirtyDaysAgo = new Date()
@@ -332,7 +337,7 @@ export async function querySupportWall(input: { view: string; limit: number }): 
 
   if (input.view === 'leaderboard') {
     const leaderboardResults = await db
-      .select({ sponsorId: transactions.sponsorId, totalAmount: sum(transactions.amount), contributionCount: count(transactions.id), blocksSponsored: count(sql`CASE WHEN ${transactions.blockId} IS NOT NULL THEN 1 END`), displayName: sponsors.name, businessName: sponsors.businessName, isAnonymous: sponsors.preferencesIsAnonymous, profileIsPublic: sponsors.profileIsPublic, tagline: sponsors.profileTagline, bio: sponsors.profileBio, website: sponsors.businessWebsite, logoUrl: media.url })
+      .select({ sponsorId: transactions.sponsorId, totalAmount: sum(transactions.amount), contributionCount: count(transactions.id), blocksSponsored: count(fundedBlockRow()), displayName: sponsors.name, businessName: sponsors.businessName, isAnonymous: sponsors.preferencesIsAnonymous, profileIsPublic: sponsors.profileIsPublic, tagline: sponsors.profileTagline, bio: sponsors.profileBio, website: sponsors.businessWebsite, logoUrl: media.url })
       .from(transactions)
       .leftJoin(sponsors, eq(transactions.sponsorId, sponsors.id))
       .leftJoin(media, eq(sponsors.businessLogoId, media.id))

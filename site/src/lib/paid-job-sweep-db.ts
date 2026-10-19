@@ -10,12 +10,9 @@
  * job between the SELECT and the UPDATE is left alone.
  */
 import { and, asc, eq, inArray, isNull, lt, sql } from 'drizzle-orm'
-import { blocks, communityReports, jobs, routeScans, routes } from '@/db/schema'
-import { eligibleBlockStatusForRoute } from '@/lib/admin-route-status'
-import { completeJob, type DbExecutor } from '@/lib/job-lifecycle'
+import { blocks, communityReports, jobs, routeScans } from '@/db/schema'
+import { completeJob, releaseInOneStatement, reworkSince, type DbExecutor } from '@/lib/job-lifecycle'
 import { PAID_CLAIM_RELEASE_HOURS, paidJobTtlCondition, type PaidJobCandidate } from '@/lib/paid-job-ttl'
-import { releaseJobPatch } from '@/lib/release-route-jobs'
-import { reopenReleaseSlot } from '@/lib/route-release-slot'
 import { findQualifyingScanForJob, isUniqueViolation } from '@/lib/scan-completion'
 import { ROUTE_SCAN_ABANDON_DAYS } from '@/lib/scan-verification'
 
@@ -36,6 +33,8 @@ export async function findPaidJobCandidates(exec: DbExecutor): Promise<PaidJobCa
       startReminderSentAt: jobs.startReminderSentAt,
       progressReminderSentAt: jobs.progressReminderSentAt,
       stalledAt: jobs.stalledAt,
+      reviewStatus: jobs.reviewStatus,
+      reviewedAt: jobs.reviewedAt,
     })
     .from(jobs)
     .where(paidJobTtlCondition())
@@ -108,45 +107,22 @@ export async function releasePaidClaim(
   job: PaidJobCandidate,
   now: string,
 ): Promise<{ released: boolean; slotReopened: boolean }> {
-  const released = await exec
-    .update(jobs)
-    .set(releaseJobPatch(job, now))
-    .where(
-      and(
-        eq(jobs.id, job.id),
-        eq(jobs.status, 'claimed'),
-        sameWorker(job),
-        isNull(jobs.startedAt),
-        // Same claim we judged stale — not a fresh re-claim.
-        lt(jobs.claimedAt, sql`${now}::timestamptz - make_interval(hours => ${PAID_CLAIM_RELEASE_HOURS}::int)`),
-      ),
-    )
-    .returning({ id: jobs.id })
-  if (released.length === 0) return { released: false, slotReopened: false }
-
-  const [route] = await exec
-    .select({ routeStatus: routes.status, claimStatus: routes.claimStatus })
-    .from(blocks)
-    .leftJoin(routes, eq(blocks.routeId, routes.id))
-    .where(eq(blocks.id, job.blockId))
-    .limit(1)
-  const blockStatus = route?.routeStatus
-    ? eligibleBlockStatusForRoute({ status: route.routeStatus, claimStatus: route.claimStatus })
-    : 'funded'
-  await exec
-    .update(blocks)
-    .set({ status: blockStatus, updatedAt: now })
-    .where(
-      and(
-        eq(blocks.id, job.blockId),
-        eq(blocks.status, 'in_progress'),
-        sql`not exists (select 1 from jobs j where j.block_id = ${blocks.id}
-          and j.status in ('claimed', 'in_progress', 'pending_review'))`,
-      ),
-    )
-
-  const slot = await reopenReleaseSlot(exec, job.id, now)
-  return { released: true, slotReopened: slot != null }
+  // One statement (neon-http runs each statement as its own transaction):
+  // the job, the block back to its route status, and the queue slot.
+  const result = await releaseInOneStatement(
+    exec,
+    { id: job.id, blockId: job.blockId, payoutAmount: job.payoutAmount },
+    and(
+      eq(jobs.status, 'claimed'),
+      sameWorker(job),
+      isNull(jobs.startedAt),
+      // Same claim we judged stale — not a fresh re-claim.
+      lt(jobs.claimedAt, sql`${now}::timestamptz - make_interval(hours => ${PAID_CLAIM_RELEASE_HOURS}::int)`),
+    ),
+    now,
+  )
+  if (!result) return { released: false, slotReopened: false }
+  return { released: true, slotReopened: result.effects.slotReopened }
 }
 
 export async function findQualifyingScanIdForJob(exec: DbExecutor, job: PaidJobCandidate): Promise<number | null> {
@@ -159,7 +135,13 @@ export async function findQualifyingScanIdForJob(exec: DbExecutor, job: PaidJobC
   if (block?.routeId == null) return null
   const scan = await findQualifyingScanForJob(
     exec,
-    { id: job.id, workerId: job.workerId, claimedAt: job.claimedAt, startedAt: job.startedAt },
+    {
+      id: job.id,
+      workerId: job.workerId,
+      claimedAt: job.claimedAt,
+      startedAt: job.startedAt,
+      reworkSince: reworkSince({ reviewStatus: job.reviewStatus ?? null, reviewedAt: job.reviewedAt ?? null }),
+    },
     block.routeId,
   )
   return scan?.id ?? null

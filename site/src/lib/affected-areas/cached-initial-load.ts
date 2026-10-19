@@ -4,6 +4,7 @@ import { and, eq, isNotNull, sql } from 'drizzle-orm'
 import { db } from '@/db'
 import { blocks, serviceAreas, transactions } from '@/db/schema'
 import { GCC_CACHE_TAGS } from '@/lib/public-data/cache-tags'
+import { isFundedBlockRow } from '@/lib/sponsor-funded'
 
 const AFFECTED_AREA_CACHE_SECONDS = 45
 
@@ -101,7 +102,8 @@ export async function queryAffectedAreas(
     .where(
       and(
         eq(transactions.status, 'completed'),
-        isNotNull(transactions.blockId),
+        // Funded rows only: a reservation keeps its block_id but funded nothing.
+        isFundedBlockRow(),
       ),
     )
     .groupBy(transactions.blockId)

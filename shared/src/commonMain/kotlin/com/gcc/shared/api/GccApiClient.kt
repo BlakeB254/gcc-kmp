@@ -607,6 +607,20 @@ class GccApiClient(
     }
 
     /**
+     * Take a claimed / in-progress job (stalled, denied, abandoned) away from
+     * its worker and return it to the pool; its block goes back to the route's
+     * status. A job awaiting review must be approved or denied first (409).
+     */
+    suspend fun adminReleaseJob(jobId: Int) {
+        val response = httpClient.post("$baseUrl/api/admin/jobs/$jobId/release")
+        if (!response.status.isSuccess()) {
+            checkUnauthorized(response.status.value)
+            val errorBody = response.bodyAsText()
+            throw Exception(httpErrorMessage(response.status.value, errorBody))
+        }
+    }
+
+    /**
      * Reassign a job — including a completed one — to the worker who really
      * did it. Moves the wallet credit (and stats) when the job was already
      * paid out.

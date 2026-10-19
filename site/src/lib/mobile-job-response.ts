@@ -47,7 +47,8 @@ export function toMobileJob(job: JobRow, routeId: number | null = null) {
     payoutAmount: job.payoutAmount ? Math.round(parseFloat(job.payoutAmount)) : null,
     payoutStatus: job.payoutStatus ?? null,
     // Admin review of a paid completion (pending_review → approve/deny).
-    // A denied job stays pending_review with reviewStatus 'denied'.
+    // A denied job goes back to in_progress (rework) with reviewStatus
+    // 'denied' and denyReason; resubmitting clears reviewStatus.
     reviewStatus: job.reviewStatus ?? null,
     approvedByAdminId: job.approvedByAdminId ?? null,
     deniedByAdminId: job.deniedByAdminId ?? null,

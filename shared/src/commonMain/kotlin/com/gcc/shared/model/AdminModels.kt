@@ -215,6 +215,12 @@ data class AdminJobSummary(
      * released; an admin decides. Null when the current run isn't stalled.
      */
     val stalledAt: Instant? = null,
+    /**
+     * Admin review state: null, "approved" or "denied". A denied job is back
+     * in rework (IN_PROGRESS) or, if denied before 2026-10-18, still
+     * PENDING_REVIEW with nobody to review it — both can be released.
+     */
+    val reviewStatus: String? = null,
 )
 
 // ─── Admin Response Models ──────────────────────────────────────────

@@ -3,8 +3,8 @@ import { db } from '@/db'
 import { jobs } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { requireMobileAuth } from '@/lib/mobile-auth'
+import { declineClaimedJob } from '@/lib/job-lifecycle'
 import { routeIdsByBlockId, toMobileJob } from '@/lib/mobile-job-response'
-import { reopenReleaseSlotSafely } from '@/lib/route-release-slot'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -37,23 +37,15 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Only assigned jobs can be declined before start', success: false }, { status: 409 })
     }
 
+    // One statement: the job back to the pool (paid → available, $0 →
+    // disputed), the block the claim flipped back to its route's status, and
+    // a route-queue job's slot back on offer — a crash can't strand either.
     const now = new Date().toISOString()
-    const payoutAmount = existing.payoutAmount ? Math.round(parseFloat(existing.payoutAmount)) : 0
-    const declinedStatus = payoutAmount > 0 ? 'available' : 'disputed'
-    const [updated] = await db
-      .update(jobs)
-      .set({
-        workerId: null,
-        status: declinedStatus,
-        claimedAt: null,
-        payoutStatus: null,
-        updatedAt: now,
-      })
-      .where(eq(jobs.id, jobId))
-      .returning()
-
-    // A route-queue job goes back on offer: reopen its release slot.
-    await reopenReleaseSlotSafely(db, jobId, now)
+    const declined = await declineClaimedJob(db, existing, now)
+    if (!declined) {
+      return NextResponse.json({ error: 'Job is no longer claimed', success: false }, { status: 409 })
+    }
+    const [updated] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1)
 
     const routeMap = await routeIdsByBlockId([updated.blockId])
     return NextResponse.json({
