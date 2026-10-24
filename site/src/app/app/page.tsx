@@ -95,6 +95,46 @@ export default function AppLandingPage() {
             </div>
           </div>
 
+          <section className="py-16 sm:py-24 border-t border-white/20 bg-white/5">
+            <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="text-center mb-14">
+                <h2 className="text-2xl sm:text-3xl font-extrabold mb-4">App preview</h2>
+                <p className="text-white/80">iOS onboarding splash v2 and App Store preview cards</p>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-start">
+                <div className="flex flex-col items-center">
+                  <h3 className="text-lg font-semibold text-center mb-6">iOS onboarding splash v2</h3>
+                  <div className="flex justify-center w-full">
+                    <img
+                      src="/images/store-preview/splash-v2.png"
+                      alt="GCC iOS onboarding splash v2 poster"
+                      width={1080}
+                      height={2340}
+                      className="max-w-[260px] w-full h-auto border border-white/30 rounded-2xl shadow-2xl block"
+                      loading="lazy"
+                    />
+                  </div>
+                  <p className="text-center text-xs text-white/70 mt-4 max-w-xs">
+                    First screen new volunteers see when they open the GCC app.
+                  </p>
+                </div>
+
+                <div className="flex flex-col items-center">
+                  <h3 className="text-lg font-semibold text-center mb-8">Store preview cards</h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6 justify-center w-full">
+                    <img src="/images/store-preview/card-01.png" alt="GCC App Store preview card 1" width={1284} height={2778} className="max-w-[190px] w-full h-auto border border-white/30 rounded-xl shadow-lg block" loading="lazy" />
+                    <img src="/images/store-preview/card-02.png" alt="GCC App Store preview card 2" width={1284} height={2778} className="max-w-[190px] w-full h-auto border border-white/30 rounded-xl shadow-lg block" loading="lazy" />
+                    <img src="/images/store-preview/card-03.png" alt="GCC App Store preview card 3" width={1284} height={2778} className="max-w-[190px] w-full h-auto border border-white/30 rounded-xl shadow-lg block" loading="lazy" />
+                    <img src="/images/store-preview/card-04.png" alt="GCC App Store preview card 4" width={1284} height={2778} className="max-w-[190px] w-full h-auto border border-white/30 rounded-xl shadow-lg block" loading="lazy" />
+                    <img src="/images/store-preview/card-05.png" alt="GCC App Store preview card 5" width={1284} height={2778} className="max-w-[190px] w-full h-auto border border-white/30 rounded-xl shadow-lg block" loading="lazy" />
+                    <img src="/images/store-preview/card-06.png" alt="GCC App Store preview card 6" width={1284} height={2778} className="max-w-[190px] w-full h-auto border border-white/30 rounded-xl shadow-lg block" loading="lazy" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
           <p className="text-sm text-white/70 mt-12 leading-relaxed">
             Currently launched in North Lawndale, Chicago (60623, 60624).
             <br />
